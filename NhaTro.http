@@ -1,0 +1,6 @@
+@NhaTro_HostAddress = http://localhost:5103
+
+GET {{NhaTro_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

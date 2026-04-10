@@ -1,0 +1,3639 @@
+﻿import { useEffect, useMemo, useState } from 'react'
+import './App.css'
+
+const MODULES = [
+  { key: 'tong-quan', title: 'Tá»•ng quan', prefix: '' },
+  { key: 'rooms', title: 'PhÃ²ng', prefix: '/api/Rooms' },
+  { key: 'tenants', title: 'NgÆ°á»i thuÃª', prefix: '/api/Tenants' },
+  { key: 'contracts', title: 'Há»£p Ä‘á»“ng', prefix: '/api/Contracts' },
+  { key: 'meterreadings', title: 'Chá»‰ sá»‘ Ä‘iá»‡n nÆ°á»›c', prefix: '/api/MeterReadings' },
+  { key: 'invoices', title: 'HÃ³a Ä‘Æ¡n', prefix: '/api/Invoices' },
+  { key: 'payments', title: 'Thanh toÃ¡n', prefix: '/api/Payments' },
+  { key: 'transactions', title: 'Thu chi', prefix: '/api/Transactions' },
+  { key: 'reports', title: 'BÃ¡o cÃ¡o', prefix: '/api/Reports' },
+]
+
+const METHOD_ORDER = ['get', 'post', 'put', 'patch', 'delete']
+
+const FALLBACK_METER_READING_UPDATE_ENDPOINT = {
+  path: '/api/MeterReadings/current-reading',
+  method: 'patch',
+  operation: {
+    summary: 'Sá»­a chá»‰ sá»‘ Ä‘iá»‡n gá»‘c theo phÃ²ng',
+    parameters: [],
+    requestBody: {
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              roomCode: { type: 'string', example: 'A01' },
+              billingMonth: { type: 'string', format: 'date', example: taoThangMacDinh() },
+              currentReading: { type: 'integer', example: 150 },
+            },
+            required: ['roomCode', 'billingMonth', 'currentReading'],
+          },
+        },
+      },
+    },
+  },
+}
+
+function taoThangMacDinh() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+}
+
+function taoThoiGianMacDinh() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const hours = String(now.getHours()).padStart(2, '0')
+  const minutes = String(now.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
+function formatJson(value) {
+  return JSON.stringify(value, null, 2)
+}
+
+function tenDep(value) {
+  return String(value || '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase())
+}
+
+function resolveSchema(schema, spec) {
+  if (!schema) return null
+
+  if (schema.$ref) {
+    return schema.$ref
+      .replace(/^#\//, '')
+      .split('/')
+      .reduce((current, part) => current?.[part], spec)
+  }
+
+  if (schema.allOf?.length) {
+    return schema.allOf.reduce(
+      (acc, item) => {
+        const resolved = resolveSchema(item, spec) || {}
+        return {
+          ...acc,
+          ...resolved,
+          properties: { ...(acc.properties || {}), ...(resolved.properties || {}) },
+          required: [...new Set([...(acc.required || []), ...(resolved.required || [])])],
+        }
+      },
+      { properties: {}, required: [] },
+    )
+  }
+
+  return schema
+}
+
+function sampleValue(schema, spec, name = '') {
+  const resolved = resolveSchema(schema, spec) || {}
+
+  if (resolved.example !== undefined) return resolved.example
+  if (resolved.default !== undefined) return resolved.default
+  if (resolved.enum?.length) return resolved.enum[0]
+
+  const lowerName = name.toLowerCase()
+
+  switch (resolved.type) {
+    case 'string':
+      if (resolved.format === 'date') return taoThangMacDinh()
+      if (resolved.format === 'date-time') return taoThoiGianMacDinh()
+      if (resolved.format === 'binary') return ''
+      if (lowerName.includes('phone')) return '0900000000'
+      if (lowerName.includes('roomcode')) return 'A01'
+      if (lowerName.includes('name')) return ''
+      return ''
+    case 'integer':
+    case 'number':
+      return 0
+    case 'boolean':
+      return false
+    case 'array':
+      return [sampleValue(resolved.items, spec, name)]
+    default:
+      if (resolved.properties) {
+        return Object.fromEntries(
+          Object.entries(resolved.properties).map(([key, value]) => [key, sampleValue(value, spec, key)]),
+        )
+      }
+      return {}
+  }
+}
+
+function typeLabel(schema) {
+  if (!schema) return 'KhÃ´ng xÃ¡c Ä‘á»‹nh'
+  if (schema.type === 'array') return `Danh sÃ¡ch ${typeLabel(schema.items)}`
+  if (schema.format === 'binary') return 'Tá»‡p'
+  if (schema.enum?.length) return `Chá»n má»™t trong: ${schema.enum.join(', ')}`
+  if (schema.properties) return 'Äá»‘i tÆ°á»£ng'
+  return schema.type || 'KhÃ´ng xÃ¡c Ä‘á»‹nh'
+}
+
+function normalizeValue(value, schema, spec) {
+  const resolved = resolveSchema(schema, spec) || {}
+  if (value === '' || value === null || value === undefined) return value
+
+  if (resolved.type === 'integer') return Number.parseInt(value, 10)
+  if (resolved.type === 'number') return Number.parseFloat(value)
+  if (resolved.type === 'boolean') return value === true || value === 'true'
+  return value
+}
+
+function kieuInput(schema, spec) {
+  const resolved = resolveSchema(schema, spec) || {}
+
+  if (resolved.format === 'date') return 'date'
+  if (resolved.format === 'date-time') return 'datetime-local'
+  if (resolved.type === 'number' || resolved.type === 'integer') return 'number'
+  return 'text'
+}
+
+function thongDiepLoi(error) {
+  if (error instanceof Error) return error.message
+  return 'CÃ³ lá»—i xáº£y ra khi gá»i API.'
+}
+
+function laFormTaoPhong(moduleKey, method, path) {
+  return moduleKey === 'rooms' && method === 'post' && path.toLowerCase() === '/api/rooms'
+}
+
+function laFormNguoiThue(moduleKey, method, path) {
+  return moduleKey === 'tenants' && method === 'post' && path.toLowerCase() === '/api/tenants'
+}
+
+function laFormHopDong(moduleKey, method, path) {
+  return moduleKey === 'contracts' && method === 'post' && path.toLowerCase() === '/api/contracts'
+}
+
+function laFormChiSoDienNuoc(moduleKey, method, path) {
+  return (
+    moduleKey === 'meterreadings' &&
+    method === 'post' &&
+    (path.toLowerCase() === '/api/meterreadings' || path.toLowerCase() === '/api/meterreadings/preview')
+  )
+}
+
+function laFormSuaChiSoDienGoc(moduleKey, method, path) {
+  return moduleKey === 'meterreadings' && method === 'patch' && path.toLowerCase() === '/api/meterreadings/current-reading'
+}
+
+function laFormHoaDon(moduleKey, method, path) {
+  return (
+    moduleKey === 'invoices' &&
+    method === 'post' &&
+    (path.toLowerCase() === '/api/invoices' || path.toLowerCase() === '/api/invoices/preview')
+  )
+}
+
+function laFormMonthlyBulkPreview(moduleKey, method, path) {
+  return moduleKey === 'invoices' && method === 'post' && path.toLowerCase() === '/api/invoices/monthly-bulk-preview'
+}
+
+function laFormMonthlyBulk(moduleKey, method, path) {
+  return moduleKey === 'invoices' && method === 'post' && path.toLowerCase() === '/api/invoices/monthly-bulk'
+}
+
+function laPhongChuaThue(room) {
+  const status = String(room?.status ?? room?.Status ?? '')
+    .trim()
+    .toLowerCase()
+
+  return status === 'vacant'
+}
+
+function nhanTruong(moduleKey, path, field) {
+  const normalize = (value) => String(value || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+  const normalizedField = normalize(field)
+
+  const map = {
+    rooms: {
+      roomcode: 'MÃ£ phÃ²ng',
+      listedprice: 'GiÃ¡ phÃ²ng',
+      status: 'Tráº¡ng thÃ¡i',
+    },
+    tenants: {
+      fullname: 'Há» vÃ  tÃªn',
+      phone: 'Sá»‘ Ä‘iá»‡n thoáº¡i',
+      cccd: 'CÄƒn cÆ°á»›c cÃ´ng dÃ¢n',
+    },
+    contracts: {
+      contractid: 'MÃ£ há»£p Ä‘á»“ng',
+      roomid: 'MÃ£ phÃ²ng',
+      roomcode: 'MÃ£ phÃ²ng',
+      tenantid: 'MÃ£ ngÆ°á»i thuÃª',
+      tenantname: 'TÃªn ngÆ°á»i thuÃª',
+      startdate: 'NgÃ y báº¯t Ä‘áº§u',
+      expectedenddate: 'NgÃ y káº¿t thÃºc dá»± kiáº¿n',
+      actualenddate: 'NgÃ y káº¿t thÃºc thá»±c táº¿',
+      depositamount: 'Tiá»n Ä‘áº·t cá»c',
+      occupantcount: 'Sá»‘ khÃ¡ch',
+      actualroomprice: 'GiÃ¡ phÃ²ng thá»±c táº¿',
+      status: 'Tráº¡ng thÃ¡i',
+      createdat: 'NgÃ y táº¡o',
+      updatedat: 'NgÃ y cáº­p nháº­t',
+
+      numberofdays: 'Sá»‘ ngÃ y á»Ÿ thá»±c táº¿',
+      roomfee: 'Tiá»n phÃ²ng',
+      electricityfee: 'Tiá»n Ä‘iá»‡n',
+      waterfee: 'Tiá»n nÆ°á»›c',
+      trashfee: 'Tiá»n rÃ¡c',
+      finalinvoiceamount: 'Tá»•ng tiá»n hÃ³a Ä‘Æ¡n chá»‘t',
+      deductedamount: 'Sá»‘ tiá»n kháº¥u trá»«',
+      refundedamount: 'Sá»‘ tiá»n hoÃ n tráº£',
+    },
+    meterreadings: {
+      meterreadingid: 'MÃ£ báº£n ghi chá»‰ sá»‘',
+      roomselector: 'MÃ£ phÃ²ng',
+      roomid: 'MÃ£ phÃ²ng',
+      roomcode: 'MÃ£ phÃ²ng',
+      contractid: 'MÃ£ há»£p Ä‘á»“ng',
+      billingmonth: 'ThÃ¡ng ghi chá»‰ sá»‘',
+      previousreading: 'Chá»‰ sá»‘ cÅ©',
+      currentreading: 'Chá»‰ sá»‘ hiá»‡n táº¡i',
+      consumedunits: 'Sá»‘ lÆ°á»£ng tiÃªu thá»¥',
+      unitprice: 'ÄÆ¡n giÃ¡',
+      amount: 'ThÃ nh tiá»n',
+      createdat: 'NgÃ y táº¡o',
+    },
+    invoices: {
+      invoiceid: 'MÃ£ hÃ³a Ä‘Æ¡n',
+      roomid: 'MÃ£ phÃ²ng',
+      roomcode: 'PhÃ²ng',
+      contractid: 'MÃ£ há»£p Ä‘á»“ng',
+      invoicetype: 'Loáº¡i hÃ³a Ä‘Æ¡n',
+      billingmonth: 'ThÃ¡ng',
+      fromdate: 'Tá»« ngÃ y',
+      todate: 'Äáº¿n ngÃ y',
+      roomfee: 'Tiá»n phÃ²ng',
+      electricityfee: 'Tiá»n Ä‘iá»‡n',
+      waterfee: 'Tiá»n nÆ°á»›c',
+      trashfee: 'Tiá»n rÃ¡c',
+      discountamount: 'Giáº£m trá»«',
+      debtamount: 'CÃ´ng ná»£',
+      totalamount: 'Tá»•ng tiá»n',
+      status: 'Tráº¡ng thÃ¡i thanh toÃ¡n',
+      paymentcode: 'MÃ£ thanh toÃ¡n',
+      paidat: 'Thá»i gian thanh toÃ¡n',
+      paidamount: 'Sá»‘ tiá»n Ä‘Ã£ thanh toÃ¡n',
+      paymentmethod: 'PhÆ°Æ¡ng thá»©c thanh toÃ¡n',
+      paymentreference: 'MÃ£ tham chiáº¿u',
+      note: 'Ghi chÃº',
+      createdat: 'NgÃ y táº¡o',
+      tenantname: 'TÃªn ngÆ°á»i thuÃª',
+      defaultdiscountamount: 'Giáº£m trá»« máº·c Ä‘á»‹nh',
+      defaultdebtamount: 'CÃ´ng ná»£ máº·c Ä‘á»‹nh',
+    },
+  }
+
+  const common = {
+    roomselector: 'MÃ£ phÃ²ng',
+    contractid: 'MÃ£ há»£p Ä‘á»“ng',
+    roomid: 'MÃ£ phÃ²ng',
+    roomcode: 'MÃ£ phÃ²ng',
+    invoiceid: 'MÃ£ hÃ³a Ä‘Æ¡n',
+    invoicetype: 'Loáº¡i hÃ³a Ä‘Æ¡n',
+    billingmonth: 'ThÃ¡ng',
+    fromdate: 'Tá»« ngÃ y',
+    todate: 'Äáº¿n ngÃ y',
+    roomfee: 'Tiá»n phÃ²ng',
+    electricityfee: 'Tiá»n Ä‘iá»‡n',
+    waterfee: 'Tiá»n nÆ°á»›c',
+    trashfee: 'Tiá»n rÃ¡c',
+    discountamount: 'Giáº£m trá»«',
+    debtamount: 'CÃ´ng ná»£',
+    totalamount: 'Tá»•ng tiá»n',
+    paymentcode: 'MÃ£ thanh toÃ¡n',
+    paidat: 'Thá»i gian thanh toÃ¡n',
+    paidamount: 'Sá»‘ tiá»n Ä‘Ã£ thanh toÃ¡n',
+    paymentmethod: 'PhÆ°Æ¡ng thá»©c thanh toÃ¡n',
+    paymentreference: 'MÃ£ tham chiáº¿u',
+    note: 'Ghi chÃº',
+    tenantid: 'MÃ£ ngÆ°á»i thuÃª',
+    tenantname: 'TÃªn ngÆ°á»i thuÃª',
+    fullname: 'Há» vÃ  tÃªn',
+    phone: 'Sá»‘ Ä‘iá»‡n thoáº¡i',
+    cccd: 'CÄƒn cÆ°á»›c cÃ´ng dÃ¢n',
+    startdate: 'NgÃ y báº¯t Ä‘áº§u',
+    expectedenddate: 'NgÃ y káº¿t thÃºc dá»± kiáº¿n',
+    actualenddate: 'NgÃ y káº¿t thÃºc thá»±c táº¿',
+    depositamount: 'Tiá»n Ä‘áº·t cá»c',
+    occupantcount: 'Sá»‘ khÃ¡ch',
+    actualroomprice: 'GiÃ¡ phÃ²ng thá»±c táº¿',
+    status: 'Tráº¡ng thÃ¡i',
+    createdat: 'NgÃ y táº¡o',
+    updatedat: 'NgÃ y cáº­p nháº­t',
+  }
+
+  return map[moduleKey]?.[normalizedField] || common[normalizedField] || tenDep(field)
+}
+
+function laDanhSachPhong(moduleKey, method, path) {
+  return moduleKey === 'rooms' && method === 'get' && path.toLowerCase() === '/api/rooms'
+}
+
+function laDanhSachHopDong(moduleKey, method, path) {
+  return moduleKey === 'contracts' && method === 'get' && path.toLowerCase() === '/api/contracts'
+}
+
+function laDanhSachHoaDon(moduleKey, method, path) {
+  return moduleKey === 'invoices' && method === 'get' && path.toLowerCase() === '/api/invoices'
+}
+
+function nenHienThiEndpoint(moduleKey, method, path) {
+  const normalizedPath = path.toLowerCase()
+
+  if (
+    moduleKey === 'rooms' &&
+    method === 'get' &&
+    normalizedPath.startsWith('/api/rooms/')
+  ) {
+    return false
+  }
+
+  if (
+    moduleKey === 'tenants' &&
+    method === 'get' &&
+    normalizedPath.startsWith('/api/tenants/') &&
+    normalizedPath.includes('{')
+  ) {
+    return false
+  }
+
+  if (moduleKey === 'invoices') {
+    const allowedInvoiceEndpoints = new Set([
+      'get /api/invoices',
+      'get /api/invoices/{id:int}',
+      'get /api/invoices/{id}',
+      // 'get /api/invoices/by-room-and-month',
+      'patch /api/invoices/{id:int}/mark-paid',
+      'patch /api/invoices/{id}/mark-paid',
+      'patch /api/invoices/{id:int}/mark-unpaid',
+      'patch /api/invoices/{id}/mark-unpaid',
+      'post /api/invoices/monthly-bulk-preview',
+      'post /api/invoices/monthly-bulk',
+    ])
+
+    return allowedInvoiceEndpoints.has(`${method} ${normalizedPath}`)
+  }
+
+  if (moduleKey === 'contracts') {
+    if (method === 'get' && normalizedPath === '/api/contracts/active-by-room/{roomcode}') {
+      return false
+    }
+
+    if (
+      method === 'get' &&
+      normalizedPath.startsWith('/api/contracts/') &&
+      normalizedPath.includes('{') &&
+      !normalizedPath.includes('/end-preview')
+    ) {
+      return false
+    }
+
+    if (
+      method === 'post' &&
+      !normalizedPath.includes('/end-preview') && normalizedPath.includes('/end')
+    ) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function sapXepEndpoint(moduleKey, a, b) {
+  if (moduleKey === 'invoices') {
+    const order = {
+      'get /api/invoices': 0,
+      'get /api/invoices/by-room-and-month': 1,
+      'get /api/invoices/{id:int}': 2,
+      'get /api/invoices/{id}': 2,
+      'patch /api/invoices/{id:int}/mark-paid': 3,
+      'patch /api/invoices/{id}/mark-paid': 3,
+      'patch /api/invoices/{id:int}/mark-unpaid': 4,
+      'patch /api/invoices/{id}/mark-unpaid': 4,
+      'post /api/invoices/monthly-bulk-preview': 5,
+      'post /api/invoices/monthly-bulk': 6,
+    }
+
+    const keyA = `${a.method.toLowerCase()} ${a.path.toLowerCase()}`
+    const keyB = `${b.method.toLowerCase()} ${b.path.toLowerCase()}`
+    const rankA = Object.prototype.hasOwnProperty.call(order, keyA) ? order[keyA] : 99
+    const rankB = Object.prototype.hasOwnProperty.call(order, keyB) ? order[keyB] : 99
+
+    if (rankA !== rankB) return rankA - rankB
+    if (a.method !== b.method) return METHOD_ORDER.indexOf(a.method) - METHOD_ORDER.indexOf(b.method)
+    return a.path.localeCompare(b.path)
+  }
+
+  if (moduleKey === 'contracts') {
+    const order = {
+      'get /api/contracts': 0,
+      'post /api/contracts': 1,
+      'put /api/contracts/{id:int}': 2,
+      'put /api/contracts/{id}': 2,
+      'post /api/contracts/{id:int}/end-preview': 3,
+      'post /api/contracts/{id}/end-preview': 3,
+      'post /api/contracts/{id:int}/end': 4,
+      'post /api/contracts/{id}/end': 4,
+      'delete /api/contracts/{id:int}': 5,
+      'delete /api/contracts/{id}': 5,
+    }
+
+    const keyA = `${a.method.toLowerCase()} ${a.path.toLowerCase()}`
+    const keyB = `${b.method.toLowerCase()} ${b.path.toLowerCase()}`
+    const rankA = Object.prototype.hasOwnProperty.call(order, keyA) ? order[keyA] : 99
+    const rankB = Object.prototype.hasOwnProperty.call(order, keyB) ? order[keyB] : 99
+
+    if (rankA !== rankB) return rankA - rankB
+    if (a.method !== b.method) return METHOD_ORDER.indexOf(a.method) - METHOD_ORDER.indexOf(b.method)
+    return a.path.localeCompare(b.path)
+  }
+
+  if (moduleKey !== 'rooms') return 0
+
+  const order = {
+    'get /api/rooms': 0,
+    'get /api/rooms/by-code/{roomcode}': 1,
+  }
+
+  const keyA = `${a.method.toLowerCase()} ${a.path.toLowerCase()}`
+  const keyB = `${b.method.toLowerCase()} ${b.path.toLowerCase()}`
+  const rankA = Object.prototype.hasOwnProperty.call(order, keyA) ? order[keyA] : 2
+  const rankB = Object.prototype.hasOwnProperty.call(order, keyB) ? order[keyB] : 2
+
+  if (rankA !== rankB) return rankA - rankB
+  if (a.method !== b.method) return METHOD_ORDER.indexOf(a.method) - METHOD_ORDER.indexOf(b.method)
+  return a.path.localeCompare(b.path)
+}
+
+function laGiaTriDon(value) {
+  return value === null || ['string', 'number', 'boolean'].includes(typeof value)
+}
+
+function nhanKieu(value) {
+  if (Array.isArray(value)) return `Danh sÃ¡ch ${value.length} má»¥c`
+  if (value === null) return 'GiÃ¡ trá»‹ rá»—ng'
+  if (typeof value === 'object') return `${Object.keys(value).length} trÆ°á»ng dá»¯ liá»‡u`
+  if (typeof value === 'boolean') return value ? 'ÄÃºng' : 'Sai'
+  return typeof value
+}
+
+function laFieldTien(field = '') {
+  const normalized = String(field || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+  const moneyFields = new Set([
+    'listedprice',
+    'depositamount',
+    'actualroomprice',
+    'price',
+    'amount',
+    'totalamount',
+    'subtotal',
+    'unitprice',
+    'monthlyrent',
+    'electricitycost',
+    'watercost',
+    'servicefee',
+    'otherfee',
+    'penaltyamount',
+    'paidamount',
+    'remainingamount',
+    'revenue',
+    'expense',
+    'profit',
+    'roomfee',
+    'electricityfee',
+    'waterfee',
+    'trashfee',
+    'discountamount',
+    'debtamount',
+    'defaultdiscountamount',
+    'defaultdebtamount',
+  ])
+
+  return moneyFields.has(normalized)
+}
+
+function laFieldNgay(field = '') {
+  const normalized = String(field || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+  return new Set(['fromdate', 'todate', 'paidat', 'createdat', 'updatedat', 'startdate', 'expectedenddate', 'actualenddate']).has(
+    normalized,
+  )
+}
+
+function laFieldThang(field = '') {
+  const normalized = String(field || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+  return normalized === 'billingmonth'
+}
+
+function dinhDangNgay(value) {
+  if (value === null || value === undefined || value === '') return 'KhÃ´ng cÃ³ dá»¯ liá»‡u'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+
+  return new Intl.DateTimeFormat('vi-VN').format(date)
+}
+
+function dinhDangThang(value) {
+  if (value === null || value === undefined || value === '') return 'KhÃ´ng cÃ³ dá»¯ liá»‡u'
+
+  const textValue = String(value)
+  const match = textValue.match(/^(\d{4})-(\d{2})/)
+  if (!match) return textValue
+
+  return `ThÃ¡ng ${match[2]}/${match[1]}`
+}
+
+function dinhDangLoaiHoaDon(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+
+  if (normalized === 'monthly') return 'HÃ³a Ä‘Æ¡n thÃ¡ng'
+  if (normalized === 'final') return 'HÃ³a Ä‘Æ¡n chá»‘t'
+  return value || 'KhÃ´ng cÃ³ dá»¯ liá»‡u'
+}
+
+function dinhDangTien(value) {
+  if (value === null || value === undefined || value === '') return 'KhÃ´ng cÃ³ dá»¯ liá»‡u'
+
+  const number =
+    typeof value === 'number'
+      ? value
+      : Number.parseFloat(String(value).replace(/\./g, '').replace(/,/g, ''))
+
+  if (Number.isNaN(number)) return String(value)
+
+  return `${new Intl.NumberFormat('vi-VN').format(number)} VND`
+}
+
+function giaTriDep(value, field = '') {
+  if (value === null || value === undefined || value === '') return 'KhÃ´ng cÃ³ dá»¯ liá»‡u'
+  if (typeof value === 'boolean') return value ? 'ÄÃºng' : 'Sai'
+
+  const normalizedField = String(field || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+
+  if (laFieldThang(field)) return dinhDangThang(value)
+  if (laFieldNgay(field)) return dinhDangNgay(value)
+  if (normalizedField === 'status') {
+    const normalized = String(value || '').trim().toLowerCase()
+
+    if (normalized === 'paid') return 'ÄÃ£ thanh toÃ¡n'
+    if (normalized === 'unpaid') return 'ChÆ°a thanh toÃ¡n'
+    if (normalized === 'active') return 'CÃ²n hiá»‡u lá»±c'
+    if (normalized === 'ended') return 'Háº¿t háº¡n'
+
+    return value || 'KhÃ´ng cÃ³ dá»¯ liá»‡u'
+  }
+  if (normalizedField === 'invoicetype') return dinhDangLoaiHoaDon(value)
+  if (laFieldTien(field)) return dinhDangTien(value)
+  return String(value)
+}
+
+function laHopDongConHieuLuc(contract) {
+  const status = String(contract?.status ?? contract?.Status ?? '')
+    .trim()
+    .toLowerCase()
+
+  return status !== 'ended'
+}
+
+function trangThaiHopDongClass(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'active' || normalized.includes('cÃ²n') || normalized.includes('con')) {
+    return 'active'
+  }
+  if (normalized === 'ended' || normalized.includes('háº¿t') || normalized.includes('het')) {
+    return 'ended'
+  }
+  return ''
+}
+
+function XemDuLieu({ title, data, emptyText = 'ChÆ°a cÃ³ dá»¯ liá»‡u.' }) {
+  if (data === undefined || data === null || data === '') {
+    return <div className="khung-du-lieu khung-du-lieu--trong">{emptyText}</div>
+  }
+
+  if (Array.isArray(data)) {
+    if (!data.length) {
+      return <div className="khung-du-lieu khung-du-lieu--trong">{emptyText}</div>
+    }
+
+    const primitiveArray = data.every((item) => laGiaTriDon(item))
+    if (primitiveArray) {
+      return (
+        <div className="khung-du-lieu">
+          <div className="chip-wrap">
+            {data.map((item, index) => (
+              <span key={`${title || 'value'}-${index}`} className="chip">
+                {giaTriDep(item, title)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="khung-du-lieu danh-sach-ban-ghi">
+        {data.map((item, index) => {
+          const roomCode = item.roomCode ?? item.RoomCode
+          const headerLabel = roomCode ? `MÃ£ phÃ²ng: ${roomCode}` : `Má»¥c ${index + 1}`
+          return (
+            <section key={`${title || 'item'}-${index}`} className="ban-ghi">
+              <header className="ban-ghi__dau">
+                <strong className={roomCode ? 'ban-ghi__dau-noi-bat' : ''}>{headerLabel}</strong>
+                <span>{nhanKieu(item)}</span>
+              </header>
+              <XemDuLieu data={item} />
+            </section>
+          )
+        })}
+      </div>
+    )
+  }
+
+  if (typeof data === 'object') {
+    const hiddenFields = new Set([
+      'roomid',
+      'contractid',
+      'createdat',
+      'updatedat',
+      'tenantid',
+    ])
+    const entries = Object.entries(data).filter(([key]) => !hiddenFields.has(key.toLowerCase()))
+    return (
+      <div className="khung-du-lieu">
+        {title ? (
+          <div className="ban-ghi__dau">
+            <strong>{tenDep(title)}</strong>
+            <span>{nhanKieu(data)}</span>
+          </div>
+        ) : null}
+        <div className="ban-ghi-row">
+          {entries.map(([key, value]) => {
+            const normalizedKey = String(key || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+
+            const laTruongNoiBat = new Set([
+              'roomcode',
+              'tenantname',
+              'actualroomprice',
+              'depositamount',
+            ]).has(normalizedKey)
+
+            const laTrangThaiHopDong = normalizedKey === 'status'
+            const statusValue = String(value || '').trim().toLowerCase()
+
+            let statusClass = ''
+            if (laTrangThaiHopDong) {
+              if (statusValue === 'active') statusClass = 'trang-thai-hop-dong trang-thai-hop-dong--active'
+              else if (statusValue === 'ended') statusClass = 'trang-thai-hop-dong trang-thai-hop-dong--ended'
+            }
+
+            return (
+              <div key={key} className="ban-ghi__field">
+                <span>{nhanTruong('', '', key)}</span>
+                {laGiaTriDon(value) ? (
+                  <strong className={`${laTruongNoiBat ? 'gia-tri-noi-bat' : ''} ${statusClass}`.trim()}>
+                    {laTruongNoiBat ? 'â˜… ' : ''}
+                    {giaTriDep(value, key)}
+                  </strong>
+                ) : (
+                  <XemDuLieu title={key} data={value} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  return <div className="khung-du-lieu gia-tri-don">{giaTriDep(data, title)}</div>
+}
+
+function trangThaiPhong(value) {
+  const status = String(value || '').toLowerCase()
+  if (status === 'occupied') {
+    return { label: 'ÄÃ£ cho thuÃª', css: 'da-cho-thue' }
+  }
+  if (status === 'vacant') {
+    return { label: 'ChÆ°a cho thuÃª', css: 'chua-cho-thue' }
+  }
+  return { label: value || 'ChÆ°a rÃµ', css: 'mac-dinh' }
+}
+
+function XemDanhSachPhong({ data }) {
+  const [search, setSearch] = useState('')
+
+  if (!Array.isArray(data) || !data.length) {
+    return <div className="khung-du-lieu khung-du-lieu--trong">KhÃ´ng cÃ³ phÃ²ng nÃ o.</div>
+  }
+
+  const filtered = search.trim()
+    ? data.filter((room) =>
+      String(room.roomCode ?? room.RoomCode ?? '')
+        .toLowerCase()
+        .includes(search.trim().toLowerCase())
+    )
+    : data
+
+  return (
+    <div className="danh-sach-phong-wrap">
+      <div className="bo-loc-hop-dong" style={{ marginBottom: '12px' }}>
+        <label className="truong">
+          <span>TÃ¬m theo mÃ£ phÃ²ng</span>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Nháº­p mÃ£ phÃ²ng, vÃ­ dá»¥: A01"
+          />
+        </label>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="khung-du-lieu khung-du-lieu--trong">KhÃ´ng tÃ¬m tháº¥y phÃ²ng phÃ¹ há»£p.</div>
+      ) : (
+        <div className="danh-sach-phong">
+          {filtered.map((room, index) => {
+            const status = trangThaiPhong(room.status ?? room.Status)
+            return (
+              <div key={`${room.roomCode || room.RoomCode || 'room'}-${index}`} className="dong-phong">
+                <div className="dong-phong__o">
+                  <span>MÃ£ phÃ²ng</span>
+                  <strong>{room.roomCode ?? room.RoomCode ?? 'KhÃ´ng cÃ³ dá»¯ liá»‡u'}</strong>
+                </div>
+                <div className="dong-phong__o">
+                  <span>GiÃ¡ phÃ²ng</span>
+                  <strong>{giaTriDep(room.listedPrice ?? room.ListedPrice, 'listedPrice')}</strong>
+                </div>
+                <div className="dong-phong__o">
+                  <span>TÃ¬nh tráº¡ng phÃ²ng</span>
+                  <strong className={`trang-thai-phong trang-thai-phong--${status.css}`}>{status.label}</strong>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function laDuLieuPhong(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  return 'roomCode' in value || 'listedPrice' in value || 'status' in value || 'RoomCode' in value
+}
+
+function XemPhong({ data }) {
+  if (!data) {
+    return <div className="khung-du-lieu khung-du-lieu--trong">ChÆ°a cÃ³ pháº£n há»“i tá»« mÃ¡y chá»§.</div>
+  }
+
+  if (Array.isArray(data)) {
+    return <XemDanhSachPhong data={data} />
+  }
+
+  const roomCode = data.roomCode ?? data.RoomCode
+  const listedPrice = data.listedPrice ?? data.ListedPrice
+  const statusValue = data.status ?? data.Status
+  const status = trangThaiPhong(statusValue)
+
+  return (
+    <div className="danh-sach-phong">
+      <div className="dong-phong">
+        <div className="dong-phong__o">
+          <span>MÃ£ phÃ²ng</span>
+          <strong>{roomCode || 'KhÃ´ng cÃ³ dá»¯ liá»‡u'}</strong>
+        </div>
+        <div className="dong-phong__o">
+          <span>GiÃ¡ phÃ²ng</span>
+          <strong>{giaTriDep(listedPrice, 'listedPrice')}</strong>
+        </div>
+        <div className="dong-phong__o">
+          <span>TÃ¬nh tráº¡ng phÃ²ng</span>
+          <strong className={`trang-thai-phong trang-thai-phong--${status.css}`}>{status.label}</strong>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function laDuLieuNguoiThue(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  return 'fullName' in value || 'phone' in value || 'cccd' in value || 'FullName' in value
+}
+
+function laDuLieuHoaDon(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+
+  return (
+    'invoiceId' in value ||
+    'InvoiceId' in value ||
+    'billingMonth' in value ||
+    'BillingMonth' in value ||
+    'totalAmount' in value ||
+    'TotalAmount' in value
+  )
+}
+
+function laDuLieuHopDong(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+
+  return (
+    'contractId' in value ||
+    'ContractId' in value ||
+    'tenantName' in value ||
+    'TenantName' in value ||
+    'expectedEndDate' in value ||
+    'ExpectedEndDate' in value
+  )
+}
+
+function XemDanhSachHopDong({ data }) {
+  const [searchText, setSearchText] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [popupContract, setPopupContract] = useState(null)
+  if (!Array.isArray(data) || !data.length) {
+    return <div className="khung-du-lieu khung-du-lieu--trong">KhÃ´ng cÃ³ há»£p Ä‘á»“ng nÃ o.</div>
+  }
+
+  const normalizedSearch = searchText.trim().toLowerCase()
+  const filteredContracts = data.filter((contract) => {
+    const status = String(contract.status ?? contract.Status ?? '').trim().toLowerCase()
+    const roomCode = String(contract.roomCode ?? contract.RoomCode ?? '').trim().toLowerCase()
+    const tenantName = String(contract.tenantName ?? contract.TenantName ?? '').trim().toLowerCase()
+    const contractId = String(contract.contractId ?? contract.ContractId ?? '').trim().toLowerCase()
+
+    const matchesStatus =
+      statusFilter === 'all' ||
+      (statusFilter === 'active' && status === 'active') ||
+      (statusFilter === 'ended' && status === 'ended')
+
+    const matchesSearch =
+      !normalizedSearch ||
+      roomCode.includes(normalizedSearch) ||
+      tenantName.includes(normalizedSearch) ||
+      contractId.includes(normalizedSearch)
+
+    return matchesStatus && matchesSearch
+  })
+
+  return (
+    <div className="danh-sach-hop-dong-wrap">
+      <div className="bo-loc-hop-dong">
+        <label className="truong">
+          <span>TÃ¬m há»£p Ä‘á»“ng</span>
+          <input
+            type="text"
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+            placeholder="TÃ¬m theo mÃ£ phÃ²ng, ngÆ°á»i thuÃª hoáº·c mÃ£ há»£p Ä‘á»“ng"
+          />
+        </label>
+        <label className="truong">
+          <span>Lá»c tráº¡ng thÃ¡i</span>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="all">Táº¥t cáº£ tráº¡ng thÃ¡i</option>
+            <option value="active">CÃ²n hiá»‡u lá»±c</option>
+            <option value="ended">Háº¿t háº¡n</option>
+          </select>
+        </label>
+      </div>
+
+      {!filteredContracts.length ? (
+        <div className="khung-du-lieu khung-du-lieu--trong">KhÃ´ng cÃ³ há»£p Ä‘á»“ng phÃ¹ há»£p vá»›i bá»™ lá»c.</div>
+      ) : (
+        <div className="danh-sach-phong">
+          {filteredContracts.map((contract, index) => {
+            const contractId = contract.contractId ?? contract.ContractId ?? index
+            const roomCode = contract.roomCode ?? contract.RoomCode
+            const tenantName = contract.tenantName ?? contract.TenantName
+            const status = contract.status ?? contract.Status
+
+            return (
+              <div key={contractId} className="hop-dong-item">
+                <div className="dong-phong dong-phong--hop-dong">
+                  <div className="dong-phong__o">
+                    <span>MÃ£ phÃ²ng</span>
+                    <strong>{roomCode || 'KhÃ´ng cÃ³ dá»¯ liá»‡u'}</strong>
+                  </div>
+                  <div className="dong-phong__o">
+                    <span>NgÆ°á»i thuÃª</span>
+                    <strong>{tenantName || 'KhÃ´ng cÃ³ dá»¯ liá»‡u'}</strong>
+                  </div>
+                  <div className="dong-phong__o">
+                    <span>Tráº¡ng thÃ¡i</span>
+                    <strong className={`trang-thai-hop-dong ${trangThaiHopDongClass(status) ? `trang-thai-hop-dong--${trangThaiHopDongClass(status)}` : ''}`.trim()}>
+                      {giaTriDep(status, 'status')}
+                    </strong>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="nut nut--phu nut-hop-dong"
+                  onClick={() => setPopupContract(contract)}
+                >
+                  Xem chi tiáº¿t
+                </button>
+
+                {popupContract ? (
+                  <div className="lop-phu-endpoint" onClick={() => setPopupContract(null)}>
+                    <div className="hop-endpoint-mo" onClick={(e) => e.stopPropagation()}>
+                      <div className="the-endpoint the-endpoint--mo">
+                        <div className="the-endpoint__dau">
+                          <h3>Chi tiáº¿t há»£p Ä‘á»“ng</h3>
+                          <button
+                            type="button"
+                            className="nut-dong-endpoint"
+                            onClick={() => setPopupContract(null)}
+                          >
+                            Ã—
+                          </button>
+                        </div>
+                        <XemHopDong data={popupContract} />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function XemHopDong({ data, hienThiSoTienPhaiDong = false }) {
+  if (!data) {
+    return <div className="khung-du-lieu khung-du-lieu--trong">ChÆ°a cÃ³ dá»¯ liá»‡u.</div>
+  }
+
+  if (Array.isArray(data)) {
+    return <XemDanhSachHopDong data={data} />
+  }
+
+  const hiddenFields = new Set(['contractid', 'roomid', 'tenantid', 'createdat', 'updatedat'])
+  const entries = Object.entries(data).filter(([key]) => !hiddenFields.has(key.toLowerCase()))
+
+  const finalInvoice = data.finalInvoiceAmount ?? data.FinalInvoiceAmount ?? 0
+  const deposit = data.depositAmount ?? data.DepositAmount ?? 0
+  const soTienPhaiDongThem = finalInvoice - deposit
+
+  return (
+    <div className="danh-sach-phong">
+      <div className="dong-phong dong-phong--nguoi-thue">
+        {entries.map(([key, value]) => {
+          const normalizedKey = String(key).replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+          const laHoanTra = normalizedKey === 'refundedamount'
+
+          return (
+            <div key={key} className="dong-phong__o">
+              <span>{nhanTruong('contracts', '', key)}</span>
+              <strong
+                className={String(key).toLowerCase() === 'status' ? `trang-thai-hop-dong ${trangThaiHopDongClass(value) ? `trang-thai-hop-dong--${trangThaiHopDongClass(value)}` : ''}`.trim() : ''}
+                style={laHoanTra ? { color: '#16a34a' } : undefined}
+              >
+                {giaTriDep(value, key)}
+              </strong>
+            </div>
+          )
+        })}
+
+        {hienThiSoTienPhaiDong && finalInvoice > deposit ? (
+          <div className="dong-phong__o">
+            <span>Sá»‘ tiá»n pháº£i Ä‘Ã³ng thÃªm</span>
+            <strong style={{ color: '#dc2626' }}>
+              {dinhDangTien(soTienPhaiDongThem)}
+            </strong>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+// Component danh sÃ¡ch hÃ³a Ä‘Æ¡n cÃ³ nÃºt mark-paid / mark-unpaid
+function XemDanhSachHoaDonCoNut({ data, onReload }) {
+  const [dangXuLy, setDangXuLy] = useState({})
+  const [thongBao, setThongBao] = useState({})
+  const [chiTietHoaDon, setChiTietHoaDon] = useState({})
+  const [dangTaiChiTiet, setDangTaiChiTiet] = useState({})
+  const [dangXoa, setDangXoa] = useState({})
+  const [dangLuuSua, setDangLuuSua] = useState({})
+  const [modalHoaDon, setModalHoaDon] = useState(null)
+  const [duLieuSua, setDuLieuSua] = useState({})
+
+  useEffect(() => {
+    if (!modalHoaDon) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setModalHoaDon(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [modalHoaDon])
+
+  if (!Array.isArray(data) || !data.length) {
+    return <div className="khung-du-lieu khung-du-lieu--trong">Khong co hoa don nao.</div>
+  }
+
+  const layInvoiceId = (invoice, fallback = '') => invoice?.invoiceId ?? invoice?.InvoiceId ?? fallback
+
+  const taiChiTietHoaDon = async (invoiceId) => {
+    setDangTaiChiTiet((prev) => ({ ...prev, [invoiceId]: true }))
+    setThongBao((prev) => ({ ...prev, [invoiceId]: null }))
+    try {
+      const result = await guiRequest(`/api/Invoices/${invoiceId}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      })
+      setChiTietHoaDon((prev) => ({ ...prev, [invoiceId]: result.payload }))
+      return result.payload
+    } catch (err) {
+      setThongBao((prev) => ({ ...prev, [invoiceId]: { ok: false, text: err.message } }))
+      throw err
+    } finally {
+      setDangTaiChiTiet((prev) => ({ ...prev, [invoiceId]: false }))
+    }
+  }
+
+  const moModalChiTiet = async (invoice) => {
+    const invoiceId = layInvoiceId(invoice)
+    setModalHoaDon({ id: invoiceId, mode: 'detail' })
+    if (!chiTietHoaDon[invoiceId]) {
+      try {
+        await taiChiTietHoaDon(invoiceId)
+      } catch {
+        return
+      }
+    }
+  }
+
+  const moModalSua = async (invoice) => {
+    const invoiceId = layInvoiceId(invoice)
+    setModalHoaDon({ id: invoiceId, mode: 'edit' })
+    try {
+      const detail = chiTietHoaDon[invoiceId] || (await taiChiTietHoaDon(invoiceId))
+      setDuLieuSua((prev) => ({ ...prev, [invoiceId]: { ...detail } }))
+    } catch {
+      return
+    }
+  }
+
+  const doiTrangThai = async (invoice, markPaid) => {
+    const invoiceId = layInvoiceId(invoice)
+    const currentStatus = String(invoice.status ?? invoice.Status ?? '').trim().toLowerCase()
+    if (markPaid && currentStatus === 'paid') return
+    if (!markPaid && currentStatus === 'unpaid') return
+
+    setDangXuLy((prev) => ({ ...prev, [invoiceId]: true }))
+    setThongBao((prev) => ({ ...prev, [invoiceId]: null }))
+
+    try {
+      const response = await fetch(`/api/Invoices/${invoiceId}/${markPaid ? 'mark-paid' : 'mark-unpaid'}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload?.message || `Loi ${response.status}`)
+      }
+      setThongBao((prev) => ({
+        ...prev,
+        [invoiceId]: { ok: true, text: markPaid ? 'Da danh dau thanh toan' : 'Da danh dau chua thanh toan' },
+      }))
+      if (onReload) onReload()
+    } catch (err) {
+      setThongBao((prev) => ({ ...prev, [invoiceId]: { ok: false, text: err.message } }))
+    } finally {
+      setDangXuLy((prev) => ({ ...prev, [invoiceId]: false }))
+    }
+  }
+
+  const capNhatDuLieuSua = (invoiceId, field, value) => {
+    setDuLieuSua((prev) => ({
+      ...prev,
+      [invoiceId]: {
+        ...(prev[invoiceId] || {}),
+        [field]: value,
+      },
+    }))
+  }
+
+  const luuChinhSua = async (invoiceId) => {
+    const payload = duLieuSua[invoiceId]
+    if (!payload) return
+
+    setDangLuuSua((prev) => ({ ...prev, [invoiceId]: true }))
+    setThongBao((prev) => ({ ...prev, [invoiceId]: null }))
+    try {
+      await guiRequest(`/api/Invoices/${invoiceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/plain' },
+        body: JSON.stringify(payload),
+      })
+      setChiTietHoaDon((prev) => ({ ...prev, [invoiceId]: payload }))
+      setThongBao((prev) => ({ ...prev, [invoiceId]: { ok: true, text: 'Cap nhat hoa don thanh cong' } }))
+      setModalHoaDon({ id: invoiceId, mode: 'detail' })
+      if (onReload) onReload()
+    } catch (err) {
+      setThongBao((prev) => ({ ...prev, [invoiceId]: { ok: false, text: err.message } }))
+    } finally {
+      setDangLuuSua((prev) => ({ ...prev, [invoiceId]: false }))
+    }
+  }
+
+  const xoaHoaDon = async (invoiceId) => {
+    setDangXoa((prev) => ({ ...prev, [invoiceId]: true }))
+    setThongBao((prev) => ({ ...prev, [invoiceId]: null }))
+    try {
+      const result = await guiRequest(`/api/Invoices/${invoiceId}`, {
+        method: 'DELETE',
+        headers: { Accept: 'application/json, text/plain' },
+      })
+      const successMessage = typeof result.payload === 'string' && result.payload.trim() ? result.payload : 'Xoa hoa don thanh cong'
+      setThongBao((prev) => ({ ...prev, [invoiceId]: { ok: true, text: successMessage } }))
+      setChiTietHoaDon((prev) => {
+        const next = { ...prev }
+        delete next[invoiceId]
+        return next
+      })
+      setDuLieuSua((prev) => {
+        const next = { ...prev }
+        delete next[invoiceId]
+        return next
+      })
+      setModalHoaDon(null)
+      if (onReload) onReload()
+    } catch (err) {
+      setThongBao((prev) => ({ ...prev, [invoiceId]: { ok: false, text: err.message } }))
+    } finally {
+      setDangXoa((prev) => ({ ...prev, [invoiceId]: false }))
+    }
+  }
+
+  const modalInvoiceId = modalHoaDon?.id
+  const modalMode = modalHoaDon?.mode
+  const modalDetail = modalInvoiceId != null ? chiTietHoaDon[modalInvoiceId] : null
+  const modalDraft = modalInvoiceId != null ? duLieuSua[modalInvoiceId] : null
+  const modalDangTai = modalInvoiceId != null ? !!dangTaiChiTiet[modalInvoiceId] : false
+  const modalDangXoa = modalInvoiceId != null ? !!dangXoa[modalInvoiceId] : false
+  const modalDangLuu = modalInvoiceId != null ? !!dangLuuSua[modalInvoiceId] : false
+  const modalThongBao = modalInvoiceId != null ? thongBao[modalInvoiceId] : null
+  const hiddenEditFields = new Set(['invoiceid', 'createdat', 'updatedat'])
+
+  return (
+    <>
+      <div className="danh-sach-phong">
+        {data.map((invoice, index) => {
+          const invoiceId = layInvoiceId(invoice, index)
+          const roomCode = invoice.roomCode ?? invoice.RoomCode
+          const roomId = invoice.roomId ?? invoice.RoomId
+          const billingMonth = invoice.billingMonth ?? invoice.BillingMonth
+          const totalAmount = invoice.totalAmount ?? invoice.TotalAmount
+          const status = layTrangThaiHoaDon(invoice)
+          const isPaid = status === 'paid'
+          const isLoading = !!dangXuLy[invoiceId]
+          const isDeleting = !!dangXoa[invoiceId]
+          const msg = thongBao[invoiceId]
+
+          return (
+            <div key={invoiceId} className="dong-phong invoice-card">
+              <div className="invoice-card__info">
+                <div className="dong-phong__o invoice-card__meta-item">
+                  <span>Phong</span>
+                  <strong>{roomCode || (roomId != null ? `Phong #${roomId}` : 'Khong co du lieu')}</strong>
+                </div>
+                <div className="dong-phong__o invoice-card__meta-item">
+                  <span>Thang</span>
+                  <strong>{giaTriDep(billingMonth, 'billingMonth')}</strong>
+                </div>
+                <div className="dong-phong__o invoice-card__amount">
+                  <span>Tong tien</span>
+                  <strong className={isPaid ? 'invoice-amount invoice-amount--paid' : 'invoice-amount invoice-amount--unpaid'}>
+                    {giaTriDep(totalAmount, 'totalAmount')}
+                  </strong>
+                </div>
+                <div className="dong-phong__o invoice-card__meta-item">
+                  <span>Trang thai</span>
+                  <strong className={isPaid ? 'trang-thai-hop-dong trang-thai-hop-dong--active' : 'trang-thai-hop-dong trang-thai-hop-dong--ended'}>
+                    {isPaid ? 'Da thanh toan' : 'Chua thanh toan'}
+                  </strong>
+                </div>
+                <div className="invoice-card__button-row">
+                  <button
+                    type="button"
+                    className="nut invoice-inline-button"
+                    disabled={isDeleting || Boolean(dangTaiChiTiet[invoiceId])}
+                    onClick={() => moModalChiTiet(invoice)}
+                  >
+                    {Boolean(dangTaiChiTiet[invoiceId]) ? 'Dang tai...' : 'Chi tiet'}
+                  </button>
+                  <button
+                    type="button"
+                    className="nut invoice-inline-button invoice-inline-button--secondary"
+                    disabled={isDeleting || Boolean(dangLuuSua[invoiceId])}
+                    onClick={() => moModalSua(invoice)}
+                  >
+                    {Boolean(dangLuuSua[invoiceId]) ? 'Dang luu...' : 'Sua'}
+                  </button>
+                  <button
+                    type="button"
+                    className="nut invoice-inline-button invoice-action-button invoice-action-button--paid"
+                    disabled={isLoading || isPaid || isDeleting}
+                    onClick={() => doiTrangThai(invoice, true)}
+                  >
+                    Thanh toan
+                  </button>
+                  <button
+                    type="button"
+                    className="nut invoice-inline-button invoice-action-button invoice-action-button--unpaid"
+                    disabled={isLoading || !isPaid || isDeleting}
+                    onClick={() => doiTrangThai(invoice, false)}
+                  >
+                    Chua thanh toan
+                  </button>
+                </div>
+                {msg ? (
+                  <div className="invoice-inline-message" style={{ color: msg.ok ? '#16a34a' : '#dc2626' }}>
+                    {msg.text}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {modalHoaDon ? (
+        <div className="lop-phu-endpoint" onClick={() => setModalHoaDon(null)}>
+          <div className="hop-endpoint-mo" onClick={(event) => event.stopPropagation()}>
+            <article className="the-endpoint the-endpoint--mo invoice-modal-card">
+              <div className="the-endpoint__dau">
+                <div>
+                  <span className="method-tag method-tag--get">{modalMode === 'edit' ? 'PUT' : 'GET'}</span>
+                  <h3>{modalMode === 'edit' ? 'Sua chi tiet hoa don' : 'Chi tiet hoa don'}</h3>
+                </div>
+                <button type="button" className="nut-dong-endpoint" onClick={() => setModalHoaDon(null)}>
+                  x
+                </button>
+              </div>
+
+              {modalDangTai ? (
+                <div className="khung-du-lieu khung-du-lieu--trong">Dang tai chi tiet hoa don...</div>
+              ) : modalMode === 'edit' ? (
+                modalDraft ? (
+                  <div className="invoice-edit-form">
+                    {Object.entries(modalDraft)
+                      .filter(([key, value]) => !hiddenEditFields.has(String(key).toLowerCase()) && typeof value !== 'object')
+                      .map(([key, value]) => (
+                        <label key={key} className="truong">
+                          <span>{nhanTruong('invoices', '', key)}</span>
+                          <input
+                            type={typeof value === 'number' ? 'number' : 'text'}
+                            value={value ?? ''}
+                            onChange={(event) => {
+                              const nextValue = typeof value === 'number' ? Number(event.target.value) : event.target.value
+                              capNhatDuLieuSua(modalInvoiceId, key, nextValue)
+                            }}
+                          />
+                        </label>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="khung-du-lieu khung-du-lieu--trong">Khong tai duoc du lieu sua hoa don.</div>
+                )
+              ) : modalDetail ? (
+                <XemHoaDonChiTiet data={modalDetail} />
+              ) : (
+                <div className="khung-du-lieu khung-du-lieu--trong">Khong tai duoc chi tiet hoa don.</div>
+              )}
+
+              {modalThongBao ? (
+                <div className="invoice-inline-message" style={{ marginTop: '12px', color: modalThongBao.ok ? '#16a34a' : '#dc2626' }}>
+                  {modalThongBao.text}
+                </div>
+              ) : null}
+
+              <div className="invoice-modal-actions">
+                <button type="button" className="nut nut--phu" onClick={() => setModalHoaDon(null)}>
+                  Dong
+                </button>
+                {modalMode === 'edit' ? (
+                  <button type="button" className="nut" onClick={() => luuChinhSua(modalInvoiceId)} disabled={modalDangLuu}>
+                    {modalDangLuu ? 'Dang luu...' : 'Luu thay doi'}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="nut"
+                  style={{ background: '#dc2626', color: '#fff' }}
+                  onClick={() => xoaHoaDon(modalInvoiceId)}
+                  disabled={modalDangXoa}
+                >
+                  {modalDangXoa ? 'Dang xoa...' : 'Xoa hoa don'}
+                </button>
+              </div>
+            </article>
+          </div>
+        </div>
+      ) : null}
+    </>
+  )
+}
+function XemDanhSachHoaDon({ data }) {
+  if (!Array.isArray(data) || !data.length) {
+    return <div className="khung-du-lieu khung-du-lieu--trong">KhÃ´ng cÃ³ hÃ³a Ä‘Æ¡n nÃ o.</div>
+  }
+
+  return (
+    <div className="danh-sach-phong">
+      {data.map((invoice, index) => {
+        const roomCode = invoice.roomCode ?? invoice.RoomCode
+        const roomId = invoice.roomId ?? invoice.RoomId
+        const billingMonth = invoice.billingMonth ?? invoice.BillingMonth
+        const totalAmount = invoice.totalAmount ?? invoice.TotalAmount
+
+        return (
+          <div key={`${invoice.invoiceId ?? invoice.InvoiceId ?? index}`} className="dong-phong">
+            <div className="dong-phong__o">
+              <span>PhÃ²ng</span>
+              <strong>{roomCode || (roomId != null ? `PhÃ²ng #${roomId}` : 'KhÃ´ng cÃ³ dá»¯ liá»‡u')}</strong>
+            </div>
+            <div className="dong-phong__o">
+              <span>ThÃ¡ng</span>
+              <strong>{giaTriDep(billingMonth, 'billingMonth')}</strong>
+            </div>
+            <div className="dong-phong__o">
+              <span>Tá»•ng tiá»n</span>
+              <strong>{giaTriDep(totalAmount, 'totalAmount')}</strong>
+            </div>
+            
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function XemHoaDonChiTiet({ data, actions = null }) {
+  if (!data) {
+    return <div className="khung-du-lieu khung-du-lieu--trong">Chua co du lieu.</div>
+  }
+
+  if (Array.isArray(data)) {
+    return <XemDanhSachHoaDon data={data} />
+  }
+
+  const hiddenFields = new Set(['invoiceid'])
+  const entries = Object.entries(data).filter(([key]) => !hiddenFields.has(key.toLowerCase()))
+
+  return (
+    <div className="danh-sach-phong invoice-cards">
+      <div className="dong-phong dong-phong--nguoi-thue invoice-detail-layout__info">
+        {entries.map(([key, value]) => (
+          <div key={key} className="dong-phong__o">
+            <span>{nhanTruong('invoices', '', key)}</span>
+            <strong>{giaTriDep(value, key)}</strong>
+          </div>
+        ))}
+      </div>
+      {actions ? <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>{actions}</div> : null}
+    </div>
+  )
+}
+function layTrangThaiHoaDon(invoice) {
+  return String(invoice?.status ?? invoice?.Status ?? '').trim().toLowerCase()
+}
+
+function layTongTienHoaDon(invoice) {
+  return Number(invoice?.totalAmount ?? invoice?.TotalAmount ?? 0)
+}
+
+function XemNguoiThue({ data }) {
+  if (!data) {
+    return <div className="khung-du-lieu khung-du-lieu--trong">ChÆ°a cÃ³ dá»¯ liá»‡u.</div>
+  }
+
+  const hiddenFields = new Set(['tenantid', 'roomid', 'createdat', 'updatedat'])
+  const entries = Object.entries(data).filter(([key]) => !hiddenFields.has(key.toLowerCase()))
+
+  return (
+    <div className="danh-sach-phong">
+      <div className="dong-phong dong-phong--nguoi-thue">
+        {entries.map(([key, value]) => (
+          <div key={key} className="dong-phong__o">
+            <span>{nhanTruong('tenants', '', key)}</span>
+            <strong>{giaTriDep(value, key)}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function XemDanhSachNguoiThue({ data }) {
+  if (!Array.isArray(data) || !data.length) {
+    return <div className="khung-du-lieu khung-du-lieu--trong">KhÃ´ng cÃ³ ngÆ°á»i thuÃª.</div>
+  }
+
+  const hiddenFields = new Set(['tenantid', 'roomid', 'createdat', 'updatedat'])
+
+  return (
+    <div className="danh-sach-phong">
+      {data.map((tenant, index) => (
+        <div key={`${tenant.id ?? tenant.Id ?? index}`} className="dong-phong dong-phong--nguoi-thue">
+          {Object.entries(tenant)
+            .filter(([key]) => !hiddenFields.has(key.toLowerCase()))
+            .map(([key, value]) => (
+              <div key={key} className="dong-phong__o">
+                <span>{nhanTruong('tenants', '', key)}</span>
+                <strong>{giaTriDep(value, key)}</strong>
+              </div>
+            ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Component monthly-bulk riÃªng biá»‡t
+function MonthlyBulkCard({ onSuccess, compact = false }) {
+  const [billingMonth, setBillingMonth] = useState(taoThangMacDinh())
+  const [defaultDiscountAmount, setDefaultDiscountAmount] = useState(0)
+  const [defaultDebtAmount, setDefaultDebtAmount] = useState(0)
+  const [previewData, setPreviewData] = useState(null)
+  const [dangXemTruoc, setDangXemTruoc] = useState(false)
+  const [dangTao, setDangTao] = useState(false)
+  const [hienXacNhan, setHienXacNhan] = useState(false)
+  const [trangThai, setTrangThai] = useState('')
+  const [mauTrangThai, setMauTrangThai] = useState('')
+  const [dangMo, setDangMo] = useState(false)
+
+  useEffect(() => {
+    if (!dangMo) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e) => { if (e.key === 'Escape') setDangMo(false) }
+    window.addEventListener('keydown', onKey)
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey) }
+  }, [dangMo])
+
+  const doPreview = async () => {
+    setDangXemTruoc(true)
+    setTrangThai('')
+    setMauTrangThai('')
+    setPreviewData(null)
+    setHienXacNhan(false)
+    try {
+      const res = await fetch('/api/Invoices/monthly-bulk-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ billingMonth, defaultDiscountAmount: Number(defaultDiscountAmount), defaultDebtAmount: Number(defaultDebtAmount) }),
+      })
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload?.message || `Lá»—i ${res.status}`)
+      setPreviewData(Array.isArray(payload) ? payload : payload?.data ?? payload?.items ?? [])
+      setTrangThai(`Xem trÆ°á»›c thÃ nh cÃ´ng â€” ${Array.isArray(payload) ? payload.length : '?'} hÃ³a Ä‘Æ¡n`)
+      setMauTrangThai('thanh-cong')
+    } catch (err) {
+      setTrangThai(err.message)
+      setMauTrangThai('that-bai')
+    } finally {
+      setDangXemTruoc(false)
+    }
+  }
+
+  const doConfirm = async () => {
+    setDangTao(true)
+    setHienXacNhan(false)
+    setTrangThai('Äang táº¡o hÃ³a Ä‘Æ¡n hÃ ng loáº¡t...')
+    setMauTrangThai('')
+    try {
+      const res = await fetch('/api/Invoices/monthly-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ billingMonth, defaultDiscountAmount: Number(defaultDiscountAmount), defaultDebtAmount: Number(defaultDebtAmount) }),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload?.message || `Lá»—i ${res.status}`)
+      setTrangThai('Táº¡o hÃ³a Ä‘Æ¡n hÃ ng loáº¡t thÃ nh cÃ´ng!')
+      setMauTrangThai('thanh-cong')
+      setPreviewData(null)
+      if (onSuccess) onSuccess()
+    } catch (err) {
+      setTrangThai(err.message)
+      setMauTrangThai('that-bai')
+    } finally {
+      setDangTao(false)
+    }
+  }
+
+  const tongTien = previewData?.reduce((acc, inv) => acc + (inv.totalAmount ?? inv.TotalAmount ?? 0), 0) ?? 0
+
+  const noiDung = (
+    <article className="the-endpoint the-endpoint--mo">
+      <div className="the-endpoint__dau">
+        <div>
+          <span className="method-tag method-tag--post">POST</span>
+          <h3>Táº¡o hÃ³a Ä‘Æ¡n hÃ ng loáº¡t theo thÃ¡ng</h3>
+        </div>
+        <button type="button" className="nut-dong-endpoint" onClick={() => setDangMo(false)}>Ã—</button>
+      </div>
+
+      <div className="khoi-form">
+        <section className="khoi-con">
+          <div className="luoi-input">
+            <label className="truong">
+              <span>ThÃ¡ng láº­p hÃ³a Ä‘Æ¡n</span>
+              <input type="date" value={billingMonth} onChange={(e) => setBillingMonth(e.target.value)} />
+              <small>NgÃ y Ä‘áº§u thÃ¡ng, vÃ­ dá»¥: 2026-04-01</small>
+            </label>
+            <label className="truong">
+              <span>Giáº£m trá»« máº·c Ä‘á»‹nh</span>
+              <input type="number" value={defaultDiscountAmount} onChange={(e) => setDefaultDiscountAmount(e.target.value)} min="0" />
+              <small>Ãp dá»¥ng cho táº¥t cáº£ hÃ³a Ä‘Æ¡n trong thÃ¡ng</small>
+            </label>
+            <label className="truong">
+              <span>CÃ´ng ná»£ máº·c Ä‘á»‹nh</span>
+              <input type="number" value={defaultDebtAmount} onChange={(e) => setDefaultDebtAmount(e.target.value)} min="0" />
+              <small>Ãp dá»¥ng cho táº¥t cáº£ hÃ³a Ä‘Æ¡n trong thÃ¡ng</small>
+            </label>
+          </div>
+        </section>
+      </div>
+
+      <div className="cum-nut-endpoint">
+        <button type="button" className="nut nut--chinh" disabled={dangXemTruoc || dangTao} onClick={doPreview}>
+          {dangXemTruoc ? 'Äang xem trÆ°á»›c...' : 'Xem trÆ°á»›c'}
+        </button>
+      </div>
+
+      {trangThai ? <div className={`thanh-trang-thai ${mauTrangThai}`}>{trangThai}</div> : null}
+
+      {previewData && previewData.length > 0 ? (
+        <section className="khoi-con">
+          <h4>Danh sÃ¡ch hÃ³a Ä‘Æ¡n sáº½ táº¡o ({previewData.length} hÃ³a Ä‘Æ¡n)</h4>
+          <div className="xem-truoc">
+            <div className="danh-sach-phong">
+              {previewData.map((inv, idx) => {
+                const roomCode = inv.roomCode ?? inv.RoomCode
+                const tenantName = inv.tenantName ?? inv.TenantName
+                const total = inv.totalAmount ?? inv.TotalAmount
+
+                return (
+                  <div key={`${roomCode}-${idx}`} className="dong-phong" style={{ flexWrap: 'wrap', gap: '6px' }}>
+                    <div className="dong-phong__o">
+                      <span>PhÃ²ng</span>
+                      <strong>{roomCode}</strong>
+                    </div>
+                    <div className="dong-phong__o">
+                      <span>NgÆ°á»i thuÃª</span>
+                      <strong>{tenantName || 'â€”'}</strong>
+                    </div>
+                    <div className="dong-phong__o">
+                      <span>Tiá»n phÃ²ng</span>
+                      <strong>{dinhDangTien(inv.roomFee ?? inv.RoomFee)}</strong>
+                    </div>
+                    <div className="dong-phong__o">
+                      <span>Tiá»n Ä‘iá»‡n</span>
+                      <strong>{dinhDangTien(inv.electricityFee ?? inv.ElectricityFee)}</strong>
+                    </div>
+                    <div className="dong-phong__o">
+                      <span>Tiá»n nÆ°á»›c</span>
+                      <strong>{dinhDangTien(inv.waterFee ?? inv.WaterFee)}</strong>
+                    </div>
+                    <div className="dong-phong__o">
+                      <span>Tiá»n rÃ¡c</span>
+                      <strong>{dinhDangTien(inv.trashFee ?? inv.TrashFee)}</strong>
+                    </div>
+                    <div className="dong-phong__o">
+                      <span>Tá»•ng tiá»n</span>
+                      <strong style={{ color: '#0369a1', fontWeight: 700 }}>{dinhDangTien(total)}</strong>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div style={{ marginTop: '12px', padding: '12px', background: 'var(--mau-nen-2, #f1f5f9)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong>Tá»•ng cá»™ng {previewData.length} hÃ³a Ä‘Æ¡n</strong>
+              <strong style={{ color: '#0369a1', fontSize: '16px' }}>{dinhDangTien(tongTien)}</strong>
+            </div>
+          </div>
+
+          <div style={{ marginTop: '16px' }}>
+            {!hienXacNhan ? (
+              <button
+                type="button"
+                className="nut nut--chinh"
+                style={{ width: '100%' }}
+                disabled={dangTao}
+                onClick={() => setHienXacNhan(true)}
+              >
+                XÃ¡c nháº­n táº¡o {previewData.length} hÃ³a Ä‘Æ¡n
+              </button>
+            ) : (
+              <div className="khung-du-lieu" style={{ background: '#fef9c3', border: '1px solid #ca8a04', borderRadius: '8px', padding: '16px' }}>
+                <p style={{ marginBottom: '12px', fontWeight: 600 }}>
+                  Báº¡n cÃ³ cháº¯c muá»‘n táº¡o {previewData.length} hÃ³a Ä‘Æ¡n cho thÃ¡ng {dinhDangThang(billingMonth)}?
+                </p>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="button" className="nut nut--chinh" style={{ flex: 1 }} onClick={doConfirm} disabled={dangTao}>
+                    {dangTao ? 'Äang táº¡o...' : 'XÃ¡c nháº­n táº¡o'}
+                  </button>
+                  <button type="button" className="nut nut--phu" style={{ flex: 1 }} onClick={() => setHienXacNhan(false)} disabled={dangTao}>
+                    Huá»·
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      ) : null}
+    </article>
+  )
+
+  return (
+    <>
+      <button type="button" className={compact ? 'nut nut--chinh invoice-bulk-trigger' : 'the-endpoint-rut-gon'} onClick={() => setDangMo(true)}>
+        {!compact ? <span className="method-tag method-tag--post">POST</span> : null}
+        <strong>Táº¡o hÃ³a Ä‘Æ¡n hÃ ng loáº¡t theo thÃ¡ng</strong>
+        <span className="the-endpoint-rut-gon__mo-ta">Xem trÆ°á»›c vÃ  xÃ¡c nháº­n táº¡o hÃ ng loáº¡t hÃ³a Ä‘Æ¡n thÃ¡ng</span>
+      </button>
+
+      {dangMo ? (
+        <div className="lop-phu-endpoint" onClick={() => setDangMo(false)}>
+          <div className="hop-endpoint-mo" onClick={(e) => e.stopPropagation()}>
+            {noiDung}
+          </div>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
+function InvoiceWorkspace() {
+  const [hoaDon, setHoaDon] = useState([])
+  const [dangTai, setDangTai] = useState(true)
+  const [loi, setLoi] = useState('')
+  const [phongFilter, setPhongFilter] = useState('')
+  const [thangNamFilter, setThangNamFilter] = useState('')
+  const [trangThaiFilter, setTrangThaiFilter] = useState('all')
+  const [reloadKey, setReloadKey] = useState(0)
+
+  useEffect(() => {
+    let conHieuLuc = true
+
+    async function taiDanhSachHoaDon() {
+      setDangTai(true)
+      setLoi('')
+
+      try {
+        const result = await guiRequest('/api/Invoices', {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        })
+
+        const payload = result.payload
+        const danhSach = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.items)
+              ? payload.items
+              : []
+
+        if (conHieuLuc) {
+          setHoaDon(danhSach)
+        }
+      } catch (error) {
+        if (conHieuLuc) {
+          setLoi(thongDiepLoi(error))
+          setHoaDon([])
+        }
+      } finally {
+        if (conHieuLuc) {
+          setDangTai(false)
+        }
+      }
+    }
+
+    taiDanhSachHoaDon()
+
+    return () => {
+      conHieuLuc = false
+    }
+  }, [reloadKey])
+
+  const danhSachLoc = useMemo(() => {
+    const phongDaLoc = String(phongFilter || '').trim().toLowerCase()
+
+    return hoaDon.filter((invoice) => {
+      const roomCode = String(invoice.roomCode ?? invoice.RoomCode ?? '').trim().toLowerCase()
+      const status = layTrangThaiHoaDon(invoice)
+      const billingMonth = String(invoice.billingMonth ?? invoice.BillingMonth ?? '')
+      const monthValue = billingMonth ? String(billingMonth).slice(0, 7) : ''
+
+      const hopPhong = !phongDaLoc || roomCode.includes(phongDaLoc)
+      const hopThang = !thangNamFilter || monthValue === thangNamFilter
+      const hopTrangThai = trangThaiFilter === 'all' || status === trangThaiFilter
+
+      return hopPhong && hopThang && hopTrangThai
+    })
+  }, [hoaDon, phongFilter, thangNamFilter, trangThaiFilter])
+
+  const tongHoaDon = danhSachLoc.length
+  const hoaDonDaThanhToan = danhSachLoc.filter((invoice) => layTrangThaiHoaDon(invoice) === 'paid').length
+  const hoaDonChuaThanhToan = danhSachLoc.filter((invoice) => layTrangThaiHoaDon(invoice) !== 'paid').length
+  const tongGiaTriChuaThanhToan = danhSachLoc
+    .filter((invoice) => layTrangThaiHoaDon(invoice) !== 'paid')
+    .reduce((tong, invoice) => tong + layTongTienHoaDon(invoice), 0)
+  const tongGiaTriDaThanhToan = danhSachLoc
+    .filter((invoice) => layTrangThaiHoaDon(invoice) === 'paid')
+    .reduce((tong, invoice) => tong + layTongTienHoaDon(invoice), 0)
+
+  return (
+    <div className="invoice-workspace">
+      <section className="invoice-hero khung">
+        <div className="invoice-hero__main">
+          <p className="nhan">HÃ³a Ä‘Æ¡n</p>
+          <h2>Quáº£n lÃ½ hÃ³a Ä‘Æ¡n Ä‘ang cÃ³ trong há»‡ thá»‘ng</h2>
+          <p className="mo-ta-trang">
+            Danh sÃ¡ch Ä‘Æ°á»£c táº£i tá»± Ä‘á»™ng khi má»Ÿ trang. Báº¡n cÃ³ thá»ƒ tÃ¬m nhanh theo mÃ£ hÃ³a Ä‘Æ¡n, phÃ²ng, thÃ¡ng, ngÆ°á»i thuÃª hoáº·c tráº¡ng thÃ¡i.
+          </p>
+
+          <div className="invoice-toolbar">
+            <label className="invoice-search">
+              <span>TÃ¬m kiáº¿m</span>
+              <input
+                type="text"
+                value={tuKhoa}
+                onChange={(event) => setTuKhoa(event.target.value)}
+                placeholder="VÃ­ dá»¥: P101, 2026-04, unpaid..."
+              />
+            </label>
+
+            <button
+              type="button"
+              className="nut nut--phu"
+              onClick={() => setReloadKey((value) => value + 1)}
+              disabled={dangTai}
+            >
+              {dangTai ? 'Äang táº£i...' : 'LÃ m má»›i danh sÃ¡ch'}
+            </button>
+            <MonthlyBulkCard onSuccess={() => setReloadKey((value) => value + 1)} compact />
+            <MonthlyBulkCard onSuccess={() => setReloadKey((value) => value + 1)} compact />
+          </div>
+        </div>
+
+        <div className="invoice-hero__action">
+          <div className="invoice-bulk-card">
+            <p className="invoice-bulk-card__label">TÃ¡c vá»¥ nhanh</p>
+            <strong>Táº¡o hÃ³a Ä‘Æ¡n hÃ ng loáº¡t theo thÃ¡ng</strong>
+            <span>Khá»‘i thao tÃ¡c á»Ÿ gÃ³c pháº£i Ä‘á»ƒ báº¡n chá»‘t ká»³ má»›i mÃ  khÃ´ng pháº£i rá»i khá»i danh sÃ¡ch.</span>
+            <MonthlyBulkCard onSuccess={() => setReloadKey((value) => value + 1)} />
+          </div>
+        </div>
+      </section>
+
+      <section className="invoice-stats">
+        <article className="invoice-stat-card">
+          <span>Tá»•ng hÃ³a Ä‘Æ¡n</span>
+          <strong>{tongHoaDon}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>ÄÃ£ thanh toÃ¡n</span>
+          <strong>{hoaDonDaThanhToan}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>ChÆ°a thanh toÃ¡n</span>
+          <strong>{hoaDonChuaThanhToan}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Tá»•ng giÃ¡ trá»‹</span>
+          <strong>{dinhDangTien(tongGiaTri)}</strong>
+        </article>
+      </section>
+
+      <section className="khung">
+        <div className="xem-truoc__dau">
+          <strong>Danh sÃ¡ch hÃ³a Ä‘Æ¡n</strong>
+          <span>
+            {tuKhoa.trim() ? `Hiá»ƒn thá»‹ ${danhSachLoc.length}/${tongHoaDon} hÃ³a Ä‘Æ¡n` : `Hiá»ƒn thá»‹ ${tongHoaDon} hÃ³a Ä‘Æ¡n`}
+          </span>
+        </div>
+
+        {loi ? <div className="thong-bao-loi">{loi}</div> : null}
+
+        {dangTai ? (
+          <div className="khung-du-lieu khung-du-lieu--trong">Äang táº£i danh sÃ¡ch hÃ³a Ä‘Æ¡n...</div>
+        ) : danhSachLoc.length ? (
+          <div className="invoice-list-wrap">
+            <XemDanhSachHoaDonCoNut data={danhSachLoc} onReload={() => setReloadKey((value) => value + 1)} />
+          </div>
+        ) : (
+          <div className="khung-du-lieu khung-du-lieu--trong">
+            {tuKhoa.trim() ? 'KhÃ´ng cÃ³ hÃ³a Ä‘Æ¡n nÃ o khá»›p vá»›i tá»« khÃ³a tÃ¬m kiáº¿m.' : 'ChÆ°a cÃ³ hÃ³a Ä‘Æ¡n nÃ o trong há»‡ thá»‘ng.'}
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function InvoiceWorkspaceModern() {
+  const [hoaDon, setHoaDon] = useState([])
+  const [dangTai, setDangTai] = useState(true)
+  const [loi, setLoi] = useState('')
+  const [phongFilter, setPhongFilter] = useState('')
+  const [thangNamFilter, setThangNamFilter] = useState('')
+  const [trangThaiFilter, setTrangThaiFilter] = useState('all')
+  const [reloadKey, setReloadKey] = useState(0)
+
+  useEffect(() => {
+    let active = true
+
+    async function taiDanhSachHoaDon() {
+      setDangTai(true)
+      setLoi('')
+
+      try {
+        const result = await guiRequest('/api/Invoices', {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        })
+
+        const payload = result.payload
+        const danhSach = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.items)
+              ? payload.items
+              : []
+
+        if (active) setHoaDon(danhSach)
+      } catch (error) {
+        if (active) {
+          setLoi(thongDiepLoi(error))
+          setHoaDon([])
+        }
+      } finally {
+        if (active) setDangTai(false)
+      }
+    }
+
+    taiDanhSachHoaDon()
+    return () => {
+      active = false
+    }
+  }, [reloadKey])
+
+  const danhSachLoc = useMemo(() => {
+    const phongDaLoc = String(phongFilter || '').trim().toLowerCase()
+
+    return hoaDon.filter((invoice) => {
+      const roomCode = String(invoice.roomCode ?? invoice.RoomCode ?? '').trim().toLowerCase()
+      const status = layTrangThaiHoaDon(invoice)
+      const billingMonth = String(invoice.billingMonth ?? invoice.BillingMonth ?? '')
+      const monthValue = billingMonth ? billingMonth.slice(0, 7) : ''
+
+      return (
+        (!phongDaLoc || roomCode.includes(phongDaLoc)) &&
+        (!thangNamFilter || monthValue === thangNamFilter) &&
+        (trangThaiFilter === 'all' || status === trangThaiFilter)
+      )
+    })
+  }, [hoaDon, phongFilter, thangNamFilter, trangThaiFilter])
+
+  const tongHoaDon = danhSachLoc.length
+  const hoaDonDaThanhToan = danhSachLoc.filter((invoice) => layTrangThaiHoaDon(invoice) === 'paid').length
+  const hoaDonChuaThanhToan = danhSachLoc.filter((invoice) => layTrangThaiHoaDon(invoice) !== 'paid').length
+  const tongGiaTriChuaThanhToan = danhSachLoc
+    .filter((invoice) => layTrangThaiHoaDon(invoice) !== 'paid')
+    .reduce((tong, invoice) => tong + layTongTienHoaDon(invoice), 0)
+  const tongGiaTriDaThanhToan = danhSachLoc
+    .filter((invoice) => layTrangThaiHoaDon(invoice) === 'paid')
+    .reduce((tong, invoice) => tong + layTongTienHoaDon(invoice), 0)
+
+  return (
+    <div className="invoice-workspace">
+      <section className="invoice-hero khung">
+        <div className="invoice-hero__main">
+          <p className="nhan">HÃ³a Ä‘Æ¡n</p>
+          <div className="invoice-toolbar">
+            <label className="invoice-search">
+              <span>PhÃ²ng</span>
+              <input type="text" value={phongFilter} onChange={(event) => setPhongFilter(event.target.value)} placeholder="Nháº­p mÃ£ phÃ²ng" />
+            </label>
+            <label className="invoice-search invoice-search--month">
+              <span>ThÃ¡ng - nÄƒm</span>
+              <input type="month" value={thangNamFilter} onChange={(event) => setThangNamFilter(event.target.value)} />
+            </label>
+            <label className="invoice-search invoice-search--status">
+              <span>Tráº¡ng thÃ¡i hÃ³a Ä‘Æ¡n</span>
+              <select value={trangThaiFilter} onChange={(event) => setTrangThaiFilter(event.target.value)}>
+                <option value="all">Táº¥t cáº£</option>
+                <option value="paid">ÄÃ£ thanh toÃ¡n</option>
+                <option value="unpaid">ChÆ°a thanh toÃ¡n</option>
+              </select>
+            </label>
+            <button type="button" className="nut nut--phu" onClick={() => setReloadKey((value) => value + 1)} disabled={dangTai}>
+              {dangTai ? 'Äang táº£i...' : 'LÃ m má»›i danh sÃ¡ch'}
+            </button>
+            <MonthlyBulkCard onSuccess={() => setReloadKey((value) => value + 1)} compact />
+          </div>
+        </div>
+        <div className="invoice-hero__action">
+          <MonthlyBulkCard onSuccess={() => setReloadKey((value) => value + 1)} compact />
+        </div>
+      </section>
+
+      <section className="invoice-stats invoice-stats--five">
+        <article className="invoice-stat-card">
+          <span>Tá»•ng hÃ³a Ä‘Æ¡n</span>
+          <strong>{tongHoaDon}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>ÄÃ£ thanh toÃ¡n</span>
+          <strong>{hoaDonDaThanhToan}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>ChÆ°a thanh toÃ¡n</span>
+          <strong>{hoaDonChuaThanhToan}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Tá»•ng giÃ¡ trá»‹ chÆ°a thanh toÃ¡n</span>
+          <strong className="invoice-amount invoice-amount--unpaid">{dinhDangTien(tongGiaTriChuaThanhToan).replace(/\s*VND$/, '')}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Tá»•ng giÃ¡ trá»‹ Ä‘Ã£ thanh toÃ¡n</span>
+          <strong className="invoice-amount invoice-amount--paid">{dinhDangTien(tongGiaTriDaThanhToan).replace(/\s*VND$/, '')}</strong>
+        </article>
+      </section>
+
+      <section className="khung">
+        <div className="xem-truoc__dau">
+          <strong>Danh sÃ¡ch hÃ³a Ä‘Æ¡n</strong>
+          <span>{`Hiá»ƒn thá»‹ ${danhSachLoc.length}/${hoaDon.length} hÃ³a Ä‘Æ¡n`}</span>
+        </div>
+        {loi ? <div className="thong-bao-loi">{loi}</div> : null}
+        {dangTai ? (
+          <div className="khung-du-lieu khung-du-lieu--trong">Äang táº£i danh sÃ¡ch hÃ³a Ä‘Æ¡n...</div>
+        ) : danhSachLoc.length ? (
+          <div className="invoice-list-wrap">
+            <XemDanhSachHoaDonCoNut data={danhSachLoc} onReload={() => setReloadKey((value) => value + 1)} />
+          </div>
+        ) : (
+          <div className="khung-du-lieu khung-du-lieu--trong">KhÃ´ng cÃ³ hÃ³a Ä‘Æ¡n nÃ o khá»›p vá»›i bá»™ lá»c hiá»‡n táº¡i.</div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function datTenEndpoint(moduleKey, method, path) {
+  const cleanPath = path.toLowerCase()
+
+  const mapping = {
+    rooms: {
+      'get /api/rooms': 'Láº¥y danh sÃ¡ch cÃ¡c phÃ²ng',
+      'get /api/rooms/{id:int}': 'Láº¥y chi tiáº¿t má»™t phÃ²ng',
+      'get /api/rooms/{id}': 'Láº¥y chi tiáº¿t má»™t phÃ²ng',
+      'post /api/rooms': 'Táº¡o phÃ²ng má»›i',
+      'put /api/rooms/{id:int}': 'Cáº­p nháº­t thÃ´ng tin phÃ²ng',
+      'put /api/rooms/{id}': 'Cáº­p nháº­t thÃ´ng tin phÃ²ng',
+      'patch /api/rooms/{id:int}/status': 'Cáº­p nháº­t tráº¡ng thÃ¡i phÃ²ng',
+      'patch /api/rooms/{id}/status': 'Cáº­p nháº­t tráº¡ng thÃ¡i phÃ²ng',
+      'get /api/rooms/by-code/{roomcode}': 'TÃ¬m phÃ²ng theo mÃ£ phÃ²ng',
+    },
+    tenants: {
+      'get /api/tenants': 'Láº¥y danh sÃ¡ch ngÆ°á»i thuÃª',
+      'get /api/tenants/{id:int}': 'Láº¥y chi tiáº¿t ngÆ°á»i thuÃª',
+      'get /api/tenants/{id}': 'Láº¥y chi tiáº¿t ngÆ°á»i thuÃª',
+      'post /api/tenants': 'ThÃªm ngÆ°á»i thuÃª má»›i',
+      'put /api/tenants/{id:int}': 'Cáº­p nháº­t thÃ´ng tin ngÆ°á»i thuÃª',
+      'put /api/tenants/{id}': 'Cáº­p nháº­t thÃ´ng tin ngÆ°á»i thuÃª',
+    },
+    contracts: {
+      'get /api/contracts': 'Xem danh sÃ¡ch há»£p Ä‘á»“ng',
+      'get /api/contracts/{id:int}': 'Xem chi tiáº¿t há»£p Ä‘á»“ng',
+      'get /api/contracts/{id}': 'Xem chi tiáº¿t há»£p Ä‘á»“ng',
+      'post /api/contracts': 'Táº¡o há»£p Ä‘á»“ng má»›i',
+      'put /api/contracts/{id:int}': 'Cáº­p nháº­t thÃ´ng tin há»£p Ä‘á»“ng',
+      'put /api/contracts/{id}': 'Cáº­p nháº­t thÃ´ng tin há»£p Ä‘á»“ng',
+      'post /api/contracts/{id:int}/end-preview': 'Káº¿t thÃºc há»£p Ä‘á»“ng vÃ  tráº£ tiá»n cá»c',
+      'post /api/contracts/{id}/end-preview': 'Káº¿t thÃºc há»£p Ä‘á»“ng vÃ  tráº£ tiá»n cá»c',
+      'post /api/contracts/{id:int}/end': 'Káº¿t thÃºc há»£p Ä‘á»“ng',
+      'post /api/contracts/{id}/end': 'Káº¿t thÃºc há»£p Ä‘á»“ng',
+      'delete /api/contracts/{id:int}': 'XÃ³a há»£p Ä‘á»“ng Ä‘Ã£ cháº¥m dá»©t',
+      'delete /api/contracts/{id}': 'XÃ³a há»£p Ä‘á»“ng Ä‘Ã£ cháº¥m dá»©t',
+    },
+    meterreadings: {
+      'get /api/meterreadings': 'Láº¥y danh sÃ¡ch chá»‰ sá»‘ Ä‘iá»‡n nÆ°á»›c',
+      'post /api/meterreadings': 'Táº¡o báº£n ghi chá»‰ sá»‘ Ä‘iá»‡n nÆ°á»›c',
+      'post /api/meterreadings/preview': 'Xem trÆ°á»›c chá»‰ sá»‘ Ä‘iá»‡n nÆ°á»›c',
+      'patch /api/meterreadings/current-reading': 'Sá»­a chá»‰ sá»‘ Ä‘iá»‡n gá»‘c theo phÃ²ng',
+      'delete /api/meterreadings/by-ended-contract/{contractid:int}': 'XÃ³a táº¥t cáº£ báº£n ghi chá»‰ sá»‘ Ä‘iá»‡n cá»§a há»£p Ä‘á»“ng Ä‘Ã£ cháº¥m dá»©t',
+      'delete /api/meterreadings/by-ended-contract/{contractid}': 'XÃ³a táº¥t cáº£ báº£n ghi chá»‰ sá»‘ Ä‘iá»‡n cá»§a há»£p Ä‘á»“ng Ä‘Ã£ cháº¥m dá»©t',
+      'post /api/meterreadings/read-from-image': 'Äá»c chá»‰ sá»‘ tá»« hÃ¬nh áº£nh',
+      'get /api/meterreadings/missing': 'Láº¥y danh sÃ¡ch phÃ²ng thiáº¿u chá»‰ sá»‘',
+    },
+    invoices: {
+      'get /api/invoices': 'Láº¥y danh sÃ¡ch hÃ³a Ä‘Æ¡n',
+      'get /api/invoices/{id:int}': 'Láº¥y chi tiáº¿t hÃ³a Ä‘Æ¡n',
+      'get /api/invoices/{id}': 'Láº¥y chi tiáº¿t hÃ³a Ä‘Æ¡n',
+      'post /api/invoices/preview': 'Xem trÆ°á»›c hÃ³a Ä‘Æ¡n',
+      'post /api/invoices': 'Táº¡o hÃ³a Ä‘Æ¡n má»›i',
+      'get /api/invoices/by-room-and-month': 'TÃ¬m hÃ³a Ä‘Æ¡n theo phÃ²ng vÃ  thÃ¡ng',
+      'patch /api/invoices/{id:int}/mark-paid': 'ÄÃ¡nh dáº¥u Ä‘Ã£ thanh toÃ¡n',
+      'patch /api/invoices/{id}/mark-paid': 'ÄÃ¡nh dáº¥u Ä‘Ã£ thanh toÃ¡n',
+      'patch /api/invoices/{id:int}/mark-unpaid': 'ÄÃ¡nh dáº¥u chÆ°a thanh toÃ¡n',
+      'patch /api/invoices/{id}/mark-unpaid': 'ÄÃ¡nh dáº¥u chÆ°a thanh toÃ¡n',
+      'post /api/invoices/monthly-bulk-preview': 'Táº¡o hÃ³a Ä‘Æ¡n hÃ ng loáº¡t theo thÃ¡ng',
+      'post /api/invoices/monthly-bulk': 'Táº¡o hÃ³a Ä‘Æ¡n hÃ ng loáº¡t theo thÃ¡ng',
+      'delete /api/invoices/{id}': 'XÃ³a hÃ³a Ä‘Æ¡n'
+    },
+    payments: {
+      'post /api/payments/sepay/webhook': 'Nháº­n webhook thanh toÃ¡n',
+      'get /api/payments/transactions': 'Láº¥y danh sÃ¡ch giao dá»‹ch thanh toÃ¡n',
+      'get /api/payments/transactions/{id:int}': 'Láº¥y chi tiáº¿t giao dá»‹ch thanh toÃ¡n',
+      'get /api/payments/transactions/{id}': 'Láº¥y chi tiáº¿t giao dá»‹ch thanh toÃ¡n',
+      'post /api/payments/transactions/{id:int}/reconcile': 'Äá»‘i soÃ¡t giao dá»‹ch thanh toÃ¡n',
+      'post /api/payments/transactions/{id}/reconcile': 'Äá»‘i soÃ¡t giao dá»‹ch thanh toÃ¡n',
+    },
+    transactions: {
+      'get /api/transactions': 'Láº¥y danh sÃ¡ch thu chi',
+      'get /api/transactions/{id:int}': 'Láº¥y chi tiáº¿t giao dá»‹ch thu chi',
+      'get /api/transactions/{id}': 'Láº¥y chi tiáº¿t giao dá»‹ch thu chi',
+      'post /api/transactions': 'Táº¡o giao dá»‹ch thu chi',
+      'put /api/transactions/{id:int}': 'Cáº­p nháº­t giao dá»‹ch thu chi',
+      'put /api/transactions/{id}': 'Cáº­p nháº­t giao dá»‹ch thu chi',
+      'delete /api/transactions/{id:int}': 'XÃ³a giao dá»‹ch thu chi',
+      'delete /api/transactions/{id}': 'XÃ³a giao dá»‹ch thu chi',
+    },
+    reports: {
+      'get /api/reports/monthly-revenue': 'Láº¥y bÃ¡o cÃ¡o doanh thu thÃ¡ng',
+      'get /api/reports/monthly-expense': 'Láº¥y bÃ¡o cÃ¡o chi phÃ­ thÃ¡ng',
+      'get /api/reports/monthly-profit-loss': 'Láº¥y bÃ¡o cÃ¡o lÃ£i lá»— thÃ¡ng',
+      'get /api/reports/payment-status': 'Láº¥y tÃ¬nh tráº¡ng thanh toÃ¡n theo thÃ¡ng',
+    },
+  }
+
+  const normalizedPath = cleanPath.replace(/:\w+/g, '')
+  const key = `${method.toLowerCase()} ${normalizedPath}`
+  return mapping[moduleKey]?.[key] || tenDep(`${method} ${path}`)
+}
+
+async function taiSwagger() {
+  const response = await fetch('/swagger/v1/swagger.json', {
+    headers: {
+      Accept: 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`KhÃ´ng táº£i Ä‘Æ°á»£c tÃ i liá»‡u API (${response.status})`)
+  }
+
+  return response.json()
+}
+
+async function guiRequest(url, options) {
+  const response = await fetch(url, options)
+  const contentType = response.headers.get('content-type') || ''
+
+  let payload = null
+  if (contentType.includes('application/json')) {
+    payload = await response.json()
+  } else {
+    payload = await response.text()
+  }
+
+  if (!response.ok) {
+    const message = typeof payload === 'object' && payload?.message ? payload.message : `YÃªu cáº§u tháº¥t báº¡i (${response.status})`
+    throw new Error(message)
+  }
+
+  return {
+    status: response.status,
+    payload,
+  }
+}
+
+function useTrangHienTai() {
+  const docHash = () => window.location.hash.replace(/^#\/?/, '') || 'tong-quan'
+  const [trang, setTrang] = useState(docHash)
+
+  useEffect(() => {
+    const onHashChange = () => setTrang(docHash())
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
+
+  return [trang, setTrang]
+}
+
+function TrangTongQuan() {
+  return <div className="trang-trong" />
+}
+
+function EndpointCard({ path, method, operation, spec, moduleKey }) {
+  // áº¨n mark-paid vÃ  mark-unpaid endpoints â€” Ä‘Ã£ tÃ­ch há»£p vÃ o danh sÃ¡ch hÃ³a Ä‘Æ¡n
+  const normalizedPath = path.toLowerCase()
+  if (
+    moduleKey === 'invoices' &&
+    method === 'patch' &&
+    (normalizedPath.includes('/mark-paid') || normalizedPath.includes('/mark-unpaid'))
+  ) {
+    return null
+  }
+
+  if (
+    moduleKey === 'invoices' &&
+    (
+      normalizedPath === '/api/invoices/by-room-and-month' ||
+      (method === 'get' && (normalizedPath === '/api/invoices/{id:int}' || normalizedPath === '/api/invoices/{id}')) ||
+      (method === 'delete' && normalizedPath === '/api/invoices/{id}')
+    )
+  ) {
+    return null
+  }
+
+  // monthly-bulk-preview vÃ  monthly-bulk dÃ¹ng component riÃªng
+  if (
+    moduleKey === 'invoices' &&
+    method === 'post' &&
+    (normalizedPath === '/api/invoices/monthly-bulk-preview' || normalizedPath === '/api/invoices/monthly-bulk')
+  ) {
+    return null
+  }
+
+  const parameters = operation.parameters || []
+  const queryParams = parameters.filter((param) => param.in === 'query')
+  const pathParams = parameters.filter((param) => param.in === 'path')
+  const content = operation.requestBody?.content || {}
+  const jsonSchema = resolveSchema(content['application/json']?.schema, spec)
+  const formSchema = resolveSchema(content['multipart/form-data']?.schema, spec)
+  const dungFormTaoPhong = laFormTaoPhong(moduleKey, method, path)
+  const dungFormNguoiThue = laFormNguoiThue(moduleKey, method, path)
+  const dungFormHopDong = laFormHopDong(moduleKey, method, path)
+  const dungFormChiSoDienNuoc = laFormChiSoDienNuoc(moduleKey, method, path)
+  const dungFormSuaChiSoDienGoc = laFormSuaChiSoDienGoc(moduleKey, method, path)
+  const dungFormHoaDon = laFormHoaDon(moduleKey, method, path)
+  const dungFormJsonRieng =
+    jsonSchema &&
+    (
+      dungFormTaoPhong ||
+      dungFormNguoiThue ||
+      dungFormHopDong ||
+      dungFormChiSoDienNuoc ||
+      dungFormSuaChiSoDienGoc ||
+      dungFormHoaDon
+    )
+  const laManDanhSachPhong = laDanhSachPhong(moduleKey, method, path)
+  const laXemTruocKetThucHopDong =
+    moduleKey === 'contracts' &&
+    method === 'post' &&
+    path.toLowerCase().includes('/end-preview')
+  const laManDanhSachHopDong = laDanhSachHopDong(moduleKey, method, path)
+  const laManDanhSachHoaDon = laDanhSachHoaDon(moduleKey, method, path)
+  const laThePostDonGian = method === 'post' && pathParams.length === 0 && queryParams.length === 0
+  const laChiTietHoacCapNhatHopDongTheoPhong =
+    moduleKey === 'contracts' &&
+    (method === 'get' || method === 'put') &&
+    pathParams.length === 1 &&
+    path.toLowerCase().startsWith('/api/contracts/{id')
+
+  const laKetThucHopDongTheoPhong =
+    moduleKey === 'contracts' &&
+    method === 'post' &&
+    pathParams.length === 1 &&
+    (path.toLowerCase().includes('/end-preview') || path.toLowerCase().includes('/end'))
+
+  const laXoaHopDongDaKetThucTheoPhong =
+    moduleKey === 'contracts' &&
+    method === 'delete' &&
+    pathParams.length === 1 &&
+    path.toLowerCase().startsWith('/api/contracts/{id')
+
+  const laXoaChiSoTheoHopDongDaKetThucTheoPhong =
+    moduleKey === 'meterreadings' &&
+    method === 'delete' &&
+    pathParams.length === 1 &&
+    path.toLowerCase().startsWith('/api/meterreadings/by-ended-contract/{contractid')
+
+  const laChonHopDongDaKetThucTheoPhong =
+    laXoaHopDongDaKetThucTheoPhong || laXoaChiSoTheoHopDongDaKetThucTheoPhong
+
+  const laChonHopDongTheoPhong =
+    laChiTietHoacCapNhatHopDongTheoPhong || laKetThucHopDongTheoPhong || laChonHopDongDaKetThucTheoPhong
+
+  const isIdPathEndpoint =
+    (moduleKey === 'rooms' || moduleKey === 'tenants') &&
+    (method === 'put' || method === 'patch') &&
+    pathParams.length === 1 &&
+    path.toLowerCase().includes('{id')
+
+  const [pathValues, setPathValues] = useState(
+    Object.fromEntries(
+      pathParams.map((param) => [
+        param.name,
+        isIdPathEndpoint || laChonHopDongTheoPhong ? '' : sampleValue(param.schema, spec, param.name),
+      ]),
+    ),
+  )
+  const [queryValues, setQueryValues] = useState(Object.fromEntries(queryParams.map((param) => [param.name, ''])))
+  const [pathSelectOptions, setPathSelectOptions] = useState([])
+  const [pathSelectOptionsLoading, setPathSelectOptionsLoading] = useState(false)
+  const [contractRoomOptions, setContractRoomOptions] = useState([])
+  const [contractRoomOptionsLoading, setContractRoomOptionsLoading] = useState(false)
+  const [contractTenantOptions, setContractTenantOptions] = useState([])
+  const [contractTenantOptionsLoading, setContractTenantOptionsLoading] = useState(false)
+  const [meterReadingRoomOptions, setMeterReadingRoomOptions] = useState([])
+  const [meterReadingRoomOptionsLoading, setMeterReadingRoomOptionsLoading] = useState(false)
+  const [meterReadingSelectedRoom, setMeterReadingSelectedRoom] = useState('')
+  const [invoiceSelectedRoom, setInvoiceSelectedRoom] = useState('')
+  const [selectedActiveContract, setSelectedActiveContract] = useState(null)
+  const [selectedActiveContractLoading, setSelectedActiveContractLoading] = useState(false)
+  const [jsonBody, setJsonBody] = useState(jsonSchema ? formatJson(sampleValue(jsonSchema, spec)) : '')
+  const [bodyValues, setBodyValues] = useState(
+    Object.fromEntries(
+      Object.entries(jsonSchema?.properties || {}).map(([key, schema]) => [key, sampleValue(schema, spec, key)]),
+    ),
+  )
+  const [formValues, setFormValues] = useState(
+    Object.fromEntries(
+      Object.entries(formSchema?.properties || {}).map(([key, schema]) => [key, sampleValue(schema, spec, key)]),
+    ),
+  )
+  const [formFiles, setFormFiles] = useState({})
+  const [dangGui, setDangGui] = useState(false)
+  const [hienXacNhan, setHienXacNhan] = useState(false)
+  const [dangKetThuc, setDangKetThuc] = useState(false)
+  const [phanHoi, setPhanHoi] = useState(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [trangThai, setTrangThai] = useState('Sáºµn sÃ ng gá»­i yÃªu cáº§u.')
+  const [mauTrangThai, setMauTrangThai] = useState('')
+  const [dangMo, setDangMo] = useState(false)
+
+  useEffect(() => {
+    if (laManDanhSachPhong) {
+      onSubmit()
+    }
+  }, [laManDanhSachPhong])
+
+  // Auto-load danh sÃ¡ch hÃ³a Ä‘Æ¡n khi má»Ÿ
+  useEffect(() => {
+    if (laManDanhSachHoaDon && dangMo) {
+      onSubmit()
+    }
+  }, [laManDanhSachHoaDon, dangMo, reloadKey])
+
+  const requestBodyLabel = jsonSchema || formSchema ? 'Ná»™i dung gá»­i' : ''
+  const anKhoiPath = pathParams.length === 0
+  const laCapNhatThongTinPhong = isIdPathEndpoint
+  const anTieuDeKhoiPath = laCapNhatThongTinPhong || laChonHopDongTheoPhong
+
+  const capNhatField = (setter, name, value) => {
+    setter((current) => ({
+      ...current,
+      [name]: value,
+    }))
+  }
+
+  const timHopDongActiveTuDanhSach = (selectedRoomCode) => {
+    if (!selectedRoomCode) return null
+
+    const normalizedSelectedRoomCode = String(selectedRoomCode).trim().toLowerCase()
+    const matchedOption = meterReadingRoomOptions.find(
+      (option) => String(option.value || '').trim().toLowerCase() === normalizedSelectedRoomCode,
+    )
+
+    if (!matchedOption) return null
+
+    return {
+      roomCode: String(matchedOption.value || '').trim(),
+      RoomCode: String(matchedOption.value || '').trim(),
+      roomId: Number(String(matchedOption.roomId || '').trim()),
+      RoomId: Number(String(matchedOption.roomId || '').trim()),
+      contractId: Number(String(matchedOption.contractId || '').trim()),
+      ContractId: Number(String(matchedOption.contractId || '').trim()),
+    }
+  }
+
+  const chonPhongTheoHopDongActive = async (selectedRoomCode, mode = 'meter') => {
+    if (mode === 'meter') {
+      setMeterReadingSelectedRoom(selectedRoomCode)
+    }
+    if (mode === 'invoice') {
+      setInvoiceSelectedRoom(selectedRoomCode)
+    }
+
+    if (!selectedRoomCode) {
+      setSelectedActiveContract(null)
+      setFormValues((current) => ({
+        ...current,
+        RoomId: current.RoomId !== undefined ? '' : current.RoomId,
+        roomId: current.roomId !== undefined ? '' : current.roomId,
+        ContractId: current.ContractId !== undefined ? '' : current.ContractId,
+        contractId: current.contractId !== undefined ? '' : current.contractId,
+      }))
+      return
+    }
+
+    setSelectedActiveContractLoading(true)
+
+    try {
+      const activeContract = timHopDongActiveTuDanhSach(selectedRoomCode)
+      if (!activeContract) {
+        throw new Error('KhÃ´ng tÃ¬m tháº¥y há»£p Ä‘á»“ng active trong danh sÃ¡ch hiá»‡n cÃ³ cá»§a phÃ²ng Ä‘Ã£ chá»n.')
+      }
+      const selectedRoomId = activeContract.roomId ?? activeContract.RoomId
+      const selectedContractId = activeContract.contractId ?? activeContract.ContractId
+
+      setSelectedActiveContract(activeContract)
+      setFormValues((current) => ({
+        ...current,
+        RoomId: current.RoomId !== undefined ? String(selectedRoomId ?? '') : current.RoomId,
+        roomId: current.roomId !== undefined ? String(selectedRoomId ?? '') : current.roomId,
+        ContractId: current.ContractId !== undefined ? String(selectedContractId ?? '') : current.ContractId,
+        contractId: current.contractId !== undefined ? String(selectedContractId ?? '') : current.contractId,
+      }))
+    } catch (error) {
+      setSelectedActiveContract(null)
+      setFormValues((current) => ({
+        ...current,
+        RoomId: current.RoomId !== undefined ? '' : current.RoomId,
+        roomId: current.roomId !== undefined ? '' : current.roomId,
+        ContractId: current.ContractId !== undefined ? '' : current.ContractId,
+        contractId: current.contractId !== undefined ? '' : current.contractId,
+      }))
+      setTrangThai(thongDiepLoi(error))
+      setMauTrangThai('that-bai')
+    } finally {
+      setSelectedActiveContractLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    const canLoadPathOptions =
+      (pathParams.length > 0 &&
+        (moduleKey === 'rooms' || moduleKey === 'tenants') &&
+        (method === 'put' || method === 'patch')) ||
+      laChonHopDongTheoPhong
+
+    if (!canLoadPathOptions) return
+
+    let active = true
+    setPathSelectOptionsLoading(true)
+
+    function extractArray(value) {
+      if (Array.isArray(value)) return value
+      if (!value || typeof value !== 'object') return null
+
+      const candidates = ['data', 'items', 'results', 'rooms', 'value']
+      for (const key of candidates) {
+        const candidate = value[key] ?? value[key.charAt(0).toUpperCase() + key.slice(1)]
+        if (Array.isArray(candidate)) return candidate
+      }
+
+      for (const item of Object.values(value)) {
+        if (Array.isArray(item)) return item
+      }
+
+      return null
+    }
+
+    async function taiDanhSachChoDropdown() {
+      const candidates = laChonHopDongTheoPhong
+        ? laChonHopDongDaKetThucTheoPhong
+          ? [
+            '/api/Contracts?status=ended',
+            '/Api/Contracts?status=ended',
+            '/api/contracts?status=ended',
+            '/Api/contracts?status=ended',
+          ]
+          : ['/api/Contracts', '/Api/Contracts', '/api/contracts', '/Api/contracts']
+        : moduleKey === 'rooms'
+          ? ['/api/Rooms', '/Api/Rooms', '/api/rooms', '/Api/rooms']
+          : ['/api/Tenants', '/Api/Tenants', '/api/tenants', '/Api/tenants']
+
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url)
+          if (!response.ok) continue
+          const payload = await response.json()
+          const data = extractArray(payload) || []
+          if (!active || !Array.isArray(data) || !data.length) continue
+
+          const filteredData = laChonHopDongTheoPhong
+            ? laChonHopDongDaKetThucTheoPhong
+              ? data.filter((item) => !laHopDongConHieuLuc(item))
+              : data.filter(laHopDongConHieuLuc)
+            : data
+
+          const options = filteredData
+            .map((item) => {
+              const rawValue = laChonHopDongTheoPhong
+                ? item.contractId ?? item.ContractId ?? item.id ?? item.Id
+                : item.id ?? item.Id ?? item.tenantId ?? item.TenantId ?? item.roomId ?? item.RoomId
+              const value = rawValue != null ? String(rawValue) : null
+              const label = laChonHopDongTheoPhong
+                ? [item.roomCode ?? item.RoomCode, item.tenantName ?? item.TenantName].filter(Boolean).join(' - ') ||
+                String(rawValue ?? '---')
+                : moduleKey === 'rooms'
+                  ? item.roomCode ?? item.RoomCode ?? String(rawValue ?? '---')
+                  : item.fullName ?? item.FullName ?? item.phone ?? item.Phone ?? item.cccd ?? item.CCCD ?? String(rawValue ?? '---')
+              return value != null ? { value, label } : null
+            })
+            .filter(Boolean)
+
+          if (options.length) {
+            setPathSelectOptions(options)
+            return
+          }
+        } catch {
+          // bá» qua lá»—i vÃ  thá»­ url tiáº¿p theo
+        }
+      }
+    }
+
+    taiDanhSachChoDropdown().finally(() => {
+      if (active) setPathSelectOptionsLoading(false)
+    })
+
+    return () => {
+      active = false
+    }
+  }, [laChonHopDongTheoPhong, laChonHopDongDaKetThucTheoPhong, method, moduleKey, pathParams.length])
+
+  useEffect(() => {
+    if (!dungFormHopDong) return
+
+    let active = true
+    setContractRoomOptionsLoading(true)
+    setContractTenantOptionsLoading(true)
+
+    function extractArray(value) {
+      if (Array.isArray(value)) return value
+      if (!value || typeof value !== 'object') return null
+
+      const candidates = ['data', 'items', 'results', 'rooms', 'tenants', 'value']
+      for (const key of candidates) {
+        const candidate = value[key] ?? value[key.charAt(0).toUpperCase() + key.slice(1)]
+        if (Array.isArray(candidate)) return candidate
+      }
+
+      for (const item of Object.values(value)) {
+        if (Array.isArray(item)) return item
+      }
+
+      return null
+    }
+
+    async function taiOptions(urls) {
+      for (const url of urls) {
+        try {
+          const response = await fetch(url)
+          if (!response.ok) continue
+          const payload = await response.json()
+          const data = extractArray(payload)
+          if (Array.isArray(data)) return data
+        } catch {
+          // bá» qua lá»—i vÃ  thá»­ url tiáº¿p theo
+        }
+      }
+
+      return []
+    }
+
+    Promise.all([
+      taiOptions(['/api/Rooms', '/Api/Rooms', '/api/rooms', '/Api/rooms']),
+      taiOptions(['/api/Tenants', '/Api/Tenants', '/api/tenants', '/Api/tenants']),
+    ])
+      .then(([rooms, tenants]) => {
+        if (!active) return
+
+        setContractRoomOptions(
+          rooms
+            .filter(laPhongChuaThue)
+            .map((room) => {
+              const rawValue = room.roomId ?? room.RoomId ?? room.id ?? room.Id
+              const value = rawValue != null ? String(rawValue) : null
+              const label = room.roomCode ?? room.RoomCode ?? room.name ?? room.Name ?? String(rawValue ?? '---')
+              return value != null ? { value, label } : null
+            })
+            .filter(Boolean),
+        )
+
+        setContractTenantOptions(
+          tenants
+            .map((tenant) => {
+              const rawValue = tenant.tenantId ?? tenant.TenantId ?? tenant.id ?? tenant.Id
+              const value = rawValue != null ? String(rawValue) : null
+              const label =
+                tenant.fullName ??
+                tenant.FullName ??
+                tenant.phone ??
+                tenant.Phone ??
+                tenant.cccd ??
+                tenant.CCCD ??
+                String(rawValue ?? '---')
+              return value != null ? { value, label } : null
+            })
+            .filter(Boolean),
+        )
+      })
+      .finally(() => {
+        if (!active) return
+        setContractRoomOptionsLoading(false)
+        setContractTenantOptionsLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [dungFormHopDong])
+
+  useEffect(() => {
+    if (!dungFormChiSoDienNuoc && !dungFormSuaChiSoDienGoc && !dungFormHoaDon && moduleKey !== 'invoices') return
+
+    let active = true
+    setMeterReadingRoomOptionsLoading(true)
+
+    function extractArray(value) {
+      if (Array.isArray(value)) return value
+      if (!value || typeof value !== 'object') return null
+
+      const candidates = ['data', 'items', 'results', 'contracts', 'value']
+      for (const key of candidates) {
+        const candidate = value[key] ?? value[key.charAt(0).toUpperCase() + key.slice(1)]
+        if (Array.isArray(candidate)) return candidate
+      }
+
+      for (const item of Object.values(value)) {
+        if (Array.isArray(item)) return item
+      }
+
+      return null
+    }
+
+    async function taiRoomCodeOptions() {
+      const urls = dungFormSuaChiSoDienGoc
+        ? ['/api/Rooms', '/Api/Rooms', '/api/rooms', '/Api/rooms']
+        : [
+          '/api/Contracts?status=active',
+          '/Api/Contracts?status=active',
+          '/api/contracts?status=active',
+          '/Api/contracts?status=active',
+        ]
+
+      for (const url of urls) {
+        try {
+          const response = await fetch(url)
+          if (!response.ok) continue
+          const payload = await response.json()
+          const data = extractArray(payload) || []
+          if (!active || !Array.isArray(data) || !data.length) continue
+
+          const options = data
+            .map((item) => {
+              const roomCode = item.roomCode ?? item.RoomCode ?? item.room?.roomCode ?? item.Room?.RoomCode
+              const roomId = item.roomId ?? item.RoomId ?? item.room?.roomId ?? item.Room?.RoomId
+              const contractId = item.contractId ?? item.ContractId ?? item.contract?.contractId ?? item.Contract?.ContractId
+
+              if (!roomCode || roomId == null) return null
+              if (!dungFormSuaChiSoDienGoc && contractId == null) return null
+
+              return {
+                value: String(roomCode).trim(),
+                label: String(roomCode).trim(),
+                roomId: String(roomId).trim(),
+                contractId: contractId == null ? '' : String(contractId).trim(),
+              }
+            })
+            .filter(Boolean)
+
+          if (options.length) {
+            setMeterReadingRoomOptions(options)
+            return
+          }
+        } catch {
+          // bá» qua lá»—i vÃ  thá»­ url tiáº¿p theo
+        }
+      }
+    }
+
+    taiRoomCodeOptions().finally(() => {
+      if (active) setMeterReadingRoomOptionsLoading(false)
+    })
+
+    return () => {
+      active = false
+    }
+  }, [dungFormChiSoDienNuoc, dungFormSuaChiSoDienGoc, dungFormHoaDon, moduleKey])
+
+  useEffect(() => {
+    if (!dungFormChiSoDienNuoc && !dungFormHoaDon) return
+
+    setFormValues((current) => ({
+      ...current,
+      RoomId: current.RoomId !== undefined ? '' : current.RoomId,
+      roomId: current.roomId !== undefined ? '' : current.roomId,
+      ContractId: current.ContractId !== undefined ? '' : current.ContractId,
+      contractId: current.contractId !== undefined ? '' : current.contractId,
+    }))
+  }, [dungFormChiSoDienNuoc, dungFormHoaDon])
+
+  useEffect(() => {
+    if (!dungFormSuaChiSoDienGoc) return
+
+    setFormValues((current) => ({
+      ...current,
+      RoomCode: current.RoomCode !== undefined ? '' : current.RoomCode,
+      roomCode: current.roomCode !== undefined ? '' : current.roomCode,
+    }))
+  }, [dungFormSuaChiSoDienGoc])
+
+  useEffect(() => {
+    const coQueryRoomIdTheoHopDongActive =
+      method === 'get' &&
+      moduleKey === 'meterreadings' &&
+      queryParams.some((param) => String(param.name || '').toLowerCase() === 'roomid')
+
+    if (!coQueryRoomIdTheoHopDongActive || !meterReadingRoomOptions.length) return
+
+    const roomIdParam = queryParams.find((param) => String(param.name || '').toLowerCase() === 'roomid')?.name
+    if (!roomIdParam) return
+    if (queryValues[roomIdParam]) return
+
+    setQueryValues((current) => ({
+      ...current,
+      [roomIdParam]: meterReadingRoomOptions[0].roomId,
+    }))
+  }, [meterReadingRoomOptions, method, moduleKey, queryParams, queryValues])
+
+  useEffect(() => {
+    if (!dangMo) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setDangMo(false)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [dangMo])
+
+  const resetForm = () => {
+    setPathValues(
+      Object.fromEntries(
+        pathParams.map((param) => [
+          param.name,
+          isIdPathEndpoint || laChonHopDongTheoPhong ? '' : sampleValue(param.schema, spec, param.name),
+        ]),
+      ),
+    )
+    setQueryValues(Object.fromEntries(queryParams.map((param) => [param.name, ''])))
+    setJsonBody(jsonSchema ? formatJson(sampleValue(jsonSchema, spec)) : '')
+    setBodyValues(
+      Object.fromEntries(
+        Object.entries(jsonSchema?.properties || {}).map(([key, schema]) => [key, sampleValue(schema, spec, key)]),
+      ),
+    )
+    setFormValues(
+      Object.fromEntries(
+        Object.entries(formSchema?.properties || {}).map(([key, schema]) => [key, sampleValue(schema, spec, key)]),
+      ),
+    )
+    setFormFiles({})
+    setMeterReadingSelectedRoom('')
+    setInvoiceSelectedRoom('')
+    setSelectedActiveContract(null)
+    setTrangThai('ÄÃ£ Ä‘Æ°a biá»ƒu máº«u vá» giÃ¡ trá»‹ máº·c Ä‘á»‹nh.')
+    setMauTrangThai('')
+    setPhanHoi(null)
+  }
+
+  const onSubmit = async () => {
+    setDangGui(true)
+    setTrangThai('Äang gá»­i yÃªu cáº§u tá»›i mÃ¡y chá»§...')
+    setMauTrangThai('')
+
+    try {
+      let finalPath = path
+
+      pathParams.forEach((param) => {
+        const value = pathValues[param.name]
+        finalPath = finalPath.replace(`{${param.name}}`, encodeURIComponent(value))
+      })
+
+      const query = new URLSearchParams()
+      queryParams.forEach((param) => {
+        const rawValue = queryValues[param.name]
+        if (rawValue !== '' && rawValue !== null && rawValue !== undefined) {
+          query.set(param.name, normalizeValue(rawValue, param.schema, spec))
+        }
+      })
+
+      const url = `${finalPath}${query.toString() ? `?${query.toString()}` : ''}`
+      const options = {
+        method: method.toUpperCase(),
+        headers: {},
+      }
+
+      if (jsonSchema) {
+        options.headers['Content-Type'] = 'application/json'
+        if (dungFormJsonRieng) {
+          let bodyObject = Object.fromEntries(
+            Object.entries(jsonSchema?.properties || {}).map(([name, schema]) => [
+              name,
+              normalizeValue(formValues[name], schema, spec),
+            ]),
+          )
+
+          if (dungFormChiSoDienNuoc || dungFormHoaDon) {
+            const selectedRoomCode = dungFormChiSoDienNuoc ? meterReadingSelectedRoom : invoiceSelectedRoom
+
+            if (!selectedRoomCode) {
+              throw new Error('Vui lÃ²ng chá»n mÃ£ phÃ²ng Ä‘ang active.')
+            }
+
+            const normalizedSelectedRoomCode = String(selectedRoomCode).trim().toLowerCase()
+            const activeContract =
+              selectedActiveContract &&
+                String(selectedActiveContract.roomCode ?? selectedActiveContract.RoomCode ?? '')
+                  .trim()
+                  .toLowerCase() === normalizedSelectedRoomCode
+                ? selectedActiveContract
+                : timHopDongActiveTuDanhSach(selectedRoomCode)
+
+            if (!activeContract) {
+              throw new Error('KhÃ´ng tÃ¬m tháº¥y há»£p Ä‘á»“ng active trong danh sÃ¡ch hiá»‡n cÃ³ cá»§a phÃ²ng Ä‘Ã£ chá»n.')
+            }
+
+            const selectedRoomId = activeContract.roomId ?? activeContract.RoomId
+            const selectedContractId = activeContract.contractId ?? activeContract.ContractId
+
+            if (selectedRoomId == null || selectedContractId == null) {
+              throw new Error('KhÃ´ng láº¥y Ä‘Æ°á»£c RoomId hoáº·c ContractId active cá»§a phÃ²ng Ä‘Ã£ chá»n.')
+            }
+
+            bodyObject = {
+              ...bodyObject,
+              RoomId: Number(selectedRoomId),
+              roomId: Number(selectedRoomId),
+              ContractId: Number(selectedContractId),
+              contractId: Number(selectedContractId),
+            }
+          }
+
+          if (dungFormSuaChiSoDienGoc) {
+            if (!meterReadingSelectedRoom) {
+              throw new Error('Vui lÃ²ng chá»n mÃ£ phÃ²ng cáº§n sá»­a chá»‰ sá»‘ Ä‘iá»‡n.')
+            }
+
+            bodyObject = {
+              ...bodyObject,
+              RoomCode: meterReadingSelectedRoom,
+              roomCode: meterReadingSelectedRoom,
+            }
+          }
+
+          options.body = JSON.stringify(bodyObject)
+        } else if (Object.keys(jsonSchema?.properties || {}).length) {
+          const bodyObject = Object.fromEntries(
+            Object.entries(jsonSchema?.properties || {}).map(([name, schema]) => [
+              name,
+              normalizeValue(bodyValues[name], schema, spec),
+            ]),
+          )
+          options.body = JSON.stringify(bodyObject)
+        } else {
+          options.body = jsonBody.trim() ? JSON.stringify(JSON.parse(jsonBody)) : undefined
+        }
+      }
+
+      if (formSchema) {
+        const formData = new FormData()
+        Object.entries(formSchema.properties || {}).forEach(([name, schema]) => {
+          const resolved = resolveSchema(schema, spec) || {}
+          if (resolved.format === 'binary') {
+            if (formFiles[name]) {
+              formData.append(name, formFiles[name])
+            }
+            return
+          }
+
+          const value = formValues[name]
+          if (value !== '' && value !== null && value !== undefined) {
+            formData.append(name, normalizeValue(value, schema, spec))
+          }
+        })
+
+        options.body = formData
+      }
+
+      const result = await guiRequest(url, options)
+      setTrangThai(`ThÃ nh cÃ´ng - HTTP ${result.status}`)
+      setMauTrangThai('thanh-cong')
+      setPhanHoi(result.payload)
+    } catch (error) {
+      setTrangThai(thongDiepLoi(error))
+      setMauTrangThai('that-bai')
+      setPhanHoi({ message: thongDiepLoi(error) })
+    } finally {
+      setDangGui(false)
+    }
+  }
+
+  const onKetThucHopDong = async () => {
+    setDangKetThuc(true)
+    setHienXacNhan(false)
+    setTrangThai('Äang gá»­i yÃªu cáº§u káº¿t thÃºc há»£p Ä‘á»“ng...')
+    setMauTrangThai('')
+
+    try {
+      const contractId = pathValues[pathParams[0]?.name]
+      const endPath = path.replace('/end-preview', '/end')
+      const finalPath = endPath.replace(`{${pathParams[0]?.name}}`, encodeURIComponent(contractId))
+
+      const actualEndDate =
+        phanHoi?.actualEndDate ??
+        phanHoi?.ActualEndDate ??
+        new Date().toISOString().split('T')[0]
+
+      const result = await guiRequest(finalPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actualEndDate }),
+      })
+      setTrangThai(`Káº¿t thÃºc há»£p Ä‘á»“ng thÃ nh cÃ´ng - HTTP ${result.status}`)
+      setMauTrangThai('thanh-cong')
+      setPhanHoi(result.payload)
+    } catch (error) {
+      setTrangThai(thongDiepLoi(error))
+      setMauTrangThai('that-bai')
+    } finally {
+      setDangKetThuc(false)
+    }
+  }
+
+  function renderXemNhanhNoiDungGui(data) {
+    if (moduleKey === 'rooms' && Array.isArray(data) && data.every(laDuLieuPhong)) {
+      return <XemDanhSachPhong data={data} />
+    }
+
+    if (moduleKey === 'rooms' && laDuLieuPhong(data)) {
+      return <XemPhong data={data} />
+    }
+
+    if (moduleKey === 'tenants' && Array.isArray(data) && data.every(laDuLieuNguoiThue)) {
+      return <XemDanhSachNguoiThue data={data} />
+    }
+
+    if (moduleKey === 'tenants' && laDuLieuNguoiThue(data)) {
+      return <XemNguoiThue data={data} />
+    }
+
+    if (moduleKey === 'invoices' && Array.isArray(data) && data.every(laDuLieuHoaDon)) {
+      return <XemDanhSachHoaDon data={data} />
+    }
+
+    if (moduleKey === 'invoices' && laDuLieuHoaDon(data)) {
+      return <XemHoaDonChiTiet data={data} />
+    }
+
+    return <XemDuLieu data={data} emptyText="" />
+  }
+
+  const tenEndpoint = datTenEndpoint(moduleKey, method, path)
+
+  const noiDungChiTiet = (
+    <article className="the-endpoint the-endpoint--mo">
+      <div className="the-endpoint__dau">
+        <div>
+          <span className={`method-tag method-tag--${method}`}>{method.toUpperCase()}</span>
+          <h3>{tenEndpoint}</h3>
+          {operation.summary && operation.summary !== tenEndpoint ? <p className="duong-dan">{operation.summary}</p> : null}
+        </div>
+        <button type="button" className="nut-dong-endpoint" onClick={() => setDangMo(false)} aria-label="ÄÃ³ng">
+          Ã—
+        </button>
+      </div>
+
+      <div className="khoi-form">
+        {!anKhoiPath ? (
+          <section className="khoi-con">
+            {!anTieuDeKhoiPath ? <h4>Tham sá»‘ Ä‘Æ°á»ng dáº«n</h4> : null}
+            {pathParams.length ? (
+              <div className="luoi-input">
+                {pathParams.map((param) => {
+                  const isIdSelect =
+                    (((moduleKey === 'rooms' || moduleKey === 'tenants') &&
+                      (method === 'put' || method === 'patch') &&
+                      pathParams.length === 1 &&
+                      (param.name.toLowerCase() === 'id' || path.toLowerCase().includes('{id'))) ||
+                      (laChonHopDongTheoPhong &&
+                        pathParams.length === 1 &&
+                        (param.name.toLowerCase() === 'id' ||
+                          param.name.toLowerCase() === 'contractid' ||
+                          path.toLowerCase().includes('{id') ||
+                          path.toLowerCase().includes('{contractid'))))
+
+                  const placeholderText = laChonHopDongDaKetThucTheoPhong
+                    ? 'Chá»n phÃ²ng Ä‘Ã£ cháº¥m dá»©t'
+                    : laKetThucHopDongTheoPhong
+                      ? 'Chá»n phÃ²ng Ä‘ang active'
+                      : laChonHopDongTheoPhong
+                        ? 'Chá»n phÃ²ng cÃ³ há»£p Ä‘á»“ng'
+                        : moduleKey === 'rooms'
+                          ? 'Chá»n phÃ²ng'
+                          : 'Chá»n ngÆ°á»i thuÃª'
+
+                  const emptyText = pathSelectOptionsLoading
+                    ? laChonHopDongDaKetThucTheoPhong
+                      ? 'Äang táº£i phÃ²ng Ä‘Ã£ cháº¥m dá»©t...'
+                      : laKetThucHopDongTheoPhong
+                        ? 'Äang táº£i phÃ²ng Ä‘ang active...'
+                        : laChonHopDongTheoPhong
+                          ? 'Äang táº£i danh sÃ¡ch há»£p Ä‘á»“ng...'
+                          : moduleKey === 'rooms'
+                            ? 'Äang táº£i phÃ²ng...'
+                            : 'Äang táº£i ngÆ°á»i thuÃª...'
+                    : pathSelectOptions.length
+                      ? placeholderText
+                      : laChonHopDongDaKetThucTheoPhong
+                        ? 'KhÃ´ng cÃ³ phÃ²ng Ä‘Ã£ cháº¥m dá»©t'
+                        : laKetThucHopDongTheoPhong
+                          ? 'KhÃ´ng cÃ³ phÃ²ng Ä‘ang active'
+                          : laChonHopDongTheoPhong
+                            ? 'KhÃ´ng cÃ³ há»£p Ä‘á»“ng'
+                            : moduleKey === 'rooms'
+                              ? 'KhÃ´ng cÃ³ phÃ²ng'
+                              : 'KhÃ´ng cÃ³ ngÆ°á»i thuÃª'
+
+                  const pathLabel = isIdSelect
+                    ? laChonHopDongDaKetThucTheoPhong
+                      ? 'Chá»n phÃ²ng Ä‘Ã£ cháº¥m dá»©t'
+                      : laKetThucHopDongTheoPhong
+                        ? 'Chá»n phÃ²ng Ä‘ang active'
+                        : laChonHopDongTheoPhong
+                          ? 'Chá»n phÃ²ng cÃ³ há»£p Ä‘á»“ng'
+                          : moduleKey === 'rooms'
+                            ? 'Nháº­p mÃ£ phÃ²ng'
+                            : 'Chá»n ngÆ°á»i thuÃª'
+                    : tenDep(param.name)
+
+                  return (
+                    <label key={param.name} className="truong">
+                      <span>{pathLabel}</span>
+                      {isIdSelect ? (
+                        <select
+                          value={String(pathValues[param.name] ?? '')}
+                          onChange={(event) => capNhatField(setPathValues, param.name, event.target.value)}
+                          disabled={pathSelectOptionsLoading || pathSelectOptions.length === 0}
+                        >
+                          <option value="">{emptyText}</option>
+                          {pathSelectOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type={kieuInput(param.schema, spec)}
+                          value={pathValues[param.name] ?? ''}
+                          onChange={(event) => capNhatField(setPathValues, param.name, event.target.value)}
+                          placeholder={param.name}
+                        />
+                      )}
+                      <small>{typeLabel(resolveSchema(param.schema, spec))}</small>
+                    </label>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="trong">KhÃ´ng cÃ³ tham sá»‘ Ä‘Æ°á»ng dáº«n.</p>
+            )}
+          </section>
+        ) : null}
+
+        {queryParams.length ? (
+          <section className="khoi-con">
+            <div className="luoi-input">
+              {queryParams.map((param) => {
+                const normalizedName = String(param.name || '').toLowerCase()
+                if (laManDanhSachHopDong && normalizedName === 'roomid') return null
+                const laLocTrangThaiHopDong = laManDanhSachHopDong && normalizedName === 'status'
+                const laLocTrangThaiHoaDon = moduleKey === 'invoices' && method === 'get' && normalizedName === 'status'
+                const laLocTrangThaiPhong = moduleKey === 'rooms' && method === 'get' && normalizedName === 'status'
+                const laLocPhongTheoHopDongActive =
+                  (moduleKey === 'invoices' || moduleKey === 'meterreadings') && normalizedName === 'roomid'
+
+                return (
+                  <label key={param.name} className="truong">
+                    <span>{nhanTruong(moduleKey, path, param.name)}</span>
+                    {laLocTrangThaiPhong ? (
+                      <select
+                        value={queryValues[param.name] ?? ''}
+                        onChange={(event) => capNhatField(setQueryValues, param.name, event.target.value)}
+                      >
+                        <option value="">Táº¥t cáº£</option>
+                        <option value="vacant">ChÆ°a cho thuÃª</option>
+                        <option value="occupied">ÄÃ£ cho thuÃª</option>
+                      </select>
+                    ) : laLocTrangThaiHopDong ? (
+                      <select
+                        value={queryValues[param.name] ?? ''}
+                        onChange={(event) => capNhatField(setQueryValues, param.name, event.target.value)}
+                      >
+                        <option value="">Táº¥t cáº£ tráº¡ng thÃ¡i</option>
+                        <option value="active">CÃ²n hiá»‡u lá»±c</option>
+                        <option value="ended">Cháº¥m dá»©t</option>
+                      </select>
+                    ) : laLocTrangThaiHoaDon ? (
+                      <select
+                        value={queryValues[param.name] ?? ''}
+                        onChange={(event) => capNhatField(setQueryValues, param.name, event.target.value)}
+                      >
+                        <option value="">Táº¥t cáº£ tráº¡ng thÃ¡i</option>
+                        <option value="paid">ÄÃ£ thanh toÃ¡n</option>
+                        <option value="unpaid">ChÆ°a thanh toÃ¡n</option>
+                      </select>
+                    ) : laLocPhongTheoHopDongActive ? (
+                      <select
+                        value={queryValues[param.name] ?? ''}
+                        onChange={(event) => capNhatField(setQueryValues, param.name, event.target.value)}
+                        disabled={meterReadingRoomOptionsLoading || meterReadingRoomOptions.length === 0}
+                      >
+                        <option value="">
+                          {meterReadingRoomOptionsLoading
+                            ? 'Äang táº£i danh sÃ¡ch phÃ²ng...'
+                            : meterReadingRoomOptions.length
+                              ? 'Chá»n mÃ£ phÃ²ng Ä‘ang active'
+                              : 'KhÃ´ng cÃ³ phÃ²ng active'}
+                        </option>
+                        {meterReadingRoomOptions.map((option) => (
+                          <option key={`${option.roomId}-${option.contractId}`} value={option.roomId}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type={kieuInput(param.schema, spec)}
+                        value={queryValues[param.name] ?? ''}
+                        onChange={(event) => capNhatField(setQueryValues, param.name, event.target.value)}
+                        placeholder={tenDep(param.name)}
+                      />
+                    )}
+                    <small>{typeLabel(resolveSchema(param.schema, spec))}</small>
+                  </label>
+                )
+              })}
+            </div>
+          </section>
+        ) : null}
+
+        {requestBodyLabel ? (
+          <section className="khoi-con">
+            <h4>{requestBodyLabel}</h4>
+            {dungFormJsonRieng ? (
+              <>
+                <div className="luoi-input">
+                  {dungFormChiSoDienNuoc || dungFormSuaChiSoDienGoc || dungFormHoaDon ? (
+                    <label className="truong">
+                      <span>{nhanTruong(moduleKey, path, 'roomSelector')}</span>
+                      <select
+                        value={(dungFormChiSoDienNuoc || dungFormSuaChiSoDienGoc) ? meterReadingSelectedRoom : invoiceSelectedRoom}
+                        onChange={(event) => {
+                          if (dungFormSuaChiSoDienGoc) {
+                            setMeterReadingSelectedRoom(event.target.value)
+                            return
+                          }
+
+                          chonPhongTheoHopDongActive(event.target.value, dungFormChiSoDienNuoc ? 'meter' : 'invoice')
+                        }}
+                        disabled={
+                          meterReadingRoomOptionsLoading ||
+                          ((dungFormChiSoDienNuoc || dungFormHoaDon) && selectedActiveContractLoading) ||
+                          meterReadingRoomOptions.length === 0
+                        }
+                      >
+                        <option value="">
+                          {meterReadingRoomOptionsLoading
+                            ? 'Äang táº£i danh sÃ¡ch phÃ²ng...'
+                            : (dungFormChiSoDienNuoc || dungFormHoaDon) && selectedActiveContractLoading
+                              ? 'Äang kiá»ƒm tra há»£p Ä‘á»“ng active...'
+                              : meterReadingRoomOptions.length
+                                ? dungFormSuaChiSoDienGoc
+                                  ? 'Chá»n mÃ£ phÃ²ng'
+                                  : 'Chá»n mÃ£ phÃ²ng Ä‘ang active'
+                                : dungFormSuaChiSoDienGoc
+                                  ? 'KhÃ´ng cÃ³ phÃ²ng'
+                                  : 'KhÃ´ng cÃ³ phÃ²ng active'}
+                        </option>
+                        {meterReadingRoomOptions.map((option) => (
+                          <option key={`${option.roomId}-${option.contractId}`} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <small>
+                        {dungFormSuaChiSoDienGoc
+                          ? 'Chá»n roomCode, backend sáº½ tá»± tÃ¬m báº£n ghi chá»‰ sá»‘ Ä‘iá»‡n theo phÃ²ng vÃ  thÃ¡ng rá»“i tÃ­nh láº¡i chuá»—i chá»‰ sá»‘.'
+                          : selectedActiveContract
+                            ? `Äang dÃ¹ng RoomId ${selectedActiveContract.roomId ?? selectedActiveContract.RoomId} vÃ  há»£p Ä‘á»“ng active #${selectedActiveContract.contractId ?? selectedActiveContract.ContractId}.`
+                            : 'Chá»n mÃ£ phÃ²ng, há»‡ thá»‘ng tá»± gÃ¡n RoomId vÃ  ContractId active.'}
+                      </small>
+                    </label>
+                  ) : null}
+
+                  {Object.entries(jsonSchema?.properties || {}).map(([name, schema]) => {
+                    const resolved = resolveSchema(schema, spec) || {}
+                    const isStatus =
+                      moduleKey === 'rooms' &&
+                      (method === 'put' || method === 'patch') &&
+                      (name === 'Status' || name === 'status')
+                    const normalizedName = String(name).toLowerCase()
+                    const isContractRoomField = dungFormHopDong && normalizedName === 'roomid'
+                    const isContractTenantField = dungFormHopDong && normalizedName === 'tenantid'
+                    const isMeterReadingHiddenField =
+                      (dungFormChiSoDienNuoc || dungFormHoaDon) &&
+                      (normalizedName === 'roomid' || normalizedName === 'contractid')
+                    const isOriginalMeterReadingHiddenField =
+                      dungFormSuaChiSoDienGoc && normalizedName === 'roomcode'
+
+                    if (isMeterReadingHiddenField || isOriginalMeterReadingHiddenField) {
+                      return null
+                    }
+
+                    return (
+                      <label key={name} className="truong">
+                        <span>{nhanTruong(moduleKey, path, name)}</span>
+                        {isStatus ? (
+                          <select
+                            value={formValues[name] ?? ''}
+                            onChange={(event) => capNhatField(setFormValues, name, event.target.value)}
+                          >
+                            <option value="vacant">ChÆ°a cho thuÃª</option>
+                            <option value="occupied">ÄÃ£ cho thuÃª</option>
+                          </select>
+                        ) : isContractRoomField ? (
+                          <select
+                            value={formValues[name] ?? ''}
+                            onChange={(event) => capNhatField(setFormValues, name, event.target.value)}
+                            disabled={contractRoomOptionsLoading || contractRoomOptions.length === 0}
+                          >
+                            <option value="">
+                              {contractRoomOptionsLoading
+                                ? 'Äang táº£i phÃ²ng trá»‘ng...'
+                                : contractRoomOptions.length
+                                  ? 'Chá»n phÃ²ng chÆ°a Ä‘Æ°á»£c thuÃª'
+                                  : 'KhÃ´ng cÃ³ phÃ²ng trá»‘ng'}
+                            </option>
+                            {contractRoomOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : isContractTenantField ? (
+                          <select
+                            value={formValues[name] ?? ''}
+                            onChange={(event) => capNhatField(setFormValues, name, event.target.value)}
+                            disabled={contractTenantOptionsLoading || contractTenantOptions.length === 0}
+                          >
+                            <option value="">
+                              {contractTenantOptionsLoading
+                                ? 'Äang táº£i ngÆ°á»i thuÃª...'
+                                : contractTenantOptions.length
+                                  ? 'Chá»n ngÆ°á»i thuÃª'
+                                  : 'KhÃ´ng cÃ³ ngÆ°á»i thuÃª'}
+                            </option>
+                            {contractTenantOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type={kieuInput(schema, spec)}
+                            value={formValues[name] ?? ''}
+                            onChange={(event) => capNhatField(setFormValues, name, event.target.value)}
+                            placeholder={nhanTruong(moduleKey, path, name)}
+                          />
+                        )}
+                        <small>{typeLabel(resolved)}</small>
+                      </label>
+                    )
+                  })}
+                </div>
+
+                <div className="xem-truoc">
+                  <div className="xem-truoc__dau">
+                    <strong>Xem nhanh ná»™i dung gá»­i</strong>
+                    <span>Äá»‹nh dáº¡ng trá»±c quan</span>
+                  </div>
+                  {renderXemNhanhNoiDungGui(
+                    dungFormChiSoDienNuoc
+                      ? {
+                        roomSelector: meterReadingSelectedRoom,
+                        roomId: selectedActiveContract?.roomId ?? selectedActiveContract?.RoomId ?? '',
+                        contractId: selectedActiveContract?.contractId ?? selectedActiveContract?.ContractId ?? '',
+                        ...formValues,
+                      }
+                      : dungFormHoaDon
+                        ? {
+                          roomSelector: invoiceSelectedRoom,
+                          roomId: selectedActiveContract?.roomId ?? selectedActiveContract?.RoomId ?? '',
+                          contractId: selectedActiveContract?.contractId ?? selectedActiveContract?.ContractId ?? '',
+                          ...formValues,
+                        }
+                        : dungFormSuaChiSoDienGoc
+                          ? {
+                            roomSelector: meterReadingSelectedRoom,
+                            roomCode: meterReadingSelectedRoom,
+                            ...formValues,
+                          }
+                          : formValues,
+                  )}
+                </div>
+              </>
+            ) : jsonSchema && Object.keys(jsonSchema?.properties || {}).length ? (
+              <>
+                <div className="luoi-input">
+                  {Object.entries(jsonSchema.properties).map(([name, schema]) => {
+                    const resolved = resolveSchema(schema, spec) || {}
+                    const isStatusField =
+                      moduleKey === 'rooms' &&
+                      (method === 'put' || method === 'patch') &&
+                      (name === 'Status' || name === 'status')
+
+                    return (
+                      <label key={name} className="truong">
+                        <span>{nhanTruong(moduleKey, path, name)}</span>
+                        {isStatusField ? (
+                          <select
+                            value={bodyValues[name] ?? ''}
+                            onChange={(event) => capNhatField(setBodyValues, name, event.target.value)}
+                          >
+                            <option value="">Chá»n tráº¡ng thÃ¡i</option>
+                            <option value="vacant">ChÆ°a cho thuÃª</option>
+                            <option value="occupied">ÄÃ£ cho thuÃª</option>
+                          </select>
+                        ) : (
+                          <input
+                            type={kieuInput(schema, spec)}
+                            value={bodyValues[name] ?? ''}
+                            onChange={(event) => capNhatField(setBodyValues, name, event.target.value)}
+                            placeholder={nhanTruong(moduleKey, path, name)}
+                          />
+                        )}
+                        <small>{typeLabel(resolved)}</small>
+                      </label>
+                    )
+                  })}
+                </div>
+
+                <div className="xem-truoc">
+                  <div className="xem-truoc__dau">
+                    <strong>Xem nhanh ná»™i dung gá»­i</strong>
+                    <span>Äá»‹nh dáº¡ng trá»±c quan</span>
+                  </div>
+                  {renderXemNhanhNoiDungGui(bodyValues)}
+                </div>
+              </>
+            ) : formSchema ? (
+              <>
+                <div className="luoi-input">
+                  {Object.entries(formSchema?.properties || {}).map(([name, schema]) => {
+                    const resolved = resolveSchema(schema, spec) || {}
+                    if (resolved.format === 'binary') {
+                      return (
+                        <label key={name} className="truong">
+                          <span>{name}</span>
+                          <input
+                            type="file"
+                            onChange={(event) =>
+                              setFormFiles((current) => ({
+                                ...current,
+                                [name]: event.target.files?.[0],
+                              }))
+                            }
+                          />
+                          <small>Tá»‡p táº£i lÃªn</small>
+                        </label>
+                      )
+                    }
+
+                    return (
+                      <label key={name} className="truong">
+                        <span>{name}</span>
+                        <input
+                          type={kieuInput(schema, spec)}
+                          value={formValues[name] ?? ''}
+                          onChange={(event) => capNhatField(setFormValues, name, event.target.value)}
+                          placeholder={resolved.format === 'date' ? 'YYYY-MM-DD' : name}
+                        />
+                        <small>{typeLabel(resolved)}</small>
+                      </label>
+                    )
+                  })}
+                </div>
+
+                <div className="xem-truoc">
+                  <div className="xem-truoc__dau">
+                    <strong>Xem nhanh ná»™i dung gá»­i</strong>
+                    <span>Äá»‹nh dáº¡ng trá»±c quan</span>
+                  </div>
+                  <XemDuLieu
+                    data={{
+                      ...formValues,
+                      ...Object.fromEntries(
+                        Object.entries(formFiles).map(([key, file]) => [key, file ? file.name : 'ChÆ°a chá»n tá»‡p']),
+                      ),
+                    }}
+                    emptyText=""
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="khung-du-lieu khung-du-lieu--trong">KhÃ´ng cÃ³ dá»¯ liá»‡u gá»­i.</div>
+            )}
+          </section>
+        ) : null}
+      </div>
+
+      <div className="cum-nut-endpoint">
+        <button type="button" className="nut nut--chinh" disabled={dangGui} onClick={onSubmit}>
+          {dangGui ? 'Äang gá»­i...' : 'Gá»­i yÃªu cáº§u'}
+        </button>
+        <button type="button" className="nut nut--phu" onClick={resetForm}>
+          LÃ m má»›i biá»ƒu máº«u
+        </button>
+      </div>
+
+      {!laManDanhSachPhong && !laManDanhSachHoaDon && (!laThePostDonGian || phanHoi !== null) ? (
+        <div className={`thanh-trang-thai ${mauTrangThai}`}>{trangThai}</div>
+      ) : null}
+
+      {!laThePostDonGian || phanHoi !== null ? (
+        <section className="khoi-con">
+          <h4>Pháº£n há»“i</h4>
+          <div className="xem-truoc">
+            {laManDanhSachPhong ? (
+              <XemDanhSachPhong data={phanHoi} />
+            ) : laManDanhSachHoaDon ? (
+              <XemDanhSachHoaDonCoNut data={phanHoi} onReload={() => { setReloadKey((k) => k + 1) }} />
+            ) : moduleKey === 'contracts' && Array.isArray(phanHoi) && phanHoi.every(laDuLieuHopDong) ? (
+              <XemDanhSachHopDong data={phanHoi} />
+            ) : moduleKey === 'contracts' && laDuLieuHopDong(phanHoi) ? (
+              <XemHopDong data={phanHoi} hienThiSoTienPhaiDong={laXemTruocKetThucHopDong} />
+            ) : moduleKey === 'invoices' && Array.isArray(phanHoi) && phanHoi.every(laDuLieuHoaDon) ? (
+              <XemDanhSachHoaDon data={phanHoi} />
+            ) : moduleKey === 'invoices' && laDuLieuHoaDon(phanHoi) ? (
+              <XemHoaDonChiTiet data={phanHoi} />
+            ) : moduleKey === 'rooms' && laDuLieuPhong(phanHoi) ? (
+              <XemPhong data={phanHoi} />
+            ) : moduleKey === 'tenants' && Array.isArray(phanHoi) && phanHoi.every(laDuLieuNguoiThue) ? (
+              <XemDanhSachNguoiThue data={phanHoi} />
+            ) : moduleKey === 'tenants' && laDuLieuNguoiThue(phanHoi) ? (
+              <XemNguoiThue data={phanHoi} />
+            ) : (
+              <XemDuLieu data={phanHoi} emptyText="ChÆ°a cÃ³ pháº£n há»“i tá»« mÃ¡y chá»§." />
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {laXemTruocKetThucHopDong && phanHoi !== null && mauTrangThai === 'thanh-cong' ? (
+        <div style={{ marginTop: '16px' }}>
+          {!hienXacNhan ? (
+            <button
+              type="button"
+              className="nut"
+              style={{ background: '#dc2626', color: '#fff', width: '100%' }}
+              onClick={() => setHienXacNhan(true)}
+              disabled={dangKetThuc}
+            >
+              Káº¿t thÃºc há»£p Ä‘á»“ng
+            </button>
+          ) : (
+            <div className="khung-du-lieu" style={{ background: '#fef2f2', border: '1px solid #dc2626', borderRadius: '8px', padding: '16px' }}>
+              <p style={{ marginBottom: '12px', fontWeight: 600 }}>
+                Báº¡n cÃ³ cháº¯c muá»‘n káº¿t thÃºc há»£p Ä‘á»“ng nÃ y?
+              </p>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="nut"
+                  style={{ background: '#dc2626', color: '#fff', flex: 1 }}
+                  onClick={onKetThucHopDong}
+                  disabled={dangKetThuc}
+                >
+                  {dangKetThuc ? 'Äang xá»­ lÃ½...' : 'XÃ¡c nháº­n káº¿t thÃºc'}
+                </button>
+                <button
+                  type="button"
+                  className="nut nut--phu"
+                  style={{ flex: 1 }}
+                  onClick={() => setHienXacNhan(false)}
+                  disabled={dangKetThuc}
+                >
+                  Huá»·
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </article>
+  )
+
+  return (
+    <>
+      <button type="button" className="the-endpoint-rut-gon" onClick={() => setDangMo(true)}>
+        <span className={`method-tag method-tag--${method}`}>{method.toUpperCase()}</span>
+        <strong>{tenEndpoint}</strong>
+        {operation.summary && operation.summary !== tenEndpoint ? (
+          <span className="the-endpoint-rut-gon__mo-ta">{operation.summary}</span>
+        ) : null}
+      </button>
+
+      {dangMo ? (
+        <div className="lop-phu-endpoint" onClick={() => setDangMo(false)}>
+          <div className="hop-endpoint-mo" onClick={(event) => event.stopPropagation()}>
+            {noiDungChiTiet}
+          </div>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
+function TrangModule({ module, spec }) {
+  const endpoints = useMemo(() => {
+    const apiEndpoints = Object.entries(spec?.paths || {})
+      .filter(([path]) => path.startsWith(module.prefix))
+      .flatMap(([path, pathItem]) =>
+        METHOD_ORDER.filter((method) => pathItem[method]).map((method) => ({
+          path,
+          method,
+          operation: pathItem[method],
+        })),
+      )
+      .filter((item) => nenHienThiEndpoint(module.key, item.method, item.path))
+
+    if (module.key === 'meterreadings') {
+      const hasOriginalReadingPatch = apiEndpoints.some(
+        (item) =>
+          item.method.toLowerCase() === 'patch' &&
+          item.path.toLowerCase() === '/api/meterreadings/current-reading',
+      )
+
+      if (!hasOriginalReadingPatch) {
+        apiEndpoints.push(FALLBACK_METER_READING_UPDATE_ENDPOINT)
+      }
+    }
+
+    return apiEndpoints.sort((a, b) => sapXepEndpoint(module.key, a, b))
+  }, [module.prefix, module.key, spec])
+
+  if (module.key === 'invoices') {
+    return <InvoiceWorkspaceModern />
+  }
+
+  // ThÃªm MonthlyBulkCard vÃ o cuá»‘i danh sÃ¡ch invoices
+
+  return (
+    <div className="khung-trang">
+      <section className="danh-sach-endpoint">
+        {endpoints.map((item) => (
+          <EndpointCard
+            key={`${item.method}-${item.path}`}
+            method={item.method}
+            moduleKey={module.key}
+            operation={item.operation}
+            path={item.path}
+            spec={spec}
+          />
+        ))}
+      </section>
+    </div>
+  )
+}
+
+function App() {
+  const [trang] = useTrangHienTai()
+  const [spec, setSpec] = useState(null)
+  const [dangTai, setDangTai] = useState(true)
+  const [loi, setLoi] = useState('')
+
+  useEffect(() => {
+    let conHieuLuc = true
+
+    async function taiDuLieu() {
+      try {
+        setDangTai(true)
+        setLoi('')
+        const data = await taiSwagger()
+        if (conHieuLuc) {
+          setSpec(data)
+        }
+      } catch (error) {
+        if (conHieuLuc) {
+          setLoi(thongDiepLoi(error))
+        }
+      } finally {
+        if (conHieuLuc) {
+          setDangTai(false)
+        }
+      }
+    }
+
+    taiDuLieu()
+
+    return () => {
+      conHieuLuc = false
+    }
+  }, [])
+
+  const currentModule = MODULES.find((item) => item.key === trang) || MODULES[0]
+
+  return (
+    <div className="trang">
+      <aside className="thanh-ben">
+        <div className="thuong-hieu">
+          <span className="thuong-hieu__ky-tu">NT</span>
+          <div>
+            <h1>Quáº£n lÃ½ nhÃ  trá»</h1>
+          </div>
+        </div>
+
+        <nav className="dieu-huong">
+          {MODULES.map((item) => (
+            <a key={item.key} className={item.key === currentModule.key ? 'active' : ''} href={`#/${item.key}`}>
+              {item.title}
+            </a>
+          ))}
+        </nav>
+      </aside>
+
+      <main className="noi-dung">
+        {dangTai ? (
+          <section className="khung khung-trang">
+            <p className="nhan">Äang táº£i</p>
+            <h2>Äang Ä‘á»c tÃ i liá»‡u Swagger Ä‘á»ƒ dá»±ng giao diá»‡n theo tá»«ng controller</h2>
+          </section>
+        ) : loi ? (
+          <section className="khung khung-trang">
+            <p className="nhan">CÃ³ lá»—i káº¿t ná»‘i</p>
+            <h2>KhÃ´ng thá»ƒ láº¥y Ä‘Æ°á»£c tÃ i liá»‡u Swagger tá»« backend</h2>
+            <p className="mo-ta-trang">
+              HÃ£y báº£o Ä‘áº£m backend Ä‘ang cháº¡y á»Ÿ <code>http://localhost:5103</code> hoáº·c Vite proxy Ä‘ang trá» Ä‘Ãºng cá»•ng.
+            </p>
+            <div className="thong-bao-loi">{loi}</div>
+          </section>
+        ) : currentModule.key === 'tong-quan' ? (
+          <TrangTongQuan />
+        ) : (
+          <TrangModule module={currentModule} spec={spec} />
+        )}
+      </main>
+    </div>
+  )
+}
+
+export default App
+

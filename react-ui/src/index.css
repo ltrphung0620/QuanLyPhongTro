@@ -1,0 +1,81 @@
+:root {
+  font-family:
+    "Be Vietnam Pro",
+    "Segoe UI",
+    sans-serif;
+  line-height: 1.55;
+  font-weight: 400;
+  color: #2a1d15;
+  background: #f3ede3;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #f3ede3;
+}
+
+body,
+button,
+a,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  border: none;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+p,
+ul {
+  margin-top: 0;
+}
+/* .ban-ghi__field--noi-bat {
+  background: #f6efe7;
+  border: 1px solid #ead8c7;
+  border-radius: 14px;
+  padding: 12px;
+} */
+
+.gia-tri-noi-bat {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #1f4070;
+}
+strong.trang-thai-hop-dong {
+  font-weight: 800;
+}
+
+strong.trang-thai-hop-dong--active {
+  color: #1f8f4d !important;
+}
+
+strong.trang-thai-hop-dong--ended {
+  color: #c0392b !important;
+}
