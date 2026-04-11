@@ -20,6 +20,8 @@ builder.Services.AddScoped<IContractRepository, ContractRepository>();
 builder.Services.AddScoped<IContractService, ContractService>();
 builder.Services.AddScoped<IMeterReadingRepository, MeterReadingRepository>();
 builder.Services.AddScoped<IMeterReadingService, MeterReadingService>();
+builder.Services.AddHttpClient<OcrSpaceMeterReadingImageReader>();
+builder.Services.AddScoped<IMeterReadingImageReader, OcrSpaceMeterReadingImageReader>();
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<IPaymentTransactionRepository, PaymentTransactionRepository>();

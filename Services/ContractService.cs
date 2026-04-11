@@ -255,6 +255,44 @@ namespace NhaTro.Services
                 CurrentReading = dto.CurrentReading
             });
 
+            if (dto.CurrentReading.HasValue)
+            {
+                var existingMeter = await _meterReadingRepository.GetByContractAndMonthAsync(contract.ContractId, dto.ActualEndDate);
+                var latestReading = await _meterReadingRepository.GetLatestBeforeDateAsync(contract.RoomId, dto.ActualEndDate);
+                var previousReading = latestReading?.CurrentReading ?? 0;
+                var consumedUnits = dto.CurrentReading.Value - previousReading;
+
+                if (consumedUnits < 0)
+                {
+                    throw new InvalidOperationException("Sá»‘ Ä‘iá»‡n má»›i khÃ´ng há»£p lá»‡.");
+                }
+
+                if (existingMeter == null)
+                {
+                    await _meterReadingRepository.AddAsync(new MeterReading
+                    {
+                        RoomId = contract.RoomId,
+                        ContractId = contract.ContractId,
+                        BillingMonth = dto.ActualEndDate,
+                        PreviousReading = previousReading,
+                        CurrentReading = dto.CurrentReading.Value,
+                        ConsumedUnits = consumedUnits,
+                        UnitPrice = ELECTRIC_PRICE,
+                        Amount = consumedUnits * ELECTRIC_PRICE,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+                else
+                {
+                    existingMeter.BillingMonth = dto.ActualEndDate;
+                    existingMeter.PreviousReading = previousReading;
+                    existingMeter.CurrentReading = dto.CurrentReading.Value;
+                    existingMeter.ConsumedUnits = consumedUnits;
+                    existingMeter.UnitPrice = ELECTRIC_PRICE;
+                    existingMeter.Amount = consumedUnits * ELECTRIC_PRICE;
+                }
+            }
+
             Invoice? finalInvoice = null;
             if (preview.RemainingAmount > 0)
             {
@@ -282,7 +320,7 @@ namespace NhaTro.Services
                     DebtAmount = 0,
                     TotalAmount = preview.RemainingAmount,
                     Status = "unpaid",
-                    PaymentCode = $"FINAL-R{contract.RoomId}-{dto.ActualEndDate:yyyyMMdd}",
+                    PaymentCode = await GenerateFinalPaymentCodeAsync(contract.Room?.RoomCode, dto.ActualEndDate),
                     Note = string.Join(" | ", noteParts),
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -348,6 +386,38 @@ namespace NhaTro.Services
             {
                 throw new ArgumentException("Status chỉ được là 'active' hoặc 'ended'.");
             }
+        }
+
+        private async Task<string> GenerateFinalPaymentCodeAsync(string? roomCode, DateOnly actualEndDate)
+        {
+            var monthPart = actualEndDate.Month.ToString("00");
+            var roomPart = SanitizePaymentCodePart(roomCode);
+            var baseCode = $"FINAL-{monthPart}-{roomPart}";
+
+            if (!await _invoiceRepository.PaymentCodeExistsAsync(baseCode))
+            {
+                return baseCode;
+            }
+
+            for (var suffix = 2; suffix <= 99; suffix++)
+            {
+                var candidate = $"{baseCode}-{suffix:00}";
+                if (!await _invoiceRepository.PaymentCodeExistsAsync(candidate))
+                    return candidate;
+            }
+
+            throw new InvalidOperationException("Không thể sinh mã hóa đơn chốt duy nhất. Vui lòng thử lại.");
+        }
+
+        private static string SanitizePaymentCodePart(string? value)
+        {
+            var cleaned = new string((value ?? string.Empty)
+                .Trim()
+                .ToUpperInvariant()
+                .Where(char.IsLetterOrDigit)
+                .ToArray());
+
+            return string.IsNullOrWhiteSpace(cleaned) ? "ROOM" : cleaned;
         }
 
         private static ContractDto MapToDto(Contract contract)

@@ -8,6 +8,7 @@ namespace NhaTro.Interfaces.Services
         Task<MeterReadingDto> CreateAsync(CreateMeterReadingDto dto);
         Task<MeterReadingPreviewDto> PreviewAsync(CreateMeterReadingDto dto);
         Task<List<MeterReadingDto>> UpdateOriginalReadingAsync(UpdateOriginalMeterReadingDto dto);
+        Task<bool> DeleteAsync(int meterReadingId);
         Task<DeleteMeterReadingsByEndedContractDto?> DeleteByEndedContractAsync(int contractId);
         Task<MeterReadingImageResultDto> ReadFromImageAsync(IFormFile file);
         Task<List<MissingMeterDto>> GetMissingAsync(DateOnly month);

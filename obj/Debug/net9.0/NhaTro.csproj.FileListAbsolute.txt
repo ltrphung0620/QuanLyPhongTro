@@ -167,3 +167,4 @@ C:\Users\LENOVO\Downloads\NhaTro\obj\Debug\net9.0\NhaTro.genruntimeconfig.cache
 C:\Users\LENOVO\Downloads\NhaTro\obj\Debug\net9.0\ref\NhaTro.dll
 C:\Users\LENOVO\Downloads\NhaTro\bin\Debug\net9.0\react-ui\package-lock.json
 C:\Users\LENOVO\Downloads\NhaTro\bin\Debug\net9.0\react-ui\package.json
+C:\Users\LENOVO\Downloads\NhaTro\obj\Debug\net9.0\NhaTro.sourcelink.json

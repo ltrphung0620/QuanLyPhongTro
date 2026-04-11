@@ -52,7 +52,7 @@ namespace NhaTro.Services
             if (existed != null)
                 throw new InvalidOperationException("Đã có hóa đơn tháng này.");
 
-            var meter = await _meterRepo.GetByRoomAndMonthAsync(dto.RoomId, billingMonth);
+            var meter = await _meterRepo.GetByContractAndMonthAsync(contract.ContractId, billingMonth);
 
             var electricity = meter?.Amount ?? 0;
             var roomFee = contract.ActualRoomPrice;
@@ -100,7 +100,7 @@ namespace NhaTro.Services
                 DebtAmount = preview.DebtAmount,
                 TotalAmount = preview.TotalAmount,
                 Status = "unpaid",
-                PaymentCode = GeneratePaymentCode(dto.RoomId, billingMonth),
+                PaymentCode = await GeneratePaymentCodeAsync("monthly", billingMonth, dto.RoomId),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -221,7 +221,7 @@ namespace NhaTro.Services
                 if (existed != null)
                     continue;
 
-                var meter = await _meterRepo.GetByRoomAndMonthAsync(contract.RoomId, billingMonth);
+                var meter = await _meterRepo.GetByContractAndMonthAsync(contract.ContractId, billingMonth);
 
                 var electricity = meter?.Amount ?? 0;
                 var roomFee = contract.ActualRoomPrice;
@@ -276,7 +276,7 @@ namespace NhaTro.Services
                     DebtAmount = item.DebtAmount,
                     TotalAmount = item.TotalAmount,
                     Status = "unpaid",
-                    PaymentCode = GeneratePaymentCode(item.RoomId, billingMonth),
+                    PaymentCode = await GeneratePaymentCodeAsync("monthly", billingMonth, item.RoomId),
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
@@ -321,7 +321,7 @@ namespace NhaTro.Services
                 DebtAmount = dto.DebtAmount,
                 TotalAmount = total,
                 Status = "unpaid",
-                PaymentCode = GeneratePaymentCode(oldInvoice.RoomId, billingMonth),
+                PaymentCode = await GeneratePaymentCodeAsync(oldInvoice.InvoiceType, billingMonth, oldInvoice.RoomId),
                 Note = dto.Note,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -402,9 +402,41 @@ namespace NhaTro.Services
             return total < 0 ? 0 : total;
         }
 
-        private static string GeneratePaymentCode(int roomId, DateOnly billingMonth)
+        private async Task<string> GeneratePaymentCodeAsync(string? invoiceType, DateOnly billingMonth, int roomId)
         {
-            return $"INV-R{roomId}-{billingMonth:yyyyMM}";
+            var prefix = string.Equals(invoiceType?.Trim(), "final", StringComparison.OrdinalIgnoreCase)
+                ? "FINAL"
+                : "MONTHLY";
+            var room = await _roomRepo.GetByIdAsync(roomId)
+                ?? throw new InvalidOperationException("Không tìm thấy phòng để sinh mã hóa đơn.");
+            var roomCode = SanitizePaymentCodePart(room.RoomCode);
+            var monthPart = billingMonth.Month.ToString("00");
+            var baseCode = $"{prefix}-{monthPart}-{roomCode}";
+
+            if (!await _invoiceRepo.PaymentCodeExistsAsync(baseCode))
+            {
+                return baseCode;
+            }
+
+            for (var suffix = 2; suffix <= 99; suffix++)
+            {
+                var candidate = $"{baseCode}-{suffix:00}";
+                if (!await _invoiceRepo.PaymentCodeExistsAsync(candidate))
+                    return candidate;
+            }
+
+            throw new InvalidOperationException("Không thể sinh mã hóa đơn duy nhất. Vui lòng thử lại.");
+        }
+
+        private static string SanitizePaymentCodePart(string? value)
+        {
+            var cleaned = new string((value ?? string.Empty)
+                .Trim()
+                .ToUpperInvariant()
+                .Where(char.IsLetterOrDigit)
+                .ToArray());
+
+            return string.IsNullOrWhiteSpace(cleaned) ? "ROOM" : cleaned;
         }
 
         private static InvoiceDto MapToDto(Invoice i)

@@ -82,11 +82,37 @@ namespace NhaTro.Controllers
             }
         }
 
+        [HttpDelete("{id:int}")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            try
+            {
+                var deleted = await _service.DeleteAsync(id);
+                if (!deleted)
+                {
+                    return NotFound(new { message = "Không tìm thấy bản ghi chỉ số điện." });
+                }
+
+                return Ok(new { message = "Đã xóa bản ghi chỉ số điện." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpPost("read-from-image")]
         public async Task<IActionResult> ReadFromImage([FromForm] MeterReadingFromImageDto dto)
         {
-            var result = await _service.ReadFromImageAsync(dto.Image);
-            return Ok(result);
+            try
+            {
+                var result = await _service.ReadFromImageAsync(dto.Image);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
         [HttpGet("missing")]
         public async Task<IActionResult> GetMissing([FromQuery] DateOnly month)
