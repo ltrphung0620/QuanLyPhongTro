@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using NhaTro.Dtos.Invoices;
 using NhaTro.Dtos.Payments;
 using NhaTro.Interfaces.Repositories;
@@ -52,12 +53,14 @@ namespace NhaTro.Services
                 transactionDate = parsedDate;
             }
 
+            var resolvedPaymentCode = await ResolvePaymentCodeAsync(dto);
+
             var payment = new PaymentTransaction
             {
                 Provider = "sepay",
                 ProviderTransactionId = dto.Id.Trim(),
                 ReferenceCode = string.IsNullOrWhiteSpace(dto.ReferenceCode) ? null : dto.ReferenceCode.Trim(),
-                PaymentCode = string.IsNullOrWhiteSpace(dto.Code) ? null : dto.Code.Trim(),
+                PaymentCode = resolvedPaymentCode,
                 AccountNumber = string.IsNullOrWhiteSpace(dto.AccountNumber) ? null : dto.AccountNumber.Trim(),
                 TransferType = string.IsNullOrWhiteSpace(dto.TransferType) ? null : dto.TransferType.Trim().ToLower(),
                 TransferAmount = dto.TransferAmount,
@@ -175,6 +178,54 @@ namespace NhaTro.Services
             await _paymentRepo.SaveChangesAsync();
 
             return MapToDto(payment);
+        }
+
+        private async Task<string?> ResolvePaymentCodeAsync(SepayWebhookDto dto)
+        {
+            if (!string.IsNullOrWhiteSpace(dto.Code))
+                return dto.Code.Trim();
+
+            var candidates = new[]
+            {
+                dto.Content,
+                dto.Description,
+                dto.ReferenceCode,
+            }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .ToList();
+
+            if (!candidates.Count)
+                return null;
+
+            var unpaidInvoices = await _invoiceService.GetUnpaidAsync();
+            var paymentCodes = unpaidInvoices
+                .Select(invoice => invoice.PaymentCode?.Trim())
+                .Where(code => !string.IsNullOrWhiteSpace(code))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(code => code!.Length)
+                .ToList();
+
+            foreach (var rawCandidate in candidates)
+            {
+                var normalizedCandidate = NormalizeText(rawCandidate);
+                foreach (var paymentCode in paymentCodes)
+                {
+                    if (paymentCode == null) continue;
+
+                    var normalizedCode = NormalizeText(paymentCode);
+                    if (normalizedCandidate.Contains(normalizedCode, StringComparison.OrdinalIgnoreCase))
+                        return paymentCode;
+                }
+            }
+
+            return null;
+        }
+
+        private static string NormalizeText(string value)
+        {
+            var upper = value.Trim().ToUpperInvariant();
+            return Regex.Replace(upper, "[^A-Z0-9]", string.Empty);
         }
 
         private static PaymentTransactionDto MapToDto(PaymentTransaction p)

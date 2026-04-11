@@ -46,6 +46,14 @@ namespace NhaTro.Repositories
                 .ToListAsync();
         }
 
+        public async Task<MeterReading?> GetByIdAsync(int meterReadingId)
+        {
+            return await _context.MeterReadings
+                .Include(x => x.Room)
+                .Include(x => x.Contract)
+                .FirstOrDefaultAsync(x => x.MeterReadingId == meterReadingId);
+        }
+
         public async Task<MeterReading?> GetByRoomAndMonthAsync(int roomId, DateOnly billingMonth)
         {
             var startOfMonth = new DateOnly(billingMonth.Year, billingMonth.Month, 1);
@@ -53,6 +61,19 @@ namespace NhaTro.Repositories
 
             return await _context.MeterReadings
                 .Where(x => x.RoomId == roomId &&
+                            x.BillingMonth >= startOfMonth &&
+                            x.BillingMonth < startOfNextMonth)
+                .OrderByDescending(x => x.BillingMonth)
+                .FirstOrDefaultAsync();
+        }
+
+        public async Task<MeterReading?> GetByContractAndMonthAsync(int contractId, DateOnly billingMonth)
+        {
+            var startOfMonth = new DateOnly(billingMonth.Year, billingMonth.Month, 1);
+            var startOfNextMonth = startOfMonth.AddMonths(1);
+
+            return await _context.MeterReadings
+                .Where(x => x.ContractId == contractId &&
                             x.BillingMonth >= startOfMonth &&
                             x.BillingMonth < startOfNextMonth)
                 .OrderByDescending(x => x.BillingMonth)
@@ -90,6 +111,15 @@ namespace NhaTro.Repositories
                 .FirstOrDefaultAsync();
         }
 
+        public async Task<MeterReading?> GetLatestBeforeDateAsync(int roomId, DateOnly date)
+        {
+            return await _context.MeterReadings
+                .Where(x => x.RoomId == roomId &&
+                            x.BillingMonth < date)
+                .OrderByDescending(x => x.BillingMonth)
+                .FirstOrDefaultAsync();
+        }
+
         public async Task AddAsync(MeterReading meterReading)
         {
             await _context.MeterReadings.AddAsync(meterReading);
@@ -98,6 +128,11 @@ namespace NhaTro.Repositories
         public void UpdateRange(IEnumerable<MeterReading> meterReadings)
         {
             _context.MeterReadings.UpdateRange(meterReadings);
+        }
+
+        public void Delete(MeterReading meterReading)
+        {
+            _context.MeterReadings.Remove(meterReading);
         }
 
         public void DeleteRange(IEnumerable<MeterReading> meterReadings)

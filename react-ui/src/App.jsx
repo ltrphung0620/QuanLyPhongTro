@@ -9,7 +9,7 @@ const MODULES = [
   { key: 'meterreadings', title: 'Chỉ số điện nước', prefix: '/api/MeterReadings' },
   { key: 'invoices', title: 'Hóa đơn', prefix: '/api/Invoices' },
   { key: 'payments', title: 'Thanh toán', prefix: '/api/Payments' },
-  { key: 'transactions', title: 'Thu chi', prefix: '/api/Transactions' },
+  { key: 'transactions', title: 'Thu chi phát sinh', prefix: '/api/Transactions' },
   { key: 'reports', title: 'Báo cáo', prefix: '/api/Reports' },
 ]
 
@@ -27,6 +27,7 @@ const FALLBACK_METER_READING_UPDATE_ENDPOINT = {
           schema: {
             type: 'object',
             properties: {
+              meterReadingId: { type: 'integer', example: 12 },
               roomCode: { type: 'string', example: 'A01' },
               billingMonth: { type: 'string', format: 'date', example: taoThangMacDinh() },
               currentReading: { type: 'integer', example: 150 },
@@ -161,6 +162,112 @@ function thongDiepLoi(error) {
   return 'Có lỗi xảy ra khi gọi API.'
 }
 
+function tachMaPhongDeSapXep(roomCode) {
+  const raw = String(roomCode || '').trim()
+  const normalized = raw.toLowerCase()
+
+  const kiosMatch = normalized.match(/^(kios|kiosk|kiot|kiots)\s*[-_ ]*(\d+)?$/i)
+  if (kiosMatch) {
+    return {
+      group: 0,
+      prefix: 'kios',
+      number: Number.parseInt(kiosMatch[2] || '0', 10),
+      raw,
+    }
+  }
+
+  const alphaNumMatch = normalized.match(/^([a-z]+)\s*[-_ ]*(\d+)$/i)
+  if (alphaNumMatch) {
+    return {
+      group: 1,
+      prefix: alphaNumMatch[1],
+      number: Number.parseInt(alphaNumMatch[2], 10),
+      raw,
+    }
+  }
+
+  const numOnlyMatch = normalized.match(/^(\d+)$/)
+  if (numOnlyMatch) {
+    return {
+      group: 1,
+      prefix: '',
+      number: Number.parseInt(numOnlyMatch[1], 10),
+      raw,
+    }
+  }
+
+  return {
+    group: 2,
+    prefix: normalized,
+    number: Number.POSITIVE_INFINITY,
+    raw,
+  }
+}
+
+function soSanhMaPhong(a, b) {
+  const roomA = tachMaPhongDeSapXep(a)
+  const roomB = tachMaPhongDeSapXep(b)
+
+  if (roomA.group !== roomB.group) return roomA.group - roomB.group
+
+  if (roomA.prefix !== roomB.prefix) {
+    return roomA.prefix.localeCompare(roomB.prefix, 'vi', { sensitivity: 'base' })
+  }
+
+  if (roomA.number !== roomB.number) return roomA.number - roomB.number
+
+  return roomA.raw.localeCompare(roomB.raw, 'vi', { numeric: true, sensitivity: 'base' })
+}
+
+async function nenAnhOCR(file, { maxDimension = 1400, quality = 0.82 } = {}) {
+  if (!(file instanceof File) || !file.type.startsWith('image/')) {
+    return file
+  }
+
+  const objectUrl = URL.createObjectURL(file)
+
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error('Không thể đọc tệp ảnh để tối ưu OCR.'))
+      img.src = objectUrl
+    })
+
+    const width = image.width
+    const height = image.height
+    const scale = Math.min(1, maxDimension / Math.max(width, height))
+
+    if (scale >= 0.999) {
+      return file
+    }
+
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(width * scale))
+    canvas.height = Math.max(1, Math.round(height * scale))
+
+    const context = canvas.getContext('2d')
+    if (!context) {
+      return file
+    }
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob(resolve, 'image/jpeg', quality)
+    })
+
+    if (!blob) {
+      return file
+    }
+
+    const baseName = file.name.replace(/\.[^.]+$/, '')
+    return new File([blob], `${baseName}-ocr.jpg`, { type: 'image/jpeg' })
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
 function laFormTaoPhong(moduleKey, method, path) {
   return moduleKey === 'rooms' && method === 'post' && path.toLowerCase() === '/api/rooms'
 }
@@ -212,6 +319,15 @@ function laPhongChuaThue(room) {
 function nhanTruong(moduleKey, path, field) {
   const normalize = (value) => String(value || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
   const normalizedField = normalize(field)
+  const normalizedPath = String(path || '').toLowerCase()
+
+  if (
+    moduleKey === 'contracts' &&
+    normalizedField === 'currentreading' &&
+    (normalizedPath.includes('/end-preview') || normalizedPath.includes('/end'))
+  ) {
+    return 'Số điện lúc kết thúc hợp đồng'
+  }
 
   const map = {
     rooms: {
@@ -407,6 +523,10 @@ function nenHienThiEndpoint(moduleKey, method, path) {
     }
   }
 
+  if (moduleKey === 'payments' && method === 'post' && normalizedPath === '/api/payments/sepay/webhook') {
+    return false
+  }
+
   return true
 }
 
@@ -545,6 +665,21 @@ function dinhDangNgay(value) {
   if (Number.isNaN(date.getTime())) return String(value)
 
   return new Intl.DateTimeFormat('vi-VN').format(date)
+}
+
+function dinhDangNgayGio(value) {
+  if (value === null || value === undefined || value === '') return 'Không có dữ liệu'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date)
 }
 
 function dinhDangThang(value) {
@@ -736,34 +871,37 @@ function trangThaiPhong(value) {
   return { label: value || 'Chưa rõ', css: 'mac-dinh' }
 }
 
-function XemDanhSachPhong({ data }) {
-  const [search, setSearch] = useState('')
+function XemDanhSachPhong({ data, hideSearch = false, initialSearch = '' }) {
+  const [search, setSearch] = useState(initialSearch)
 
   if (!Array.isArray(data) || !data.length) {
     return <div className="khung-du-lieu khung-du-lieu--trong">Không có phòng nào.</div>
   }
 
-  const filtered = search.trim()
-    ? data.filter((room) =>
+  const filtered = [...data]
+    .sort((a, b) => soSanhMaPhong(a.roomCode ?? a.RoomCode, b.roomCode ?? b.RoomCode))
+    .filter((room) =>
+      !search.trim() ||
       String(room.roomCode ?? room.RoomCode ?? '')
         .toLowerCase()
         .includes(search.trim().toLowerCase())
     )
-    : data
 
   return (
     <div className="danh-sach-phong-wrap">
-      <div className="bo-loc-hop-dong" style={{ marginBottom: '12px' }}>
-        <label className="truong">
-          <span>Tìm theo mã phòng</span>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Nhập mã phòng, ví dụ: A01"
-          />
-        </label>
-      </div>
+      {!hideSearch ? (
+        <div className="bo-loc-hop-dong" style={{ marginBottom: '12px' }}>
+          <label className="truong">
+            <span>Tìm theo mã phòng</span>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Nhập mã phòng, ví dụ: A01"
+            />
+          </label>
+        </div>
+      ) : null}
 
       {filtered.length === 0 ? (
         <div className="khung-du-lieu khung-du-lieu--trong">Không tìm thấy phòng phù hợp.</div>
@@ -772,7 +910,7 @@ function XemDanhSachPhong({ data }) {
           {filtered.map((room, index) => {
             const status = trangThaiPhong(room.status ?? room.Status)
             return (
-              <div key={`${room.roomCode || room.RoomCode || 'room'}-${index}`} className="dong-phong">
+              <div key={`${room.roomCode || room.RoomCode || 'room'}-${index}`} className="dong-phong invoice-card">
                 <div className="dong-phong__o">
                   <span>Mã phòng</span>
                   <strong>{room.roomCode ?? room.RoomCode ?? 'Không có dữ liệu'}</strong>
@@ -864,9 +1002,9 @@ function laDuLieuHopDong(value) {
   )
 }
 
-function XemDanhSachHopDong({ data }) {
-  const [searchText, setSearchText] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+function XemDanhSachHopDong({ data, hideFilters = false, initialSearch = '', initialStatus = 'all' }) {
+  const [searchText, setSearchText] = useState(initialSearch)
+  const [statusFilter, setStatusFilter] = useState(initialStatus)
   const [popupContract, setPopupContract] = useState(null)
   if (!Array.isArray(data) || !data.length) {
     return <div className="khung-du-lieu khung-du-lieu--trong">Không có hợp đồng nào.</div>
@@ -895,25 +1033,27 @@ function XemDanhSachHopDong({ data }) {
 
   return (
     <div className="danh-sach-hop-dong-wrap">
-      <div className="bo-loc-hop-dong">
-        <label className="truong">
-          <span>Tìm hợp đồng</span>
-          <input
-            type="text"
-            value={searchText}
-            onChange={(event) => setSearchText(event.target.value)}
-            placeholder="Tìm theo mã phòng, người thuê hoặc mã hợp đồng"
-          />
-        </label>
-        <label className="truong">
-          <span>Lọc trạng thái</span>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="all">Tất cả trạng thái</option>
-            <option value="active">Còn hiệu lực</option>
-            <option value="ended">Hết hạn</option>
-          </select>
-        </label>
-      </div>
+      {!hideFilters ? (
+        <div className="bo-loc-hop-dong">
+          <label className="truong">
+            <span>Tìm hợp đồng</span>
+            <input
+              type="text"
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="Tìm theo mã phòng, người thuê hoặc mã hợp đồng"
+            />
+          </label>
+          <label className="truong">
+            <span>Lọc trạng thái</span>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">Tất cả trạng thái</option>
+              <option value="active">Còn hiệu lực</option>
+              <option value="ended">Hết hạn</option>
+            </select>
+          </label>
+        </div>
+      ) : null}
 
       {!filteredContracts.length ? (
         <div className="khung-du-lieu khung-du-lieu--trong">Không có hợp đồng phù hợp với bộ lọc.</div>
@@ -1312,6 +1452,14 @@ function XemDanhSachHoaDonCoNut({ data, onReload }) {
                   >
                     Chưa thanh toán
                   </button>
+                  <button
+                    type="button"
+                    className="nut invoice-inline-button invoice-action-button invoice-action-button--unpaid"
+                    disabled={isDeleting || isLoading}
+                    onClick={() => xoaHoaDon(invoiceId)}
+                  >
+                    {isDeleting ? 'Đang xóa...' : 'Xóa'}
+                  </button>
                 </div>
                 {msg ? (
                   <div className="invoice-inline-message" style={{ color: msg.ok ? '#16a34a' : '#dc2626' }}>
@@ -1383,15 +1531,6 @@ function XemDanhSachHoaDonCoNut({ data, onReload }) {
                     {modalDangLuu ? 'Đang lưu...' : 'Lưu thay đổi'}
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  className="nut"
-                  style={{ background: '#dc2626', color: '#fff' }}
-                  onClick={() => xoaHoaDon(modalInvoiceId)}
-                  disabled={modalDangXoa}
-                >
-                  {modalDangXoa ? 'Đang xóa...' : 'Xóa hóa đơn'}
-                </button>
               </div>
             </article>
           </div>
@@ -1450,6 +1589,8 @@ function XemHoaDonChiTiet({ data, actions = null }) {
 
   const hiddenFields = new Set(['invoiceid'])
   const entries = Object.entries(data).filter(([key]) => !hiddenFields.has(key.toLowerCase()))
+  const vietQrUrl = taoUrlVietQrHoaDon(data)
+  const vietQrAddInfo = taoNoiDungVietQrHoaDon(data)
 
   return (
     <div className="danh-sach-phong invoice-cards">
@@ -1461,6 +1602,35 @@ function XemHoaDonChiTiet({ data, actions = null }) {
           </div>
         ))}
       </div>
+      {vietQrUrl ? (
+        <div className="invoice-qr-card">
+          <div className="invoice-qr-card__header">
+            <strong>QR thanh toán hóa đơn</strong>
+            <span>VietQR MB Bank 556062006</span>
+          </div>
+          <div className="invoice-qr-card__body">
+            <img src={vietQrUrl} alt="QR thanh toán hóa đơn" className="invoice-qr-card__image" />
+            <div className="invoice-qr-card__meta">
+              <div className="dong-phong__o">
+                <span>Ngân hàng</span>
+                <strong>MB Bank</strong>
+              </div>
+              <div className="dong-phong__o">
+                <span>Số tài khoản</span>
+                <strong>556062006</strong>
+              </div>
+              <div className="dong-phong__o">
+                <span>Chủ tài khoản</span>
+                <strong>LaiTrinhPhuocHung</strong>
+              </div>
+              <div className="dong-phong__o">
+                <span>Nội dung chuyển khoản</span>
+                <strong>{vietQrAddInfo}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {actions ? <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>{actions}</div> : null}
     </div>
   )
@@ -1475,6 +1645,40 @@ function layLoaiHoaDon(invoice) {
 
 function layTongTienHoaDon(invoice) {
   return Number(invoice?.totalAmount ?? invoice?.TotalAmount ?? 0)
+}
+
+function lamTronSoTien(value) {
+  const number = Number(value ?? 0)
+  if (!Number.isFinite(number)) return 0
+  return Math.max(0, Math.round(number))
+}
+
+function layMaHoaDonQr(invoice) {
+  const paymentCode = String(invoice?.paymentCode ?? invoice?.PaymentCode ?? '').trim()
+  if (paymentCode) return paymentCode
+
+  const invoiceId = invoice?.invoiceId ?? invoice?.InvoiceId
+  if (invoiceId === null || invoiceId === undefined || invoiceId === '') return ''
+  return `HD${invoiceId}`
+}
+
+function taoNoiDungVietQrHoaDon(invoice) {
+  return layMaHoaDonQr(invoice)
+}
+
+function taoUrlVietQrHoaDon(invoice) {
+  const totalAmount = lamTronSoTien(invoice?.totalAmount ?? invoice?.TotalAmount)
+  const addInfo = taoNoiDungVietQrHoaDon(invoice)
+
+  if (!totalAmount || !addInfo) return ''
+
+  const params = new URLSearchParams({
+    amount: String(totalAmount),
+    addInfo,
+    accountName: 'LaiTrinhPhuocHung',
+  })
+
+  return `https://img.vietqr.io/image/mbbank-556062006-compact2.jpg?${params.toString()}`
 }
 
 function XemNguoiThue({ data }) {
@@ -1499,27 +1703,388 @@ function XemNguoiThue({ data }) {
   )
 }
 
-function XemDanhSachNguoiThue({ data }) {
+function ContractsWorkspace({ spec }) {
+  const [contracts, setContracts] = useState([])
+  const [tuKhoaFilter, setTuKhoaFilter] = useState('')
+  const [trangThaiFilter, setTrangThaiFilter] = useState('all')
+  const [dangTai, setDangTai] = useState(false)
+  const [loi, setLoi] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
+
+  const contractActions = useMemo(() => {
+    return Object.entries(spec?.paths || {})
+      .filter(([path]) => path.toLowerCase().startsWith('/api/contracts'))
+      .flatMap(([path, pathItem]) =>
+        METHOD_ORDER.filter((method) => pathItem[method]).map((method) => ({
+          path,
+          method,
+          operation: pathItem[method],
+        })),
+      )
+      .filter((item) => nenHienThiEndpoint('contracts', item.method, item.path))
+      .filter((item) => !(item.method.toLowerCase() === 'get' && item.path.toLowerCase() === '/api/contracts'))
+      .sort((a, b) => sapXepEndpoint('contracts', a, b))
+  }, [spec])
+
+  useEffect(() => {
+    let ignore = false
+
+    async function taiDanhSachHopDong() {
+      setDangTai(true)
+      setLoi('')
+      try {
+        const result = await guiRequest('/api/Contracts', { method: 'GET' })
+        if (!ignore) {
+          setContracts(Array.isArray(result.payload) ? result.payload : [])
+        }
+      } catch (error) {
+        if (!ignore) {
+          setLoi(error.message || 'Không tải được danh sách hợp đồng.')
+          setContracts([])
+        }
+      } finally {
+        if (!ignore) {
+          setDangTai(false)
+        }
+      }
+    }
+
+    taiDanhSachHopDong()
+    return () => {
+      ignore = true
+    }
+  }, [reloadKey])
+
+  const danhSachLoc = useMemo(() => {
+    const normalizedSearch = tuKhoaFilter.trim().toLowerCase()
+    return contracts.filter((contract) => {
+      const status = String(contract.status ?? contract.Status ?? '').trim().toLowerCase()
+      const roomCode = String(contract.roomCode ?? contract.RoomCode ?? '').trim().toLowerCase()
+      const tenantName = String(contract.tenantName ?? contract.TenantName ?? '').trim().toLowerCase()
+      const contractId = String(contract.contractId ?? contract.ContractId ?? '').trim().toLowerCase()
+
+      const matchesStatus =
+        trangThaiFilter === 'all' ||
+        (trangThaiFilter === 'active' && status === 'active') ||
+        (trangThaiFilter === 'ended' && status === 'ended')
+
+      const matchesSearch =
+        !normalizedSearch ||
+        roomCode.includes(normalizedSearch) ||
+        tenantName.includes(normalizedSearch) ||
+        contractId.includes(normalizedSearch)
+
+      return matchesStatus && matchesSearch
+    })
+  }, [contracts, tuKhoaFilter, trangThaiFilter])
+
+  const tongHopDong = contracts.length
+  const hopDongConHieuLuc = contracts.filter((item) => String(item.status ?? item.Status ?? '').trim().toLowerCase() === 'active').length
+  const hopDongHetHan = contracts.filter((item) => String(item.status ?? item.Status ?? '').trim().toLowerCase() === 'ended').length
+
+  return (
+    <div className="invoice-workspace contracts-workspace">
+      <section className="invoice-hero khung">
+        <div className="invoice-hero__main">
+          <p className="nhan">Hợp đồng</p>
+          <div className="invoice-toolbar contracts-toolbar">
+            <label className="invoice-search">
+              <span>Tìm hợp đồng</span>
+              <input
+                type="text"
+                value={tuKhoaFilter}
+                onChange={(event) => setTuKhoaFilter(event.target.value)}
+                placeholder="Tìm theo mã phòng, người thuê hoặc mã hợp đồng"
+              />
+            </label>
+            <label className="invoice-search invoice-search--status">
+              <span>Trạng thái hợp đồng</span>
+              <select value={trangThaiFilter} onChange={(event) => setTrangThaiFilter(event.target.value)}>
+                <option value="all">Tất cả</option>
+                <option value="active">Còn hiệu lực</option>
+                <option value="ended">Hết hạn</option>
+              </select>
+            </label>
+            <button type="button" className="nut nut--phu contracts-toolbar-refresh" onClick={() => setReloadKey((value) => value + 1)} disabled={dangTai}>
+              {dangTai ? 'Đang tải...' : 'Làm mới danh sách'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {contractActions.length ? (
+        <section className="khung contracts-actions-card">
+          <div className="danh-sach-endpoint contract-actions-inline">
+            {contractActions.map((item) => (
+              <EndpointCard
+                key={`${item.method}-${item.path}`}
+                method={item.method}
+                moduleKey="contracts"
+                operation={item.operation}
+                path={item.path}
+                spec={spec}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="invoice-stats">
+        <article className="invoice-stat-card">
+          <span>Tổng hợp đồng</span>
+          <strong>{tongHopDong}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Còn hiệu lực</span>
+          <strong>{hopDongConHieuLuc}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Đã hết hạn</span>
+          <strong>{hopDongHetHan}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Hiển thị</span>
+          <strong>{`${danhSachLoc.length}/${contracts.length}`}</strong>
+        </article>
+      </section>
+
+      <section className="khung">
+        <div className="xem-truoc__dau">
+          <strong>Danh sách hợp đồng</strong>
+          <span>{`Hiển thị ${danhSachLoc.length}/${contracts.length} hợp đồng`}</span>
+        </div>
+        {loi ? <div className="thong-bao-loi">{loi}</div> : null}
+        {dangTai ? (
+          <div className="khung-du-lieu khung-du-lieu--trong">Đang tải danh sách hợp đồng...</div>
+        ) : danhSachLoc.length ? (
+          <XemDanhSachHopDong data={danhSachLoc} hideFilters />
+        ) : (
+          <div className="khung-du-lieu khung-du-lieu--trong">Không có hợp đồng nào khớp với bộ lọc hiện tại.</div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function XemDanhSachNguoiThue({ data, hideSearch = false, initialSearch = '' }) {
+  const [search, setSearch] = useState(initialSearch)
+
   if (!Array.isArray(data) || !data.length) {
     return <div className="khung-du-lieu khung-du-lieu--trong">Không có người thuê.</div>
   }
 
   const hiddenFields = new Set(['tenantid', 'roomid', 'createdat', 'updatedat'])
+  const filtered = data.filter((tenant) => {
+    const keyword = search.trim().toLowerCase()
+    if (!keyword) return true
+
+    const fullName = String(tenant.fullName ?? tenant.FullName ?? '').trim().toLowerCase()
+    const phone = String(tenant.phone ?? tenant.Phone ?? '').trim().toLowerCase()
+    const cccd = String(tenant.cccd ?? tenant.CCCD ?? '').trim().toLowerCase()
+    return fullName.includes(keyword) || phone.includes(keyword) || cccd.includes(keyword)
+  })
 
   return (
-    <div className="danh-sach-phong">
-      {data.map((tenant, index) => (
-        <div key={`${tenant.id ?? tenant.Id ?? index}`} className="dong-phong dong-phong--nguoi-thue">
-          {Object.entries(tenant)
-            .filter(([key]) => !hiddenFields.has(key.toLowerCase()))
-            .map(([key, value]) => (
-              <div key={key} className="dong-phong__o">
-                <span>{nhanTruong('tenants', '', key)}</span>
-                <strong>{giaTriDep(value, key)}</strong>
-              </div>
-            ))}
+    <div className="danh-sach-phong-wrap">
+      {!hideSearch ? (
+        <div className="bo-loc-hop-dong" style={{ marginBottom: '12px' }}>
+          <label className="truong">
+            <span>Tìm người thuê</span>
+            <input
+              type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Nhập tên, số điện thoại hoặc CCCD"
+            />
+          </label>
         </div>
-      ))}
+      ) : null}
+
+      {filtered.length === 0 ? (
+        <div className="khung-du-lieu khung-du-lieu--trong">Không tìm thấy người thuê phù hợp.</div>
+      ) : (
+        <div className="danh-sach-phong">
+          {filtered.map((tenant, index) => {
+            const fullName = tenant.fullName ?? tenant.FullName
+            const phone = tenant.phone ?? tenant.Phone
+            const cccd = tenant.cccd ?? tenant.CCCD
+
+            return (
+              <div key={`${tenant.id ?? tenant.Id ?? tenant.tenantId ?? tenant.TenantId ?? index}`} className="dong-phong dong-phong--tenant-compact invoice-card">
+                <div className="dong-phong__o">
+                  <span>Tên người thuê</span>
+                  <strong className="tenant-name-highlight">{fullName || 'Không có dữ liệu'}</strong>
+                </div>
+                <div className="dong-phong__o">
+                  <span>Số điện thoại</span>
+                  <strong>{phone || 'Không có dữ liệu'}</strong>
+                </div>
+                <div className="dong-phong__o">
+                  <span>CCCD</span>
+                  <strong>{cccd || 'Không có dữ liệu'}</strong>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TenantsWorkspace({ spec }) {
+  const [tenants, setTenants] = useState([])
+  const [tuKhoaFilter, setTuKhoaFilter] = useState('')
+  const [dangTai, setDangTai] = useState(false)
+  const [loi, setLoi] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
+
+  const tenantActions = useMemo(() => {
+    const actions = Object.entries(spec?.paths || {})
+      .filter(([path]) => path.toLowerCase().startsWith('/api/tenants'))
+      .flatMap(([path, pathItem]) =>
+        METHOD_ORDER.filter((method) => pathItem[method]).map((method) => ({
+          path,
+          method,
+          operation: pathItem[method],
+        })),
+      )
+      .filter((item) => {
+        const method = item.method.toLowerCase()
+        const path = item.path.toLowerCase()
+        return (
+          (method === 'post' && path === '/api/tenants') ||
+          (method === 'put' && (path === '/api/tenants/{id:int}' || path === '/api/tenants/{id}'))
+        )
+      })
+      .sort((a, b) => sapXepEndpoint('tenants', a, b))
+
+    const seen = new Set()
+    return actions.filter((item) => {
+      const normalizedPath = item.path.toLowerCase().replace('{id:int}', '{id}')
+      const key = `${item.method.toLowerCase()} ${normalizedPath}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [spec])
+
+  useEffect(() => {
+    let ignore = false
+
+    async function taiDanhSachNguoiThue() {
+      setDangTai(true)
+      setLoi('')
+      try {
+        const result = await guiRequest('/api/Tenants', { method: 'GET' })
+        if (!ignore) {
+          setTenants(Array.isArray(result.payload) ? result.payload : [])
+        }
+      } catch (error) {
+        if (!ignore) {
+          setLoi(error.message || 'Không tải được danh sách người thuê.')
+          setTenants([])
+        }
+      } finally {
+        if (!ignore) {
+          setDangTai(false)
+        }
+      }
+    }
+
+    taiDanhSachNguoiThue()
+    return () => {
+      ignore = true
+    }
+  }, [reloadKey])
+
+  const danhSachLoc = useMemo(() => {
+    const keyword = tuKhoaFilter.trim().toLowerCase()
+    return tenants.filter((tenant) => {
+      if (!keyword) return true
+      const fullName = String(tenant.fullName ?? tenant.FullName ?? '').trim().toLowerCase()
+      const phone = String(tenant.phone ?? tenant.Phone ?? '').trim().toLowerCase()
+      const cccd = String(tenant.cccd ?? tenant.CCCD ?? '').trim().toLowerCase()
+      return fullName.includes(keyword) || phone.includes(keyword) || cccd.includes(keyword)
+    })
+  }, [tenants, tuKhoaFilter])
+
+  const tongNguoiThue = tenants.length
+  const coSoDienThoai = tenants.filter((tenant) => String(tenant.phone ?? tenant.Phone ?? '').trim()).length
+  const coCccd = tenants.filter((tenant) => String(tenant.cccd ?? tenant.CCCD ?? '').trim()).length
+
+  return (
+    <div className="invoice-workspace tenants-workspace">
+      <section className="invoice-hero khung">
+        <div className="invoice-hero__main">
+          <p className="nhan">Người thuê</p>
+          <div className="invoice-toolbar tenants-toolbar">
+            <label className="invoice-search">
+              <span>Tìm người thuê</span>
+              <input
+                type="text"
+                value={tuKhoaFilter}
+                onChange={(event) => setTuKhoaFilter(event.target.value)}
+                placeholder="Nhập tên, số điện thoại hoặc CCCD"
+              />
+            </label>
+            <button type="button" className="nut nut--phu tenants-toolbar-refresh" onClick={() => setReloadKey((value) => value + 1)} disabled={dangTai}>
+              {dangTai ? 'Đang tải...' : 'Làm mới danh sách'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {tenantActions.length ? (
+        <section className="khung tenants-actions-card">
+          <div className="danh-sach-endpoint tenant-actions-inline">
+            {tenantActions.map((item) => (
+              <EndpointCard
+                key={`${item.method}-${item.path}`}
+                method={item.method}
+                moduleKey="tenants"
+                operation={item.operation}
+                path={item.path}
+                spec={spec}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="invoice-stats">
+        <article className="invoice-stat-card">
+          <span>Tổng số người thuê</span>
+          <strong>{tongNguoiThue}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Có số điện thoại</span>
+          <strong>{coSoDienThoai}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Có CCCD</span>
+          <strong>{coCccd}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Hiển thị</span>
+          <strong>{`${danhSachLoc.length}/${tenants.length}`}</strong>
+        </article>
+      </section>
+
+      <section className="khung">
+        <div className="xem-truoc__dau">
+          <strong>Danh sách người thuê</strong>
+          <span>{`Hiển thị ${danhSachLoc.length}/${tenants.length} người thuê`}</span>
+        </div>
+        {loi ? <div className="thong-bao-loi">{loi}</div> : null}
+        {dangTai ? (
+          <div className="khung-du-lieu khung-du-lieu--trong">Đang tải danh sách người thuê...</div>
+        ) : danhSachLoc.length ? (
+          <XemDanhSachNguoiThue data={danhSachLoc} hideSearch />
+        ) : (
+          <div className="khung-du-lieu khung-du-lieu--trong">Không có người thuê nào khớp với bộ lọc hiện tại.</div>
+        )}
+      </section>
     </div>
   )
 }
@@ -1843,7 +2408,7 @@ function InvoiceWorkspace() {
 
             <button
               type="button"
-              className="nut nut--phu"
+              className="nut nut--phu meter-toolbar-inline-button"
               onClick={() => setReloadKey((value) => value + 1)}
               disabled={dangTai}
             >
@@ -1934,7 +2499,7 @@ function layTienChiSo(item) {
   return Number(item?.amount ?? item?.Amount ?? 0)
 }
 
-function XemDanhSachChiSoDien({ data }) {
+function XemDanhSachChiSoDien({ data, onDelete = null, deletingId = null }) {
   if (!Array.isArray(data) || !data.length) {
     return <div className="khung-du-lieu khung-du-lieu--trong">Không có chỉ số điện nào.</div>
   }
@@ -1978,6 +2543,18 @@ function XemDanhSachChiSoDien({ data }) {
                 <strong className="invoice-amount">{giaTriDep(amount, 'amount')}</strong>
               </div>
             </div>
+            {onDelete ? (
+              <div className="invoice-card__actions meter-card__actions">
+                <button
+                  type="button"
+                  className="nut nut--phu meter-card__delete"
+                  onClick={() => onDelete(meterReadingId, roomCode)}
+                  disabled={deletingId === meterReadingId}
+                >
+                  {deletingId === meterReadingId ? 'Đang xóa...' : 'Xóa'}
+                </button>
+              </div>
+            ) : null}
           </div>
         )
       })}
@@ -2011,22 +2588,262 @@ function XemChiSoDien({ data }) {
   )
 }
 
-function MeterReadingCreateButton({ onSuccess }) {
+function layTrangThaiGiaoDichThanhToan(item) {
+  return String(item?.processStatus ?? item?.ProcessStatus ?? '')
+    .trim()
+    .toLowerCase()
+}
+
+function dinhDangTrangThaiGiaoDichThanhToan(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+
+  if (!normalized) return 'Chưa xử lý'
+  if (normalized === 'pending') return 'Chờ xử lý'
+  if (normalized === 'processed') return 'Đã xử lý'
+  if (normalized === 'reconciled') return 'Đã đối soát'
+  if (normalized === 'matched') return 'Đã khớp hóa đơn'
+  if (normalized === 'ignored') return 'Bỏ qua'
+  if (normalized === 'failed') return 'Thất bại'
+  return value || 'Không có dữ liệu'
+}
+
+function laySoTienGiaoDichThanhToan(item) {
+  return Number(item?.transferAmount ?? item?.TransferAmount ?? 0)
+}
+
+function XemDanhSachGiaoDichThanhToan({ data }) {
+  if (!Array.isArray(data) || !data.length) {
+    return <div className="khung-du-lieu khung-du-lieu--trong">Không có giao dịch thanh toán nào.</div>
+  }
+
+  return (
+    <div className="danh-sach-phong invoice-cards">
+      {data.map((item, index) => {
+        const paymentTransactionId = item.paymentTransactionId ?? item.PaymentTransactionId ?? index
+        const provider = item.provider ?? item.Provider
+        const providerTransactionId = item.providerTransactionId ?? item.ProviderTransactionId
+        const paymentCode = item.paymentCode ?? item.PaymentCode
+        const referenceCode = item.referenceCode ?? item.ReferenceCode
+        const accountNumber = item.accountNumber ?? item.AccountNumber
+        const transferType = item.transferType ?? item.TransferType
+        const transactionDate = item.transactionDate ?? item.TransactionDate
+        const createdAt = item.createdAt ?? item.CreatedAt
+        const matchedInvoiceId = item.matchedInvoiceId ?? item.MatchedInvoiceId
+        const content = item.content ?? item.Content
+        const processStatus = item.processStatus ?? item.ProcessStatus
+        const statusClass = layTrangThaiGiaoDichThanhToan(item)
+
+        return (
+          <div key={paymentTransactionId} className="dong-phong invoice-card">
+            <div className="invoice-card__info">
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Mã giao dịch</span>
+                <strong>#{paymentTransactionId}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Nhà cung cấp</span>
+                <strong>{provider || 'Không có dữ liệu'}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Trạng thái</span>
+                <strong className={`payment-status payment-status--${statusClass || 'default'}`}>
+                  {dinhDangTrangThaiGiaoDichThanhToan(processStatus)}
+                </strong>
+              </div>
+              <div className="dong-phong__o invoice-card__amount">
+                <span>Số tiền chuyển</span>
+                <strong className="invoice-amount">{giaTriDep(item.transferAmount ?? item.TransferAmount, 'transferAmount')}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Mã thanh toán</span>
+                <strong>{paymentCode || referenceCode || 'Không có dữ liệu'}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Mã giao dịch nhà cung cấp</span>
+                <strong>{providerTransactionId || 'Không có dữ liệu'}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Số tài khoản</span>
+                <strong>{accountNumber || 'Không có dữ liệu'}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Loại chuyển khoản</span>
+                <strong>{transferType || 'Không có dữ liệu'}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Thời điểm giao dịch</span>
+                <strong>{dinhDangNgayGio(transactionDate)}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Ngày ghi nhận</span>
+                <strong>{dinhDangNgayGio(createdAt)}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Hóa đơn đã khớp</span>
+                <strong>{matchedInvoiceId ? `#${matchedInvoiceId}` : 'Chưa đối soát'}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Nội dung chuyển khoản</span>
+                <strong>{content || 'Không có dữ liệu'}</strong>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function PaymentReconcileButton({ transactions, onSuccess }) {
   const [dangMo, setDangMo] = useState(false)
-  const [captureMode, setCaptureMode] = useState('manual')
-  const [roomOptions, setRoomOptions] = useState([])
-  const [roomOptionsLoading, setRoomOptionsLoading] = useState(true)
-  const [selectedRoomCode, setSelectedRoomCode] = useState('')
-  const [billingMonth, setBillingMonth] = useState(taoThangMacDinh())
-  const [currentReading, setCurrentReading] = useState('')
-  const [imageFile, setImageFile] = useState(null)
-  const [previewData, setPreviewData] = useState(null)
-  const [imageResult, setImageResult] = useState(null)
+  const [selectedTransactionId, setSelectedTransactionId] = useState('')
+  const [invoiceId, setInvoiceId] = useState('')
+  const [dangGui, setDangGui] = useState(false)
   const [trangThai, setTrangThai] = useState('')
   const [mauTrangThai, setMauTrangThai] = useState('')
-  const [dangDocAnh, setDangDocAnh] = useState(false)
-  const [dangXemTruoc, setDangXemTruoc] = useState(false)
-  const [dangLuu, setDangLuu] = useState(false)
+
+  useEffect(() => {
+    if (!dangMo) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setDangMo(false)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [dangMo])
+
+  useEffect(() => {
+    if (!dangMo) return
+    if (!transactions.length) {
+      setSelectedTransactionId('')
+      return
+    }
+
+    setSelectedTransactionId((current) => {
+      if (current && transactions.some((item) => String(item.paymentTransactionId ?? item.PaymentTransactionId) === current)) {
+        return current
+      }
+
+      return String(transactions[0].paymentTransactionId ?? transactions[0].PaymentTransactionId ?? '')
+    })
+  }, [dangMo, transactions])
+
+  const doiSoat = async () => {
+    setDangGui(true)
+    setTrangThai('')
+    setMauTrangThai('')
+
+    try {
+      await guiRequest(`/api/Payments/transactions/${selectedTransactionId}/reconcile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceId: Number(invoiceId),
+        }),
+      })
+
+      setTrangThai('Đã đối soát giao dịch thanh toán thành công.')
+      setMauTrangThai('thanh-cong')
+      setInvoiceId('')
+      if (onSuccess) onSuccess()
+    } catch (error) {
+      setTrangThai(thongDiepLoi(error))
+      setMauTrangThai('that-bai')
+    } finally {
+      setDangGui(false)
+    }
+  }
+
+  return (
+    <>
+      <button type="button" className="nut nut--phu payment-toolbar-button" onClick={() => setDangMo(true)}>
+        Đối soát giao dịch thanh toán
+      </button>
+
+      {dangMo ? (
+        <div className="lop-phu-endpoint" onClick={() => setDangMo(false)}>
+          <div className="hop-endpoint-mo" onClick={(event) => event.stopPropagation()}>
+            <article className="the-endpoint the-endpoint--mo invoice-modal-card">
+              <div className="the-endpoint__dau">
+                <div>
+                  <span className="method-tag method-tag--post">POST</span>
+                  <h3>Đối soát giao dịch thanh toán</h3>
+                </div>
+                <button type="button" className="nut-dong-endpoint" onClick={() => setDangMo(false)}>
+                  ×
+                </button>
+              </div>
+
+              <div className="invoice-edit-form payment-reconcile-form">
+                <label className="truong">
+                  <span>Giao dịch thanh toán</span>
+                  <select
+                    value={selectedTransactionId}
+                    onChange={(event) => setSelectedTransactionId(event.target.value)}
+                    disabled={!transactions.length}
+                  >
+                    <option value="">{transactions.length ? 'Chọn giao dịch cần đối soát' : 'Không có giao dịch trong danh sách lọc'}</option>
+                    {transactions.map((item) => {
+                      const transactionId = item.paymentTransactionId ?? item.PaymentTransactionId
+                      const amount = item.transferAmount ?? item.TransferAmount
+                      const code = item.paymentCode ?? item.PaymentCode ?? item.referenceCode ?? item.ReferenceCode
+                      return (
+                        <option key={transactionId} value={transactionId}>
+                          {`#${transactionId} • ${dinhDangTien(amount)} • ${code || 'Không có mã'}`}
+                        </option>
+                      )
+                    })}
+                  </select>
+                </label>
+
+                <label className="truong">
+                  <span>InvoiceId</span>
+                  <input type="number" min="1" value={invoiceId} onChange={(event) => setInvoiceId(event.target.value)} placeholder="Nhập mã hóa đơn cần khớp" />
+                </label>
+              </div>
+
+              {trangThai ? <div className={`thanh-trang-thai ${mauTrangThai}`}>{trangThai}</div> : null}
+
+              <div className="invoice-modal-actions">
+                <button
+                  type="button"
+                  className="nut"
+                  onClick={doiSoat}
+                  disabled={dangGui || !selectedTransactionId || !invoiceId}
+                >
+                  {dangGui ? 'Đang đối soát...' : 'Xác nhận đối soát'}
+                </button>
+              </div>
+            </article>
+          </div>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
+function MeterReadingCreateButton({ onSuccess }) {
+  const [dangMo, setDangMo] = useState(false)
+  const [roomOptions, setRoomOptions] = useState([])
+  const [roomOptionsLoading, setRoomOptionsLoading] = useState(true)
+  const [billingMonth, setBillingMonth] = useState(taoThangMacDinh())
+  const [bulkReadings, setBulkReadings] = useState({})
+  const [bulkImageFiles, setBulkImageFiles] = useState({})
+  const [bulkImageResults, setBulkImageResults] = useState({})
+  const [dangDocAnhTungDong, setDangDocAnhTungDong] = useState({})
+  const [dangLuuTungDong, setDangLuuTungDong] = useState({})
+  const [dangLuuTatCa, setDangLuuTatCa] = useState(false)
+  const [trangThai, setTrangThai] = useState('')
+  const [mauTrangThai, setMauTrangThai] = useState('')
 
   useEffect(() => {
     if (!dangMo) return undefined
@@ -2081,6 +2898,7 @@ function MeterReadingCreateButton({ onSuccess }) {
             }
           })
           .filter(Boolean)
+          .sort((a, b) => soSanhMaPhong(a.value, b.value))
 
         setRoomOptions(nextOptions)
       } catch (error) {
@@ -2099,47 +2917,57 @@ function MeterReadingCreateButton({ onSuccess }) {
     }
   }, [])
 
-  const selectedRoom = useMemo(
-    () => roomOptions.find((option) => String(option.value).trim().toLowerCase() === String(selectedRoomCode).trim().toLowerCase()) || null,
-    [roomOptions, selectedRoomCode],
-  )
+  useEffect(() => {
+    setBulkReadings((current) => {
+      const next = {}
+      roomOptions.forEach((option) => {
+        const key = `${option.roomId}-${option.contractId}`
+        next[key] = current[key] ?? ''
+      })
+      return next
+    })
+  }, [roomOptions])
 
   const resetMessages = () => {
     setTrangThai('')
     setMauTrangThai('')
   }
 
-  const buildPayload = () => {
-    if (!selectedRoom) {
-      throw new Error('Vui lòng chọn phòng đang active.')
-    }
-
-    if (currentReading === '' || currentReading === null || currentReading === undefined) {
-      throw new Error('Vui lòng nhập hoặc đọc ra chỉ số điện mới.')
-    }
-
-    return {
-      roomId: Number(selectedRoom.roomId),
-      contractId: Number(selectedRoom.contractId),
-      billingMonth,
-      currentReading: Number(currentReading),
-    }
+  const capNhatChiSoDong = (rowKey, value) => {
+    setBulkReadings((current) => ({
+      ...current,
+      [rowKey]: value,
+    }))
   }
 
-  const docChiSoTuAnh = async () => {
+  const capNhatAnhDong = (rowKey, file) => {
+    setBulkImageFiles((current) => ({
+      ...current,
+      [rowKey]: file || null,
+    }))
+    setBulkImageResults((current) => ({
+      ...current,
+      [rowKey]: null,
+    }))
+  }
+
+  const docChiSoTuAnhTheoDong = async (option) => {
+    const rowKey = `${option.roomId}-${option.contractId}`
+    const imageFile = bulkImageFiles[rowKey]
+
     if (!imageFile) {
-      setTrangThai('Vui lòng chọn hình ảnh công tơ trước khi đọc.')
+      setTrangThai(`Vui lòng chọn ảnh công tơ cho phòng ${option.value}.`)
       setMauTrangThai('that-bai')
       return
     }
 
-    setDangDocAnh(true)
+    setDangDocAnhTungDong((current) => ({ ...current, [rowKey]: true }))
     resetMessages()
-    setImageResult(null)
 
     try {
+      const optimizedImageFile = await nenAnhOCR(imageFile)
       const formData = new FormData()
-      formData.append('image', imageFile)
+      formData.append('image', optimizedImageFile)
 
       const result = await guiRequest('/api/MeterReadings/read-from-image', {
         method: 'POST',
@@ -2153,67 +2981,117 @@ function MeterReadingCreateButton({ onSuccess }) {
         throw new Error('Không đọc được chỉ số điện từ hình ảnh.')
       }
 
-      setCurrentReading(String(detectedReading))
-      setImageResult(payload)
-      setTrangThai(`Đã đọc được chỉ số ${detectedReading}. Bạn có thể xem trước rồi lưu ngay.`)
+      setBulkReadings((current) => ({
+        ...current,
+        [rowKey]: String(detectedReading),
+      }))
+      setBulkImageResults((current) => ({
+        ...current,
+        [rowKey]: payload,
+      }))
+      const processingMode = payload.processingMode ?? payload.ProcessingMode
+      const elapsedMs = payload.elapsedMs ?? payload.ElapsedMs
+      const elapsedLabel = elapsedMs != null ? ` sau ${Math.max(1, Math.round(Number(elapsedMs) / 1000))} giây` : ''
+      const modeLabel = processingMode ? ` (${processingMode})` : ''
+      setTrangThai(`Đã đọc được chỉ số ${detectedReading} cho phòng ${option.value}${modeLabel}${elapsedLabel}.`)
       setMauTrangThai('thanh-cong')
     } catch (error) {
+      setBulkImageResults((current) => ({
+        ...current,
+        [rowKey]: {
+          errorMessage: thongDiepLoi(error),
+        },
+      }))
       setTrangThai(thongDiepLoi(error))
       setMauTrangThai('that-bai')
     } finally {
-      setDangDocAnh(false)
+      setDangDocAnhTungDong((current) => ({ ...current, [rowKey]: false }))
     }
   }
 
-  const xemTruoc = async () => {
-    setDangXemTruoc(true)
-    resetMessages()
-    setPreviewData(null)
+  const luuMotDong = async (option) => {
+    const rowKey = `${option.roomId}-${option.contractId}`
+    const readingValue = bulkReadings[rowKey]
 
-    try {
-      const payload = buildPayload()
-      const result = await guiRequest('/api/MeterReadings/preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      setPreviewData(result.payload)
-      setTrangThai('Xem trước chỉ số điện thành công.')
-      setMauTrangThai('thanh-cong')
-    } catch (error) {
-      setTrangThai(thongDiepLoi(error))
+    if (readingValue === '' || readingValue === null || readingValue === undefined) {
+      setTrangThai(`Vui lòng nhập chỉ số điện cho phòng ${option.value}.`)
       setMauTrangThai('that-bai')
-    } finally {
-      setDangXemTruoc(false)
+      return
     }
-  }
 
-  const luuChiSo = async () => {
-    setDangLuu(true)
+    setDangLuuTungDong((current) => ({ ...current, [rowKey]: true }))
     resetMessages()
 
     try {
-      const payload = buildPayload()
       await guiRequest('/api/MeterReadings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          roomId: Number(option.roomId),
+          contractId: Number(option.contractId),
+          billingMonth,
+          currentReading: Number(readingValue),
+        }),
       })
 
-      setTrangThai('Đã tạo bản ghi chỉ số điện nước thành công.')
+      setTrangThai(`Đã lưu chỉ số điện cho phòng ${option.value}.`)
       setMauTrangThai('thanh-cong')
-      setPreviewData(null)
-      setImageResult(null)
-      setImageFile(null)
-      setCurrentReading('')
       if (onSuccess) onSuccess()
     } catch (error) {
       setTrangThai(thongDiepLoi(error))
       setMauTrangThai('that-bai')
     } finally {
-      setDangLuu(false)
+      setDangLuuTungDong((current) => ({ ...current, [rowKey]: false }))
     }
+  }
+
+  const luuTatCa = async () => {
+    const rowsToSave = roomOptions
+      .map((option) => ({
+        option,
+        rowKey: `${option.roomId}-${option.contractId}`,
+        readingValue: bulkReadings[`${option.roomId}-${option.contractId}`],
+      }))
+      .filter((item) => item.readingValue !== '' && item.readingValue !== null && item.readingValue !== undefined)
+
+    if (!rowsToSave.length) {
+      setTrangThai('Vui lòng nhập ít nhất một chỉ số điện trước khi lưu tất cả.')
+      setMauTrangThai('that-bai')
+      return
+    }
+
+    setDangLuuTatCa(true)
+    resetMessages()
+
+    let thanhCong = 0
+    let thatBai = 0
+    for (const item of rowsToSave) {
+      try {
+        await guiRequest('/api/MeterReadings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            roomId: Number(item.option.roomId),
+            contractId: Number(item.option.contractId),
+            billingMonth,
+            currentReading: Number(item.readingValue),
+          }),
+        })
+        thanhCong += 1
+      } catch {
+        thatBai += 1
+      }
+    }
+
+    if (thanhCong > 0 && onSuccess) onSuccess()
+    if (thatBai === 0) {
+      setTrangThai(`Đã lưu thành công ${thanhCong} phòng.`)
+      setMauTrangThai('thanh-cong')
+    } else {
+      setTrangThai(`Đã lưu ${thanhCong} phòng, lỗi ${thatBai} phòng.`)
+      setMauTrangThai(thanhCong > 0 ? 'thanh-cong' : 'that-bai')
+    }
+    setDangLuuTatCa(false)
   }
 
   return (
@@ -2236,112 +3114,232 @@ function MeterReadingCreateButton({ onSuccess }) {
                 </button>
               </div>
 
-              <div className="meter-mode-switch">
-                <button type="button" className={`nut ${captureMode === 'manual' ? 'nut--chinh' : 'nut--phu'}`} onClick={() => setCaptureMode('manual')}>
-                  Nhập từ người dùng
-                </button>
-                <button type="button" className={`nut ${captureMode === 'image' ? 'nut--chinh' : 'nut--phu'}`} onClick={() => setCaptureMode('image')}>
-                  Đưa hình ảnh lên
-                </button>
-              </div>
-
               <div className="invoice-edit-form meter-capture-form">
-                <label className="truong">
-                  <span>Phòng đang active</span>
-                  <select value={selectedRoomCode} onChange={(event) => setSelectedRoomCode(event.target.value)} disabled={roomOptionsLoading || roomOptions.length === 0}>
-                    <option value="">
-                      {roomOptionsLoading ? 'Đang tải danh sách phòng...' : roomOptions.length ? 'Chọn phòng đang active' : 'Không có phòng active'}
-                    </option>
-                    {roomOptions.map((option) => (
-                      <option key={`${option.roomId}-${option.contractId}`} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
                 <label className="truong">
                   <span>Tháng ghi chỉ số</span>
                   <input type="date" value={billingMonth} onChange={(event) => setBillingMonth(event.target.value)} />
                 </label>
-
-                {captureMode === 'manual' ? (
-                  <label className="truong">
-                    <span>Chỉ số điện mới</span>
-                    <input type="number" min="0" value={currentReading} onChange={(event) => setCurrentReading(event.target.value)} placeholder="Nhập chỉ số công tơ" />
-                  </label>
-                ) : (
-                  <>
-                    <label className="truong">
-                      <span>Hình ảnh công tơ</span>
-                      <input type="file" accept="image/*" onChange={(event) => setImageFile(event.target.files?.[0] || null)} />
-                    </label>
-                    <label className="truong">
-                      <span>Chỉ số đọc được</span>
-                      <input type="number" min="0" value={currentReading} onChange={(event) => setCurrentReading(event.target.value)} placeholder="Sau khi đọc ảnh sẽ tự điền" />
-                    </label>
-                  </>
-                )}
               </div>
 
-              {imageResult ? (
-                <div className="meter-image-result">
-                  <span>Chỉ số nhận diện: {giaTriDep(imageResult.detectedReading ?? imageResult.DetectedReading, 'currentReading')}</span>
-                  <span>Văn bản thô: {giaTriDep(imageResult.rawText ?? imageResult.RawText, 'rawText')}</span>
-                </div>
-              ) : null}
-
-              {previewData ? (
-                <div className="meter-preview-card">
-                  <div className="meter-preview-card__grid">
-                    <div>
-                      <span>Phòng</span>
-                      <strong>{previewData.roomCode ?? previewData.RoomCode ?? 'Không có dữ liệu'}</strong>
-                    </div>
-                    <div>
-                      <span>Tháng</span>
-                      <strong>{giaTriDep(previewData.billingMonth ?? previewData.BillingMonth, 'billingMonth')}</strong>
-                    </div>
-                    <div>
-                      <span>Chỉ số cũ</span>
-                      <strong>{giaTriDep(previewData.previousReading ?? previewData.PreviousReading, 'previousReading')}</strong>
-                    </div>
-                    <div>
-                      <span>Chỉ số mới</span>
-                      <strong>{giaTriDep(previewData.currentReading ?? previewData.CurrentReading, 'currentReading')}</strong>
-                    </div>
-                    <div>
-                      <span>Số điện tiêu thụ</span>
-                      <strong>{giaTriDep(previewData.consumedUnits ?? previewData.ConsumedUnits, 'consumedUnits')}</strong>
-                    </div>
-                    <div>
-                      <span>Thành tiền</span>
-                      <strong className="invoice-amount">{giaTriDep(previewData.amount ?? previewData.Amount, 'amount')}</strong>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+              <div className="meter-bulk-table-wrap">
+                <table className="meter-bulk-table meter-bulk-table--images">
+                  <thead>
+                    <tr>
+                      <th>Phòng</th>
+                      <th>Người thuê</th>
+                      <th>Ảnh chỉ số</th>
+                      <th>Chỉ số điện ghi nhận</th>
+                      <th>Lưu</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {roomOptionsLoading ? (
+                      <tr>
+                        <td colSpan="5">Đang tải danh sách phòng active...</td>
+                      </tr>
+                    ) : roomOptions.length ? (
+                      roomOptions.map((option) => {
+                        const rowKey = `${option.roomId}-${option.contractId}`
+                        const tenantLabel = option.label.includes(' - ') ? option.label.split(' - ').slice(1).join(' - ') : 'Không có dữ liệu'
+                        const imageResult = bulkImageResults[rowKey]
+                        const detectedReading = imageResult?.detectedReading ?? imageResult?.DetectedReading
+                        const rawText = imageResult?.rawText ?? imageResult?.RawText
+                        const processingMode = imageResult?.processingMode ?? imageResult?.ProcessingMode
+                        const elapsedMs = imageResult?.elapsedMs ?? imageResult?.ElapsedMs
+                        const rowError = imageResult?.errorMessage ?? imageResult?.ErrorMessage
+                        const selectedFile = bulkImageFiles[rowKey]
+                        return (
+                          <tr key={rowKey}>
+                            <td>{option.value}</td>
+                            <td>{tenantLabel || 'Không có dữ liệu'}</td>
+                            <td>
+                              <div className="meter-bulk-table__image-cell">
+                                <input type="file" accept="image/*" onChange={(event) => capNhatAnhDong(rowKey, event.target.files?.[0] || null)} />
+                                <small>{selectedFile ? selectedFile.name : 'Chưa chọn ảnh công tơ'}</small>
+                                <div className="meter-bulk-table__image-actions">
+                                  <button
+                                    type="button"
+                                    className="nut nut--phu meter-bulk-table__read"
+                                    onClick={() => docChiSoTuAnhTheoDong(option)}
+                                    disabled={!bulkImageFiles[rowKey] || !!dangDocAnhTungDong[rowKey] || dangLuuTatCa}
+                                  >
+                                    {dangDocAnhTungDong[rowKey] ? 'Đang đọc...' : 'Đọc ảnh'}
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <div className="meter-bulk-table__reading-cell">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={bulkReadings[rowKey] ?? ''}
+                                  onChange={(event) => capNhatChiSoDong(rowKey, event.target.value)}
+                                  placeholder="Nhập hoặc đọc từ ảnh"
+                                />
+                                <small>{detectedReading != null ? `AI đọc: ${detectedReading}` : 'Chưa có số từ ảnh'}</small>
+                                {rawText ? <small className="meter-bulk-table__ocr-raw">Raw text: {rawText}</small> : null}
+                                {processingMode ? <small className="meter-bulk-table__ocr-raw">Mode: {processingMode}</small> : null}
+                                {elapsedMs != null ? <small className="meter-bulk-table__ocr-raw">Thời gian: {Math.max(1, Math.round(Number(elapsedMs) / 1000))} giây</small> : null}
+                                {rowError ? <small className="meter-bulk-table__ocr-error">{rowError}</small> : null}
+                              </div>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="nut nut--phu meter-bulk-table__save"
+                                onClick={() => luuMotDong(option)}
+                                disabled={!!dangLuuTungDong[rowKey] || dangLuuTatCa}
+                              >
+                                {dangLuuTungDong[rowKey] ? 'Đang lưu...' : 'Lưu'}
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan="5">Không có phòng đang active.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
 
               {trangThai ? <div className={`thanh-trang-thai ${mauTrangThai}`}>{trangThai}</div> : null}
 
               <div className="invoice-modal-actions">
-                {captureMode === 'image' ? (
-                  <button type="button" className="nut nut--phu" onClick={docChiSoTuAnh} disabled={dangDocAnh || !imageFile}>
-                    {dangDocAnh ? 'Đang đọc ảnh...' : 'Đọc chỉ số từ ảnh'}
-                  </button>
-                ) : null}
-                <button type="button" className="nut nut--phu" onClick={xemTruoc} disabled={dangXemTruoc || dangLuu}>
-                  {dangXemTruoc ? 'Đang xem trước...' : 'Xem trước'}
-                </button>
-                <button type="button" className="nut" onClick={luuChiSo} disabled={dangLuu || dangXemTruoc}>
-                  {dangLuu ? 'Đang lưu...' : 'Lưu bản ghi'}
+                <button type="button" className="nut" onClick={luuTatCa} disabled={dangLuuTatCa || roomOptionsLoading || !roomOptions.length}>
+                  {dangLuuTatCa ? 'Đang lưu tất cả...' : 'Lưu tất cả'}
                 </button>
               </div>
             </article>
           </div>
         </div>
       ) : null}
+
     </>
+  )
+}
+
+function RoomsWorkspace() {
+  const [rooms, setRooms] = useState([])
+  const [phongFilter, setPhongFilter] = useState('')
+  const [trangThaiFilter, setTrangThaiFilter] = useState('all')
+  const [dangTai, setDangTai] = useState(false)
+  const [loi, setLoi] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
+
+  useEffect(() => {
+    let ignore = false
+
+    async function taiDanhSachPhong() {
+      setDangTai(true)
+      setLoi('')
+      try {
+        const query = new URLSearchParams()
+        if (trangThaiFilter !== 'all') {
+          query.set('status', trangThaiFilter)
+        }
+
+        const result = await guiRequest(`/api/Rooms${query.toString() ? `?${query.toString()}` : ''}`, {
+          method: 'GET',
+        })
+
+        if (!ignore) {
+          setRooms(Array.isArray(result.payload) ? result.payload : [])
+        }
+      } catch (error) {
+        if (!ignore) {
+          setLoi(error.message || 'Không tải được danh sách phòng.')
+          setRooms([])
+        }
+      } finally {
+        if (!ignore) {
+          setDangTai(false)
+        }
+      }
+    }
+
+    taiDanhSachPhong()
+    return () => {
+      ignore = true
+    }
+  }, [reloadKey, trangThaiFilter])
+
+  const danhSachLoc = useMemo(() => {
+    const phongDaLoc = phongFilter.trim().toLowerCase()
+    return rooms
+      .filter((room) => {
+        const roomCode = String(room.roomCode ?? room.RoomCode ?? '').trim().toLowerCase()
+        return !phongDaLoc || roomCode.includes(phongDaLoc)
+      })
+      .sort((a, b) => soSanhMaPhong(a.roomCode ?? a.RoomCode, b.roomCode ?? b.RoomCode))
+  }, [rooms, phongFilter])
+
+  const tongPhong = rooms.length
+  const phongDaChoThue = rooms.filter((room) => String(room.status ?? room.Status ?? '').toLowerCase() === 'occupied').length
+  const phongConTrong = rooms.filter((room) => String(room.status ?? room.Status ?? '').toLowerCase() === 'vacant').length
+
+  return (
+    <div className="invoice-workspace rooms-workspace">
+      <section className="invoice-hero khung">
+        <div className="invoice-hero__main">
+          <p className="nhan">Phòng</p>
+          <div className="invoice-toolbar rooms-toolbar">
+            <label className="invoice-search">
+              <span>Mã phòng</span>
+              <input type="text" value={phongFilter} onChange={(event) => setPhongFilter(event.target.value)} placeholder="Nhập mã phòng" />
+            </label>
+            <label className="invoice-search invoice-search--status">
+              <span>Trạng thái phòng</span>
+              <select value={trangThaiFilter} onChange={(event) => setTrangThaiFilter(event.target.value)}>
+                <option value="all">Tất cả</option>
+                <option value="occupied">Đã cho thuê</option>
+                <option value="vacant">Chưa cho thuê</option>
+              </select>
+            </label>
+            <button type="button" className="nut nut--phu rooms-toolbar-refresh" onClick={() => setReloadKey((value) => value + 1)} disabled={dangTai}>
+              {dangTai ? 'Đang tải...' : 'Làm mới danh sách'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="invoice-stats">
+        <article className="invoice-stat-card">
+          <span>Tổng số phòng</span>
+          <strong>{tongPhong}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Đã cho thuê</span>
+          <strong>{phongDaChoThue}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Chưa cho thuê</span>
+          <strong>{phongConTrong}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Hiển thị</span>
+          <strong>{`${danhSachLoc.length}/${rooms.length}`}</strong>
+        </article>
+      </section>
+
+      <section className="khung">
+        <div className="xem-truoc__dau">
+          <strong>Danh sách phòng</strong>
+          <span>{`Hiển thị ${danhSachLoc.length}/${rooms.length} phòng`}</span>
+        </div>
+        {loi ? <div className="thong-bao-loi">{loi}</div> : null}
+        {dangTai ? (
+          <div className="khung-du-lieu khung-du-lieu--trong">Đang tải danh sách phòng...</div>
+        ) : danhSachLoc.length ? (
+          <XemDanhSachPhong data={danhSachLoc} hideSearch />
+        ) : (
+          <div className="khung-du-lieu khung-du-lieu--trong">Không có phòng nào khớp với bộ lọc hiện tại.</div>
+        )}
+      </section>
+    </div>
   )
 }
 
@@ -2455,6 +3453,9 @@ function MeterReadingOriginalEditButton() {
   const [billingMonth, setBillingMonth] = useState(taoThangMacDinh())
   const [roomCode, setRoomCode] = useState('')
   const [currentReading, setCurrentReading] = useState('')
+  const [meterReadingsInMonth, setMeterReadingsInMonth] = useState([])
+  const [selectedMeterReadingId, setSelectedMeterReadingId] = useState('')
+  const [dangTaiDanhSach, setDangTaiDanhSach] = useState(false)
   const [dangSua, setDangSua] = useState(false)
   const [trangThai, setTrangThai] = useState('')
   const [mauTrangThai, setMauTrangThai] = useState('')
@@ -2473,6 +3474,71 @@ function MeterReadingOriginalEditButton() {
     }
   }, [dangMo])
 
+  const taiDanhSachMocChiSo = async () => {
+    if (!roomCode.trim()) {
+      setTrangThai('Vui lòng nhập mã phòng trước khi tải các mốc chỉ số.')
+      setMauTrangThai('that-bai')
+      setMeterReadingsInMonth([])
+      setSelectedMeterReadingId('')
+      return
+    }
+
+    setDangTaiDanhSach(true)
+    setTrangThai('')
+    setMauTrangThai('')
+
+    try {
+      const result = await guiRequest(`/api/MeterReadings?month=${encodeURIComponent(billingMonth)}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      })
+
+      const payload = Array.isArray(result.payload)
+        ? result.payload
+        : Array.isArray(result.payload?.data)
+          ? result.payload.data
+          : []
+
+      const normalizedRoomCode = roomCode.trim().toLowerCase()
+      const matched = payload
+        .filter((item) => String(item.roomCode ?? item.RoomCode ?? '').trim().toLowerCase() === normalizedRoomCode)
+        .sort((a, b) => new Date(a.billingMonth ?? a.BillingMonth).getTime() - new Date(b.billingMonth ?? b.BillingMonth).getTime())
+
+      setMeterReadingsInMonth(matched)
+
+      if (matched.length) {
+        const latest = matched[matched.length - 1]
+        const meterReadingId = latest.meterReadingId ?? latest.MeterReadingId ?? ''
+        const nextCurrentReading = latest.currentReading ?? latest.CurrentReading ?? ''
+        setSelectedMeterReadingId(String(meterReadingId))
+        setCurrentReading(String(nextCurrentReading))
+        setTrangThai(`Đã tải ${matched.length} mốc chỉ số của phòng ${roomCode.trim()} trong ${dinhDangThang(billingMonth)}.`)
+        setMauTrangThai('thanh-cong')
+      } else {
+        setSelectedMeterReadingId('')
+        setCurrentReading('')
+        setTrangThai(`Không tìm thấy mốc chỉ số nào của phòng ${roomCode.trim()} trong ${dinhDangThang(billingMonth)}.`)
+        setMauTrangThai('that-bai')
+      }
+    } catch (error) {
+      setMeterReadingsInMonth([])
+      setSelectedMeterReadingId('')
+      setCurrentReading('')
+      setTrangThai(thongDiepLoi(error))
+      setMauTrangThai('that-bai')
+    } finally {
+      setDangTaiDanhSach(false)
+    }
+  }
+
+  const capNhatMocDuocChon = (value) => {
+    setSelectedMeterReadingId(value)
+    const selected = meterReadingsInMonth.find((item) => String(item.meterReadingId ?? item.MeterReadingId ?? '') === String(value))
+    if (selected) {
+      setCurrentReading(String(selected.currentReading ?? selected.CurrentReading ?? ''))
+    }
+  }
+
   const suaChiSoGoc = async () => {
     setDangSua(true)
     setTrangThai('')
@@ -2482,6 +3548,7 @@ function MeterReadingOriginalEditButton() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          meterReadingId: selectedMeterReadingId ? Number(selectedMeterReadingId) : undefined,
           roomCode,
           billingMonth,
           currentReading: Number(currentReading),
@@ -2517,7 +3584,7 @@ function MeterReadingOriginalEditButton() {
                 </button>
               </div>
 
-              <div className="invoice-edit-form meter-capture-form">
+              <div className="invoice-edit-form meter-capture-form meter-original-edit-form">
                 <label className="truong">
                   <span>Tháng cần sửa</span>
                   <input type="date" value={billingMonth} onChange={(event) => setBillingMonth(event.target.value)} />
@@ -2525,6 +3592,29 @@ function MeterReadingOriginalEditButton() {
                 <label className="truong">
                   <span>Mã phòng</span>
                   <input type="text" value={roomCode} onChange={(event) => setRoomCode(event.target.value)} placeholder="Ví dụ: A01" />
+                </label>
+                <div className="invoice-modal-actions meter-original-edit__load">
+                  <button type="button" className="nut nut--phu" onClick={taiDanhSachMocChiSo} disabled={dangTaiDanhSach || !roomCode.trim()}>
+                    {dangTaiDanhSach ? 'Đang tải mốc chỉ số...' : 'Tải các mốc chỉ số'}
+                  </button>
+                </div>
+                <label className="truong">
+                  <span>Mốc chỉ số cần sửa</span>
+                  <select value={selectedMeterReadingId} onChange={(event) => capNhatMocDuocChon(event.target.value)} disabled={!meterReadingsInMonth.length}>
+                    <option value="">{meterReadingsInMonth.length ? 'Chọn một mốc chỉ số' : 'Chưa có mốc chỉ số trong tháng'}</option>
+                    {meterReadingsInMonth.map((item) => {
+                      const meterReadingId = item.meterReadingId ?? item.MeterReadingId
+                      const readingDate = item.billingMonth ?? item.BillingMonth
+                      const previousReading = item.previousReading ?? item.PreviousReading
+                      const currentReadingValue = item.currentReading ?? item.CurrentReading
+                      const contractId = item.contractId ?? item.ContractId
+                      return (
+                        <option key={meterReadingId} value={meterReadingId}>
+                          {`${giaTriDep(readingDate, 'billingMonth')} | HĐ #${contractId} | ${previousReading} -> ${currentReadingValue}`}
+                        </option>
+                      )
+                    })}
+                  </select>
                 </label>
                 <label className="truong">
                   <span>Chỉ số điện mới</span>
@@ -2535,7 +3625,7 @@ function MeterReadingOriginalEditButton() {
               {trangThai ? <div className={`thanh-trang-thai ${mauTrangThai}`}>{trangThai}</div> : null}
 
               <div className="invoice-modal-actions">
-                <button type="button" className="nut" onClick={suaChiSoGoc} disabled={dangSua || !roomCode || currentReading === ''}>
+                <button type="button" className="nut" onClick={suaChiSoGoc} disabled={dangSua || !roomCode || !selectedMeterReadingId || currentReading === ''}>
                   {dangSua ? 'Đang cập nhật...' : 'Cập nhật'}
                 </button>
               </div>
@@ -2551,6 +3641,8 @@ function MeterReadingWorkspace() {
   const [meterReadings, setMeterReadings] = useState([])
   const [dangTai, setDangTai] = useState(true)
   const [loi, setLoi] = useState('')
+  const [dangXoaId, setDangXoaId] = useState(null)
+  const [xacNhanXoa, setXacNhanXoa] = useState(null)
   const [phongFilter, setPhongFilter] = useState('')
   const [thangNamFilter, setThangNamFilter] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
@@ -2611,6 +3703,31 @@ function MeterReadingWorkspace() {
   const tongTienDien = danhSachLoc.reduce((tong, item) => tong + layTienChiSo(item), 0)
   const chiSoMoiCaoNhat = danhSachLoc.reduce((max, item) => Math.max(max, laySoDienChiSo(item)), 0)
 
+  const thucHienXoaChiSo = async (meterReadingId) => {
+    setDangXoaId(meterReadingId)
+    setLoi('')
+
+    try {
+      await guiRequest(`/api/MeterReadings/${meterReadingId}`, {
+        method: 'DELETE',
+        headers: { Accept: 'application/json' },
+      })
+      setXacNhanXoa(null)
+      setReloadKey((value) => value + 1)
+    } catch (error) {
+      setLoi(thongDiepLoi(error))
+    } finally {
+      setDangXoaId(null)
+    }
+  }
+
+  const xoaChiSo = (meterReadingId, roomCode) => {
+    setXacNhanXoa({
+      meterReadingId,
+      roomCode: roomCode || 'này',
+    })
+  }
+
   return (
     <div className="invoice-workspace meter-workspace">
       <section className="invoice-hero khung">
@@ -2626,7 +3743,7 @@ function MeterReadingWorkspace() {
             </label>
             <button
               type="button"
-              className="nut nut--phu meter-toolbar-button meter-toolbar-button--refresh"
+              className="nut nut--phu meter-toolbar-inline-button"
               onClick={() => setReloadKey((value) => value + 1)}
               disabled={dangTai}
             >
@@ -2635,9 +3752,11 @@ function MeterReadingWorkspace() {
           </div>
 
           <div className="meter-toolbar-actions">
-            <MeterReadingCreateButton onSuccess={() => setReloadKey((value) => value + 1)} />
-            <MeterReadingMissingButton />
-            <MeterReadingOriginalEditButton />
+            <div className="meter-toolbar-group">
+              <MeterReadingCreateButton onSuccess={() => setReloadKey((value) => value + 1)} />
+              <MeterReadingMissingButton />
+              <MeterReadingOriginalEditButton />
+            </div>
           </div>
         </div>
       </section>
@@ -2675,7 +3794,7 @@ function MeterReadingWorkspace() {
           <div className="khung-du-lieu khung-du-lieu--trong">Đang tải danh sách chỉ số điện...</div>
         ) : danhSachLoc.length ? (
           <div className="invoice-list-wrap">
-            <XemDanhSachChiSoDien data={danhSachLoc} />
+            <XemDanhSachChiSoDien data={danhSachLoc} onDelete={xoaChiSo} deletingId={dangXoaId} />
           </div>
         ) : (
           <div className="khung-du-lieu khung-du-lieu--trong">
@@ -2683,11 +3802,1258 @@ function MeterReadingWorkspace() {
           </div>
         )}
       </section>
+
+      {xacNhanXoa ? (
+        <div className="lop-phu-endpoint" onClick={() => !dangXoaId && setXacNhanXoa(null)}>
+          <div className="hop-endpoint-mo" onClick={(event) => event.stopPropagation()}>
+            <article className="the-endpoint the-endpoint--mo invoice-modal-card">
+              <div className="the-endpoint__dau">
+                <div>
+                  <span className="method-tag method-tag--delete">DELETE</span>
+                  <h3>Xóa bản ghi chỉ số điện</h3>
+                </div>
+                <button type="button" className="nut-dong-endpoint" onClick={() => setXacNhanXoa(null)} disabled={!!dangXoaId}>
+                  ×
+                </button>
+              </div>
+
+              <p>Bạn có chắc muốn xóa bản ghi chỉ số điện của phòng <strong>{xacNhanXoa.roomCode}</strong> không?</p>
+
+              <div className="invoice-modal-actions">
+                <button type="button" className="nut nut--phu" onClick={() => setXacNhanXoa(null)} disabled={!!dangXoaId}>
+                  Hủy
+                </button>
+                <button type="button" className="nut" onClick={() => thucHienXoaChiSo(xacNhanXoa.meterReadingId)} disabled={!!dangXoaId}>
+                  {dangXoaId ? 'Đang xóa...' : 'Xác nhận xóa'}
+                </button>
+              </div>
+            </article>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
 
-function InvoiceWorkspaceModern() {
+function PaymentWorkspace() {
+  const [transactions, setTransactions] = useState([])
+  const [dangTai, setDangTai] = useState(true)
+  const [loi, setLoi] = useState('')
+  const [tuKhoaFilter, setTuKhoaFilter] = useState('')
+  const [trangThaiFilter, setTrangThaiFilter] = useState('all')
+  const [reloadKey, setReloadKey] = useState(0)
+
+  useEffect(() => {
+    let active = true
+
+    async function taiDanhSachGiaoDich() {
+      setDangTai(true)
+      setLoi('')
+
+      try {
+        const query = new URLSearchParams()
+        if (trangThaiFilter !== 'all') query.set('processStatus', trangThaiFilter)
+
+        const result = await guiRequest(`/api/Payments/transactions${query.toString() ? `?${query.toString()}` : ''}`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        })
+
+        const payload = result.payload
+        const danhSach = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.items)
+              ? payload.items
+              : []
+
+        if (active) setTransactions(danhSach)
+      } catch (error) {
+        if (active) {
+          setLoi(thongDiepLoi(error))
+          setTransactions([])
+        }
+      } finally {
+        if (active) setDangTai(false)
+      }
+    }
+
+    taiDanhSachGiaoDich()
+    return () => {
+      active = false
+    }
+  }, [reloadKey, trangThaiFilter])
+
+  const danhSachLoc = useMemo(() => {
+    const keyword = String(tuKhoaFilter || '').trim().toLowerCase()
+    if (!keyword) return transactions
+
+    return transactions.filter((item) => {
+      const targets = [
+        item.paymentTransactionId ?? item.PaymentTransactionId,
+        item.provider ?? item.Provider,
+        item.providerTransactionId ?? item.ProviderTransactionId,
+        item.referenceCode ?? item.ReferenceCode,
+        item.paymentCode ?? item.PaymentCode,
+        item.accountNumber ?? item.AccountNumber,
+        item.content ?? item.Content,
+        item.matchedInvoiceId ?? item.MatchedInvoiceId,
+      ]
+
+      return targets.some((value) => String(value ?? '').toLowerCase().includes(keyword))
+    })
+  }, [transactions, tuKhoaFilter])
+
+  return (
+    <div className="invoice-workspace payment-workspace">
+      <section className="invoice-hero khung">
+        <div className="invoice-hero__main">
+          <p className="nhan">Thanh toán</p>
+          <div className="invoice-toolbar payment-toolbar">
+            <label className="invoice-search payment-search">
+              <span>Tra cứu giao dịch</span>
+              <input
+                type="text"
+                value={tuKhoaFilter}
+                onChange={(event) => setTuKhoaFilter(event.target.value)}
+                placeholder="Mã giao dịch, mã thanh toán, nội dung..."
+              />
+            </label>
+            <label className="invoice-search invoice-search--status">
+              <span>Trạng thái xử lý</span>
+              <select value={trangThaiFilter} onChange={(event) => setTrangThaiFilter(event.target.value)}>
+                <option value="all">Tất cả</option>
+                <option value="pending">Chờ xử lý</option>
+                <option value="processed">Đã xử lý</option>
+                <option value="reconciled">Đã đối soát</option>
+                <option value="matched">Đã khớp hóa đơn</option>
+                <option value="ignored">Bỏ qua</option>
+                <option value="failed">Thất bại</option>
+              </select>
+            </label>
+            <button type="button" className="nut nut--phu payment-toolbar-refresh" onClick={() => setReloadKey((value) => value + 1)} disabled={dangTai}>
+              {dangTai ? 'Đang tải...' : 'Làm mới danh sách'}
+            </button>
+          </div>
+          <div className="invoice-toolbar__actions payment-toolbar__actions">
+            <PaymentReconcileButton transactions={danhSachLoc} onSuccess={() => setReloadKey((value) => value + 1)} />
+          </div>
+        </div>
+      </section>
+
+      <section className="khung">
+        <div className="xem-truoc__dau">
+          <strong>Danh sách giao dịch thanh toán</strong>
+          <span>
+            {tuKhoaFilter.trim() || trangThaiFilter !== 'all'
+              ? `Hiển thị ${danhSachLoc.length}/${transactions.length} giao dịch`
+              : `Hiển thị ${transactions.length} giao dịch`}
+          </span>
+        </div>
+        {loi ? <div className="thong-bao-loi">{loi}</div> : null}
+        {dangTai ? (
+          <div className="khung-du-lieu khung-du-lieu--trong">Đang tải danh sách giao dịch thanh toán...</div>
+        ) : danhSachLoc.length ? (
+          <div className="invoice-list-wrap">
+            <XemDanhSachGiaoDichThanhToan data={danhSachLoc} />
+          </div>
+        ) : (
+          <div className="khung-du-lieu khung-du-lieu--trong">
+            {tuKhoaFilter.trim() || trangThaiFilter !== 'all'
+              ? 'Không có giao dịch nào khớp với bộ lọc hiện tại.'
+              : 'Chưa có giao dịch thanh toán nào trong hệ thống.'}
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function dinhDangLoaiThuChi(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+
+  if (normalized === 'income') return 'Thu'
+  if (normalized === 'expense') return 'Chi'
+  return value || 'Không có dữ liệu'
+}
+
+function dinhDangDanhMucThuChi(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+
+  if (normalized === 'operating') return 'Vận hành'
+  if (normalized === 'other') return 'Khác'
+  return value || 'Không có dữ liệu'
+}
+
+function layLoaiThuChi(item) {
+  return String(item?.transactionDirection ?? item?.TransactionDirection ?? '')
+    .trim()
+    .toLowerCase()
+}
+
+function TransactionCreateButton({ onSuccess }) {
+  const [dangMo, setDangMo] = useState(false)
+  const [transactionDirection, setTransactionDirection] = useState('income')
+  const [category, setCategory] = useState('operating')
+  const [itemName, setItemName] = useState('')
+  const [amount, setAmount] = useState('')
+  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().slice(0, 10))
+  const [description, setDescription] = useState('')
+  const [relatedInvoiceId, setRelatedInvoiceId] = useState('')
+  const [dangGui, setDangGui] = useState(false)
+  const [trangThai, setTrangThai] = useState('')
+  const [mauTrangThai, setMauTrangThai] = useState('')
+
+  useEffect(() => {
+    if (!dangMo) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setDangMo(false)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [dangMo])
+
+  const taoGiaoDich = async () => {
+    setDangGui(true)
+    setTrangThai('')
+    setMauTrangThai('')
+
+    try {
+      await guiRequest('/api/Transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionDirection,
+          category,
+          itemName: itemName.trim() || null,
+          amount: Number(amount),
+          transactionDate,
+          description: description.trim() || null,
+          relatedInvoiceId: relatedInvoiceId ? Number(relatedInvoiceId) : null,
+        }),
+      })
+
+      setTrangThai('Đã tạo giao dịch thu chi thành công.')
+      setMauTrangThai('thanh-cong')
+      setDangMo(false)
+      if (onSuccess) onSuccess()
+    } catch (error) {
+      setTrangThai(thongDiepLoi(error))
+      setMauTrangThai('that-bai')
+    } finally {
+      setDangGui(false)
+    }
+  }
+
+  return (
+    <>
+      <button type="button" className="nut nut--phu payment-toolbar-button" onClick={() => setDangMo(true)}>
+        Tạo giao dịch thu chi
+      </button>
+
+      {dangMo ? (
+        <div className="lop-phu-endpoint" onClick={() => setDangMo(false)}>
+          <div className="hop-endpoint-mo" onClick={(event) => event.stopPropagation()}>
+            <article className="the-endpoint the-endpoint--mo invoice-modal-card">
+              <div className="the-endpoint__dau">
+                <div>
+                  <span className="method-tag method-tag--post">POST</span>
+                  <h3>Tạo giao dịch thu chi</h3>
+                </div>
+                <button type="button" className="nut-dong-endpoint" onClick={() => setDangMo(false)}>
+                  ×
+                </button>
+              </div>
+
+              <div className="invoice-edit-form payment-reconcile-form">
+                <label className="truong">
+                  <span>Loại giao dịch</span>
+                  <select value={transactionDirection} onChange={(event) => setTransactionDirection(event.target.value)}>
+                    <option value="income">Thu</option>
+                    <option value="expense">Chi</option>
+                  </select>
+                </label>
+                <label className="truong">
+                  <span>Danh mục</span>
+                  <select value={category} onChange={(event) => setCategory(event.target.value)}>
+                    <option value="operating">Vận hành</option>
+                    <option value="other">Khác</option>
+                  </select>
+                </label>
+                <label className="truong">
+                  <span>Tên khoản mục</span>
+                  <input type="text" value={itemName} onChange={(event) => setItemName(event.target.value)} placeholder="Ví dụ: Thu tiền phòng A01" />
+                </label>
+                <label className="truong">
+                  <span>Số tiền</span>
+                  <input type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="Nhập số tiền" />
+                </label>
+                <label className="truong">
+                  <span>Ngày giao dịch</span>
+                  <input type="date" value={transactionDate} onChange={(event) => setTransactionDate(event.target.value)} />
+                </label>
+                <label className="truong">
+                  <span>InvoiceId liên quan</span>
+                  <input type="number" min="1" value={relatedInvoiceId} onChange={(event) => setRelatedInvoiceId(event.target.value)} placeholder="Có thể để trống" />
+                </label>
+                <label className="truong transaction-form__full">
+                  <span>Mô tả</span>
+                  <input type="text" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Ghi chú thêm cho giao dịch" />
+                </label>
+              </div>
+
+              {trangThai ? <div className={`thanh-trang-thai ${mauTrangThai}`}>{trangThai}</div> : null}
+
+              <div className="invoice-modal-actions">
+                <button type="button" className="nut" onClick={taoGiaoDich} disabled={dangGui || !amount || !transactionDate}>
+                  {dangGui ? 'Đang tạo...' : 'Lưu giao dịch'}
+                </button>
+              </div>
+            </article>
+          </div>
+        </div>
+      ) : null}
+
+    </>
+  )
+}
+
+function TransactionRowActions({ transaction, onReload }) {
+  const [dangMoSua, setDangMoSua] = useState(false)
+  const [dangXoa, setDangXoa] = useState(false)
+  const [transactionDirection, setTransactionDirection] = useState(String(transaction?.transactionDirection ?? transaction?.TransactionDirection ?? 'income').toLowerCase())
+  const [category, setCategory] = useState(String(transaction?.category ?? transaction?.Category ?? 'operating').toLowerCase())
+  const [itemName, setItemName] = useState(transaction?.itemName ?? transaction?.ItemName ?? '')
+  const [amount, setAmount] = useState(String(transaction?.amount ?? transaction?.Amount ?? ''))
+  const [transactionDate, setTransactionDate] = useState(String(transaction?.transactionDate ?? transaction?.TransactionDate ?? ''))
+  const [description, setDescription] = useState(transaction?.description ?? transaction?.Description ?? '')
+  const [relatedInvoiceId, setRelatedInvoiceId] = useState(String(transaction?.relatedInvoiceId ?? transaction?.RelatedInvoiceId ?? ''))
+  const [dangGui, setDangGui] = useState(false)
+  const [trangThai, setTrangThai] = useState('')
+  const [mauTrangThai, setMauTrangThai] = useState('')
+
+  useEffect(() => {
+    if (!dangMoSua) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setDangMoSua(false)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [dangMoSua])
+
+  const transactionId = transaction?.transactionId ?? transaction?.TransactionId
+
+  const capNhat = async () => {
+    setDangGui(true)
+    setTrangThai('')
+    setMauTrangThai('')
+
+    try {
+      await guiRequest(`/api/Transactions/${transactionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionDirection,
+          category,
+          itemName: String(itemName || '').trim() || null,
+          amount: Number(amount),
+          transactionDate,
+          description: String(description || '').trim() || null,
+          relatedInvoiceId: relatedInvoiceId ? Number(relatedInvoiceId) : null,
+        }),
+      })
+
+      setTrangThai('Đã cập nhật giao dịch thành công.')
+      setMauTrangThai('thanh-cong')
+      setDangMoSua(false)
+      if (onReload) onReload()
+    } catch (error) {
+      setTrangThai(thongDiepLoi(error))
+      setMauTrangThai('that-bai')
+    } finally {
+      setDangGui(false)
+    }
+  }
+
+  const xoa = async () => {
+    setDangXoa(true)
+    try {
+      await guiRequest(`/api/Transactions/${transactionId}`, {
+        method: 'DELETE',
+      })
+      if (onReload) onReload()
+    } catch (error) {
+      setTrangThai(thongDiepLoi(error))
+      setMauTrangThai('that-bai')
+    } finally {
+      setDangXoa(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="invoice-card__button-row">
+        <button type="button" className="nut nut--phu invoice-inline-button invoice-inline-button--secondary" onClick={() => setDangMoSua(true)}>
+          Sửa giao dịch
+        </button>
+        <button type="button" className="nut nut--phu invoice-inline-button invoice-action-button invoice-action-button--unpaid" onClick={xoa} disabled={dangXoa}>
+          {dangXoa ? 'Đang xóa...' : 'Xóa giao dịch'}
+        </button>
+      </div>
+
+      {dangMoSua ? (
+        <div className="lop-phu-endpoint" onClick={() => setDangMoSua(false)}>
+          <div className="hop-endpoint-mo" onClick={(event) => event.stopPropagation()}>
+            <article className="the-endpoint the-endpoint--mo invoice-modal-card">
+              <div className="the-endpoint__dau">
+                <div>
+                  <span className="method-tag method-tag--put">PUT</span>
+                  <h3>Cập nhật giao dịch thu chi</h3>
+                </div>
+                <button type="button" className="nut-dong-endpoint" onClick={() => setDangMoSua(false)}>
+                  ×
+                </button>
+              </div>
+
+              <div className="invoice-edit-form payment-reconcile-form">
+                <label className="truong">
+                  <span>Loại giao dịch</span>
+                  <select value={transactionDirection} onChange={(event) => setTransactionDirection(event.target.value)}>
+                    <option value="income">Thu</option>
+                    <option value="expense">Chi</option>
+                  </select>
+                </label>
+                <label className="truong">
+                  <span>Danh mục</span>
+                  <select value={category} onChange={(event) => setCategory(event.target.value)}>
+                    <option value="operating">Vận hành</option>
+                    <option value="other">Khác</option>
+                  </select>
+                </label>
+                <label className="truong">
+                  <span>Tên khoản mục</span>
+                  <input type="text" value={itemName} onChange={(event) => setItemName(event.target.value)} />
+                </label>
+                <label className="truong">
+                  <span>Số tiền</span>
+                  <input type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} />
+                </label>
+                <label className="truong">
+                  <span>Ngày giao dịch</span>
+                  <input type="date" value={transactionDate} onChange={(event) => setTransactionDate(event.target.value)} />
+                </label>
+                <label className="truong">
+                  <span>InvoiceId liên quan</span>
+                  <input type="number" min="1" value={relatedInvoiceId} onChange={(event) => setRelatedInvoiceId(event.target.value)} />
+                </label>
+                <label className="truong transaction-form__full">
+                  <span>Mô tả</span>
+                  <input type="text" value={description} onChange={(event) => setDescription(event.target.value)} />
+                </label>
+              </div>
+
+              {trangThai ? <div className={`thanh-trang-thai ${mauTrangThai}`}>{trangThai}</div> : null}
+
+              <div className="invoice-modal-actions">
+                <button type="button" className="nut" onClick={capNhat} disabled={dangGui || !amount || !transactionDate}>
+                  {dangGui ? 'Đang cập nhật...' : 'Lưu thay đổi'}
+                </button>
+              </div>
+            </article>
+          </div>
+        </div>
+      ) : null}
+
+    </>
+  )
+}
+
+function XemDanhSachThuChi({ data, onReload }) {
+  if (!Array.isArray(data) || !data.length) {
+    return <div className="khung-du-lieu khung-du-lieu--trong">Không có giao dịch thu chi nào.</div>
+  }
+
+  return (
+    <div className="danh-sach-phong invoice-cards">
+      {data.map((item, index) => {
+        const transactionId = item.transactionId ?? item.TransactionId ?? index
+        const amount = item.amount ?? item.Amount
+        const transactionDirection = item.transactionDirection ?? item.TransactionDirection
+        const category = item.category ?? item.Category
+        const itemName = item.itemName ?? item.ItemName
+        const transactionDate = item.transactionDate ?? item.TransactionDate
+        const description = item.description ?? item.Description
+        const relatedInvoiceId = item.relatedInvoiceId ?? item.RelatedInvoiceId
+        const createdAt = item.createdAt ?? item.CreatedAt
+        const typeClass = layLoaiThuChi(item)
+
+        return (
+          <div key={transactionId} className="dong-phong invoice-card">
+            <div className="invoice-card__info">
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Mã giao dịch</span>
+                <strong>#{transactionId}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Loại giao dịch</span>
+                <strong className={`transaction-status transaction-status--${typeClass || 'default'}`}>
+                  {dinhDangLoaiThuChi(transactionDirection)}
+                </strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Danh mục</span>
+                <strong>{dinhDangDanhMucThuChi(category)}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__amount">
+                <span>Số tiền</span>
+                <strong className={`invoice-amount ${typeClass === 'expense' ? 'invoice-amount--unpaid' : 'invoice-amount--paid'}`}>
+                  {giaTriDep(amount, 'amount')}
+                </strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Khoản mục</span>
+                <strong>{itemName || 'Không có dữ liệu'}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Ngày giao dịch</span>
+                <strong>{giaTriDep(transactionDate, 'transactionDate')}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>InvoiceId liên quan</span>
+                <strong>{relatedInvoiceId ? `#${relatedInvoiceId}` : 'Không có dữ liệu'}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item">
+                <span>Ngày tạo</span>
+                <strong>{dinhDangNgayGio(createdAt)}</strong>
+              </div>
+              <div className="dong-phong__o invoice-card__meta-item transaction-description">
+                <span>Mô tả</span>
+                <strong>{description || 'Không có dữ liệu'}</strong>
+              </div>
+            </div>
+            <TransactionRowActions transaction={item} onReload={onReload} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function TransactionWorkspace() {
+  const [transactions, setTransactions] = useState([])
+  const [dangTai, setDangTai] = useState(true)
+  const [loi, setLoi] = useState('')
+  const [thangNamFilter, setThangNamFilter] = useState('')
+  const [loaiFilter, setLoaiFilter] = useState('all')
+  const [tuKhoaFilter, setTuKhoaFilter] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
+
+  useEffect(() => {
+    let active = true
+
+    async function taiDanhSachThuChi() {
+      setDangTai(true)
+      setLoi('')
+
+      try {
+        const query = new URLSearchParams()
+        if (thangNamFilter) query.set('month', `${thangNamFilter}-01`)
+        if (loaiFilter !== 'all') query.set('type', loaiFilter)
+
+        const result = await guiRequest(`/api/Transactions${query.toString() ? `?${query.toString()}` : ''}`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        })
+
+        const payload = result.payload
+        const danhSach = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.items)
+              ? payload.items
+              : []
+
+        if (active) setTransactions(danhSach)
+      } catch (error) {
+        if (active) {
+          setLoi(thongDiepLoi(error))
+          setTransactions([])
+        }
+      } finally {
+        if (active) setDangTai(false)
+      }
+    }
+
+    taiDanhSachThuChi()
+    return () => {
+      active = false
+    }
+  }, [reloadKey, thangNamFilter, loaiFilter])
+
+  const danhSachLoc = useMemo(() => {
+    const keyword = String(tuKhoaFilter || '').trim().toLowerCase()
+    if (!keyword) return transactions
+
+    return transactions.filter((item) => {
+      const targets = [
+        item.transactionId ?? item.TransactionId,
+        item.itemName ?? item.ItemName,
+        item.description ?? item.Description,
+        item.category ?? item.Category,
+        item.relatedInvoiceId ?? item.RelatedInvoiceId,
+      ]
+
+      return targets.some((value) => String(value ?? '').toLowerCase().includes(keyword))
+    })
+  }, [transactions, tuKhoaFilter])
+
+  const tongGiaoDich = danhSachLoc.length
+  const tongThu = danhSachLoc.filter((item) => layLoaiThuChi(item) === 'income').reduce((tong, item) => tong + Number(item.amount ?? item.Amount ?? 0), 0)
+  const tongChi = danhSachLoc.filter((item) => layLoaiThuChi(item) === 'expense').reduce((tong, item) => tong + Number(item.amount ?? item.Amount ?? 0), 0)
+  const chenhLech = tongThu - tongChi
+
+  return (
+    <div className="invoice-workspace transaction-workspace">
+      <section className="invoice-hero khung">
+        <div className="invoice-hero__main">
+          <p className="nhan">Thu chi phát sinh</p>
+          <div className="invoice-toolbar transaction-toolbar">
+            <label className="invoice-search">
+              <span>Tra cứu giao dịch</span>
+              <input
+                type="text"
+                value={tuKhoaFilter}
+                onChange={(event) => setTuKhoaFilter(event.target.value)}
+                placeholder="Khoản mục, mô tả, invoice..."
+              />
+            </label>
+            <label className="invoice-search invoice-search--month">
+              <span>Tháng - năm</span>
+              <input type="month" value={thangNamFilter} onChange={(event) => setThangNamFilter(event.target.value)} />
+            </label>
+            <label className="invoice-search invoice-search--status">
+              <span>Loại giao dịch</span>
+              <select value={loaiFilter} onChange={(event) => setLoaiFilter(event.target.value)}>
+                <option value="all">Tất cả</option>
+                <option value="income">Thu</option>
+                <option value="expense">Chi</option>
+              </select>
+            </label>
+            <button type="button" className="nut nut--phu" onClick={() => setReloadKey((value) => value + 1)} disabled={dangTai}>
+              {dangTai ? 'Đang tải...' : 'Làm mới danh sách'}
+            </button>
+          </div>
+          <div className="invoice-toolbar__actions transaction-toolbar__actions">
+            <TransactionCreateButton onSuccess={() => setReloadKey((value) => value + 1)} />
+          </div>
+        </div>
+      </section>
+
+      <section className="invoice-stats">
+        <article className="invoice-stat-card">
+          <span>Tổng giao dịch</span>
+          <strong>{tongGiaoDich}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Tổng thu</span>
+          <strong className="invoice-amount invoice-amount--paid">{dinhDangTien(tongThu).replace(/\s*VND$/, '')}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Tổng chi</span>
+          <strong className="invoice-amount invoice-amount--unpaid">{dinhDangTien(tongChi).replace(/\s*VND$/, '')}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Chênh lệch</span>
+          <strong className={`invoice-amount ${chenhLech >= 0 ? 'invoice-amount--paid' : 'invoice-amount--unpaid'}`}>
+            {dinhDangTien(chenhLech).replace(/\s*VND$/, '')}
+          </strong>
+        </article>
+      </section>
+
+      <section className="khung">
+        <div className="xem-truoc__dau">
+          <strong>Danh sách giao dịch thu chi</strong>
+          <span>
+            {tuKhoaFilter.trim() || thangNamFilter || loaiFilter !== 'all'
+              ? `Hiển thị ${danhSachLoc.length}/${transactions.length} giao dịch`
+              : `Hiển thị ${transactions.length} giao dịch`}
+          </span>
+        </div>
+        {loi ? <div className="thong-bao-loi">{loi}</div> : null}
+        {dangTai ? (
+          <div className="khung-du-lieu khung-du-lieu--trong">Đang tải danh sách giao dịch thu chi...</div>
+        ) : danhSachLoc.length ? (
+          <div className="invoice-list-wrap">
+            <XemDanhSachThuChi data={danhSachLoc} onReload={() => setReloadKey((value) => value + 1)} />
+          </div>
+        ) : (
+          <div className="khung-du-lieu khung-du-lieu--trong">
+            {tuKhoaFilter.trim() || thangNamFilter || loaiFilter !== 'all'
+              ? 'Không có giao dịch nào khớp với bộ lọc hiện tại.'
+              : 'Chưa có giao dịch thu chi nào trong hệ thống.'}
+          </div>
+        )}
+      </section>
+
+    </div>
+  )
+}
+
+function taoDanhSachThangGanNhat(thangKetThuc, soLuong = 6) {
+  const [year, month] = String(thangKetThuc || '').split('-').map(Number)
+  if (!year || !month) return []
+
+  return Array.from({ length: soLuong }, (_, index) => {
+    const date = new Date(year, month - 1 - (soLuong - 1 - index), 1)
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    return `${y}-${m}`
+  })
+}
+
+function dinhDangNhanThangNgan(value) {
+  if (!value) return ''
+  const [year, month] = String(value).split('-')
+  if (!year || !month) return String(value)
+  return `${month}/${year}`
+}
+
+function layGiaTriSo(value) {
+  const number = Number(value ?? 0)
+  return Number.isFinite(number) ? number : 0
+}
+
+function ReportBar({ label, value, maxValue, tone = 'revenue', negative = false }) {
+  const safeValue = layGiaTriSo(value)
+  const height = `${(Math.abs(safeValue) / Math.max(maxValue, 1)) * 100}%`
+  const toneClass = negative ? 'loss' : tone
+
+  return (
+    <div className="report-chart__bar-wrap">
+      <div className="report-chart__tooltip">
+        <span>{dinhDangTien(safeValue)}</span>
+      </div>
+      <div className={`report-chart__bar report-chart__bar--${toneClass}`} style={{ height }} />
+    </div>
+  )
+}
+
+function ReportTrendChart({ data }) {
+  if (!Array.isArray(data) || !data.length) {
+    return <div className="khung-du-lieu khung-du-lieu--trong">Chưa có dữ liệu biểu đồ.</div>
+  }
+
+  const chartHeight = 260
+  const chartWidth = 720
+  const paddingX = 24
+  const paddingY = 20
+  const innerWidth = chartWidth - paddingX * 2
+  const innerHeight = chartHeight - paddingY * 2
+  const maxValue = Math.max(
+    ...data.flatMap((item) => [
+      layGiaTriSo(item.totalRevenue),
+      layGiaTriSo(item.totalExpense),
+      Math.abs(layGiaTriSo(item.profitLoss)),
+    ]),
+    1,
+  )
+  const toPoint = (value, index) => {
+    const x = paddingX + (data.length === 1 ? innerWidth / 2 : (innerWidth / (data.length - 1)) * index)
+    const y = paddingY + innerHeight - (layGiaTriSo(value) / maxValue) * innerHeight
+    return { x, y }
+  }
+  const buildPath = (key) =>
+    data
+      .map((item, index) => {
+        const point = toPoint(item[key], index)
+        return `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`
+      })
+      .join(' ')
+  const gridLines = Array.from({ length: 4 }, (_, index) => paddingY + (innerHeight / 3) * index)
+
+  return (
+    <div className="report-chart">
+      <div className="report-chart__legend">
+        <span className="report-chart__legend-item report-chart__legend-item--revenue">Doanh thu</span>
+        <span className="report-chart__legend-item report-chart__legend-item--expense">Chi phí</span>
+        <span className="report-chart__legend-item report-chart__legend-item--profit">Lợi nhuận</span>
+      </div>
+      <div className="report-line-chart">
+        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="report-line-chart__svg" preserveAspectRatio="none" aria-hidden="true">
+          {gridLines.map((y) => (
+            <line key={y} x1={paddingX} y1={y} x2={chartWidth - paddingX} y2={y} className="report-line-chart__grid-line" />
+          ))}
+          <path d={buildPath('totalRevenue')} className="report-line-chart__path report-line-chart__path--revenue" />
+          <path d={buildPath('totalExpense')} className="report-line-chart__path report-line-chart__path--expense" />
+          <path d={buildPath('profitLoss')} className="report-line-chart__path report-line-chart__path--profit" />
+          {data.map((item, index) => {
+            const revenuePoint = toPoint(item.totalRevenue, index)
+            const expensePoint = toPoint(item.totalExpense, index)
+            const profitPoint = toPoint(item.profitLoss, index)
+
+            return (
+              <g key={item.monthKey}>
+                <circle cx={revenuePoint.x} cy={revenuePoint.y} r="4.5" className="report-line-chart__dot report-line-chart__dot--revenue" />
+                <circle cx={expensePoint.x} cy={expensePoint.y} r="4.5" className="report-line-chart__dot report-line-chart__dot--expense" />
+                <circle cx={profitPoint.x} cy={profitPoint.y} r="4.5" className="report-line-chart__dot report-line-chart__dot--profit" />
+              </g>
+            )
+          })}
+        </svg>
+        <div className="report-line-chart__overlay">
+          {data.map((item, index) => (
+            <div key={item.monthKey} className="report-line-chart__group">
+              <div className="report-line-chart__hitbox">
+                <div className="report-chart__tooltip report-chart__tooltip--line">
+                  <span>{dinhDangNhanThangNgan(item.monthKey)}</span>
+                  <span>{`Doanh thu: ${dinhDangTien(item.totalRevenue)}`}</span>
+                  <span>{`Chi phí: ${dinhDangTien(item.totalExpense)}`}</span>
+                  <span>{`Lợi nhuận: ${dinhDangTien(item.profitLoss)}`}</span>
+                </div>
+              </div>
+              <span className="report-chart__label">{dinhDangNhanThangNgan(item.monthKey)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ReportsWorkspace() {
+  const [thangKetThuc, setThangKetThuc] = useState(taoThangMacDinh().slice(0, 7))
+  const [thangBaoCao, setThangBaoCao] = useState(taoThangMacDinh().slice(0, 7))
+  const [dangTai, setDangTai] = useState(true)
+  const [dangTaiBaoCaoThang, setDangTaiBaoCaoThang] = useState(true)
+  const [loi, setLoi] = useState('')
+  const [loiBaoCaoThang, setLoiBaoCaoThang] = useState('')
+  const [reportData, setReportData] = useState([])
+  const [baoCaoThang, setBaoCaoThang] = useState(null)
+  const [chiTietBaoCao, setChiTietBaoCao] = useState(null)
+  const [dangTaiChiTietBaoCao, setDangTaiChiTietBaoCao] = useState(false)
+  const [loiChiTietBaoCao, setLoiChiTietBaoCao] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
+
+  useEffect(() => {
+    let active = true
+
+    async function taiBaoCao() {
+      setDangTai(true)
+      setLoi('')
+
+      try {
+        const months = taoDanhSachThangGanNhat(thangKetThuc, 6)
+        const results = await Promise.all(
+          months.map(async (monthKey) => {
+            const monthParam = `${monthKey}-01`
+            const [revenueRes, expenseRes, profitRes] = await Promise.all([
+              guiRequest(`/api/Reports/monthly-revenue?month=${encodeURIComponent(monthParam)}`, {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+              }),
+              guiRequest(`/api/Reports/monthly-expense?month=${encodeURIComponent(monthParam)}`, {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+              }),
+              guiRequest(`/api/Reports/monthly-profit-loss?month=${encodeURIComponent(monthParam)}`, {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+              }),
+            ])
+
+            const revenuePayload = revenueRes.payload || {}
+            const expensePayload = expenseRes.payload || {}
+            const profitPayload = profitRes.payload || {}
+
+            return {
+              monthKey,
+              paidInvoicesRevenue: layGiaTriSo(revenuePayload.paidInvoicesRevenue ?? revenuePayload.PaidInvoicesRevenue),
+              extraIncome: layGiaTriSo(revenuePayload.extraIncome ?? revenuePayload.ExtraIncome),
+              totalRevenue: layGiaTriSo(profitPayload.totalRevenue ?? profitPayload.TotalRevenue ?? revenuePayload.totalRevenue ?? revenuePayload.TotalRevenue),
+              totalExpense: layGiaTriSo(profitPayload.totalExpense ?? profitPayload.TotalExpense ?? expensePayload.totalExpense ?? expensePayload.TotalExpense),
+              profitLoss: layGiaTriSo(profitPayload.profitLoss ?? profitPayload.ProfitLoss),
+            }
+          }),
+        )
+
+        if (active) setReportData(results)
+      } catch (error) {
+        if (active) {
+          setLoi(thongDiepLoi(error))
+          setReportData([])
+        }
+      } finally {
+        if (active) setDangTai(false)
+      }
+    }
+
+    taiBaoCao()
+    return () => {
+      active = false
+    }
+  }, [thangKetThuc, reloadKey])
+
+  useEffect(() => {
+    let active = true
+
+    async function taiBaoCaoThang() {
+      setDangTaiBaoCaoThang(true)
+      setLoiBaoCaoThang('')
+
+      try {
+        const monthParam = `${thangBaoCao}-01`
+        const [revenueRes, expenseRes, profitRes] = await Promise.all([
+          guiRequest(`/api/Reports/monthly-revenue?month=${encodeURIComponent(monthParam)}`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+          }),
+          guiRequest(`/api/Reports/monthly-expense?month=${encodeURIComponent(monthParam)}`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+          }),
+          guiRequest(`/api/Reports/monthly-profit-loss?month=${encodeURIComponent(monthParam)}`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+          }),
+        ])
+
+        const revenuePayload = revenueRes.payload || {}
+        const expensePayload = expenseRes.payload || {}
+        const profitPayload = profitRes.payload || {}
+
+        if (active) {
+          setBaoCaoThang({
+            monthKey: thangBaoCao,
+            paidInvoicesRevenue: layGiaTriSo(revenuePayload.paidInvoicesRevenue ?? revenuePayload.PaidInvoicesRevenue),
+            extraIncome: layGiaTriSo(revenuePayload.extraIncome ?? revenuePayload.ExtraIncome),
+            totalExpense: layGiaTriSo(profitPayload.totalExpense ?? profitPayload.TotalExpense ?? expensePayload.totalExpense ?? expensePayload.TotalExpense),
+            totalRevenue: layGiaTriSo(profitPayload.totalRevenue ?? profitPayload.TotalRevenue ?? revenuePayload.totalRevenue ?? revenuePayload.TotalRevenue),
+            profitLoss: layGiaTriSo(profitPayload.profitLoss ?? profitPayload.ProfitLoss),
+          })
+        }
+      } catch (error) {
+        if (active) {
+          setLoiBaoCaoThang(thongDiepLoi(error))
+          setBaoCaoThang(null)
+        }
+      } finally {
+        if (active) setDangTaiBaoCaoThang(false)
+      }
+    }
+
+    taiBaoCaoThang()
+    return () => {
+      active = false
+    }
+  }, [thangBaoCao, reloadKey])
+
+  useEffect(() => {
+    if (!chiTietBaoCao) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setChiTietBaoCao(null)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [chiTietBaoCao])
+
+  const duLieuHienTai = reportData[reportData.length - 1] || null
+  const tongDoanhThu = reportData.reduce((tong, item) => tong + layGiaTriSo(item.totalRevenue), 0)
+  const tongChiPhi = reportData.reduce((tong, item) => tong + layGiaTriSo(item.totalExpense), 0)
+  const tongLoiNhuan = reportData.reduce((tong, item) => tong + layGiaTriSo(item.profitLoss), 0)
+
+  const moChiTietBaoCao = async (loai) => {
+    setDangTaiChiTietBaoCao(true)
+    setLoiChiTietBaoCao('')
+
+    try {
+      const monthParam = `${thangBaoCao}-01`
+
+      if (loai === 'revenue') {
+        const result = await guiRequest('/api/Invoices', {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        })
+
+        const payload = result.payload
+        const danhSach = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.items)
+              ? payload.items
+              : []
+
+        const chiTiet = danhSach.filter((invoice) => {
+          const billingMonth = String(invoice.billingMonth ?? invoice.BillingMonth ?? '')
+          const monthValue = billingMonth ? billingMonth.slice(0, 7) : ''
+          const status = String(invoice.status ?? invoice.Status ?? '').trim().toLowerCase()
+          return monthValue === thangBaoCao && status === 'paid'
+        })
+
+        setChiTietBaoCao({
+          type: loai,
+          title: `Chi tiết doanh thu ${dinhDangNhanThangNgan(thangBaoCao)}`,
+          data: chiTiet,
+        })
+        return
+      }
+
+      const result = await guiRequest(`/api/Transactions?month=${encodeURIComponent(monthParam)}&type=${encodeURIComponent(loai === 'extraIncome' ? 'income' : 'expense')}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      })
+
+      const payload = result.payload
+      const danhSach = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.items)
+            ? payload.items
+            : []
+
+      const chiTiet =
+        loai === 'extraIncome'
+          ? danhSach.filter((item) => {
+            const category = String(item.category ?? item.Category ?? '').trim().toLowerCase()
+            return category !== 'invoice'
+          })
+          : danhSach
+
+      setChiTietBaoCao({
+        type: loai,
+        title: loai === 'extraIncome'
+          ? `Chi tiết doanh thu phát sinh ${dinhDangNhanThangNgan(thangBaoCao)}`
+          : `Chi tiết chi phí phát sinh ${dinhDangNhanThangNgan(thangBaoCao)}`,
+        data: chiTiet,
+      })
+    } catch (error) {
+      setLoiChiTietBaoCao(thongDiepLoi(error))
+      setChiTietBaoCao({
+        type: loai,
+        title: 'Không tải được dữ liệu chi tiết',
+        data: [],
+      })
+    } finally {
+      setDangTaiChiTietBaoCao(false)
+    }
+  }
+
+  return (
+    <div className="invoice-workspace reports-workspace">
+      <section className="khung">
+        <div className="xem-truoc__dau">
+          <strong>Xem báo cáo tháng</strong>
+          <span>Chọn một tháng để xem doanh thu, doanh thu phát sinh, chi phí phát sinh và lợi nhuận</span>
+        </div>
+        <div className="invoice-toolbar reports-toolbar">
+          <label className="invoice-search invoice-search--month">
+            <span>Tháng xem báo cáo</span>
+            <input type="month" value={thangBaoCao} onChange={(event) => setThangBaoCao(event.target.value)} />
+          </label>
+        </div>
+        {loiBaoCaoThang ? <div className="thong-bao-loi">{loiBaoCaoThang}</div> : null}
+        {dangTaiBaoCaoThang ? (
+          <div className="khung-du-lieu khung-du-lieu--trong">Đang tải báo cáo tháng...</div>
+        ) : baoCaoThang ? (
+          <div className="report-revenue-card">
+            <div className="report-revenue-card__header">
+              <strong>{`Báo cáo ${dinhDangNhanThangNgan(baoCaoThang.monthKey)}`}</strong>
+              <span>{`Lợi nhuận: ${dinhDangTien(baoCaoThang.profitLoss)}`}</span>
+            </div>
+            <div className="report-chart report-chart--single-month">
+              <div className="report-chart__grid report-chart__grid--single-month">
+                {(() => {
+                  const maxValue = Math.max(
+                    layGiaTriSo(baoCaoThang.paidInvoicesRevenue),
+                    layGiaTriSo(baoCaoThang.extraIncome),
+                    layGiaTriSo(baoCaoThang.totalExpense),
+                    Math.abs(layGiaTriSo(baoCaoThang.profitLoss)),
+                    1,
+                  )
+
+                  return (
+                    <>
+                      <div className="report-chart__group">
+                        <div className="report-chart__bars report-chart__bars--single">
+                          <ReportBar
+                            label={`Doanh thu ${dinhDangNhanThangNgan(baoCaoThang.monthKey)}`}
+                            value={baoCaoThang.paidInvoicesRevenue}
+                            maxValue={maxValue}
+                            tone="revenue"
+                          />
+                        </div>
+                        <span className="report-chart__label">Doanh thu</span>
+                      </div>
+                      <div className="report-chart__group">
+                        <div className="report-chart__bars report-chart__bars--single">
+                          <ReportBar
+                            label={`Doanh thu phát sinh ${dinhDangNhanThangNgan(baoCaoThang.monthKey)}`}
+                            value={baoCaoThang.extraIncome}
+                            maxValue={maxValue}
+                            tone="profit"
+                          />
+                        </div>
+                        <span className="report-chart__label">Doanh thu phát sinh</span>
+                      </div>
+                      <div className="report-chart__group">
+                        <div className="report-chart__bars report-chart__bars--single">
+                          <ReportBar
+                            label={`Chi phí phát sinh ${dinhDangNhanThangNgan(baoCaoThang.monthKey)}`}
+                            value={baoCaoThang.totalExpense}
+                            maxValue={maxValue}
+                            tone="expense"
+                          />
+                        </div>
+                        <span className="report-chart__label">Chi phí phát sinh</span>
+                      </div>
+                      <div className="report-chart__group">
+                        <div className="report-chart__bars report-chart__bars--single">
+                          <ReportBar
+                            label={`Lợi nhuận ${dinhDangNhanThangNgan(baoCaoThang.monthKey)}`}
+                            value={baoCaoThang.profitLoss}
+                            maxValue={maxValue}
+                            tone="profit"
+                            negative={baoCaoThang.profitLoss < 0}
+                          />
+                        </div>
+                        <span className="report-chart__label">Lợi nhuận</span>
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+            </div>
+            <div className="report-revenue-card__grid">
+              <button type="button" className="report-revenue-card__item report-revenue-card__item--interactive" onClick={() => moChiTietBaoCao('revenue')}>
+                <span>Doanh thu</span>
+                <strong className="invoice-amount invoice-amount--paid">{dinhDangTien(baoCaoThang.paidInvoicesRevenue)}</strong>
+              </button>
+              <button type="button" className="report-revenue-card__item report-revenue-card__item--interactive" onClick={() => moChiTietBaoCao('extraIncome')}>
+                <span>Doanh thu phát sinh</span>
+                <strong className="invoice-amount">{dinhDangTien(baoCaoThang.extraIncome)}</strong>
+              </button>
+              <button type="button" className="report-revenue-card__item report-revenue-card__item--interactive" onClick={() => moChiTietBaoCao('expense')}>
+                <span>Chi phí phát sinh</span>
+                <strong className="invoice-amount invoice-amount--unpaid">{dinhDangTien(baoCaoThang.totalExpense)}</strong>
+              </button>
+              <div className="report-revenue-card__item report-revenue-card__item--highlight">
+                <span>Lợi nhuận</span>
+                <strong className={`invoice-amount ${baoCaoThang.profitLoss >= 0 ? 'invoice-amount--paid' : 'invoice-amount--unpaid'}`}>
+                  {dinhDangTien(baoCaoThang.profitLoss)}
+                </strong>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="khung-du-lieu khung-du-lieu--trong">Chưa có dữ liệu báo cáo cho tháng đã chọn.</div>
+        )}
+      </section>
+
+      <section className="khung">
+        <div className="xem-truoc__dau">
+          <strong>Biểu đồ doanh thu, chi phí, lợi nhuận</strong>
+          <span>{reportData.length ? `Từ ${dinhDangNhanThangNgan(reportData[0].monthKey)} đến ${dinhDangNhanThangNgan(reportData[reportData.length - 1].monthKey)}` : 'Chưa có dữ liệu'}</span>
+        </div>
+        <div className="invoice-toolbar reports-toolbar">
+          <label className="invoice-search invoice-search--month">
+            <span>Tháng kết thúc chuỗi</span>
+            <input type="month" value={thangKetThuc} onChange={(event) => setThangKetThuc(event.target.value)} />
+          </label>
+          <button type="button" className="nut nut--phu" onClick={() => setReloadKey((value) => value + 1)} disabled={dangTai}>
+            {dangTai ? 'Đang tải...' : 'Làm mới báo cáo'}
+          </button>
+        </div>
+        {loi ? <div className="thong-bao-loi">{loi}</div> : null}
+        {dangTai ? (
+          <div className="khung-du-lieu khung-du-lieu--trong">Đang tải dữ liệu báo cáo...</div>
+        ) : reportData.length ? (
+          <div className="report-layout">
+            <section className="invoice-stats">
+              <article className="invoice-stat-card">
+                <span>Tổng doanh thu 6 tháng</span>
+                <strong className="invoice-amount invoice-amount--paid">{dinhDangTien(tongDoanhThu).replace(/\s*VND$/, '')}</strong>
+              </article>
+              <article className="invoice-stat-card">
+                <span>Tổng chi phí 6 tháng</span>
+                <strong className="invoice-amount invoice-amount--unpaid">{dinhDangTien(tongChiPhi).replace(/\s*VND$/, '')}</strong>
+              </article>
+              <article className="invoice-stat-card">
+                <span>Tổng lợi nhuận 6 tháng</span>
+                <strong className={`invoice-amount ${tongLoiNhuan >= 0 ? 'invoice-amount--paid' : 'invoice-amount--unpaid'}`}>
+                  {dinhDangTien(tongLoiNhuan).replace(/\s*VND$/, '')}
+                </strong>
+              </article>
+            </section>
+            <ReportTrendChart data={reportData} />
+          </div>
+        ) : (
+          <div className="khung-du-lieu khung-du-lieu--trong">Chưa có dữ liệu báo cáo để hiển thị.</div>
+        )}
+      </section>
+
+      {chiTietBaoCao ? (
+        <div className="lop-phu-endpoint" onClick={() => setChiTietBaoCao(null)}>
+          <div className="hop-endpoint-mo" onClick={(event) => event.stopPropagation()}>
+            <article className="the-endpoint the-endpoint--mo invoice-modal-card">
+              <div className="the-endpoint__dau">
+                <div>
+                  <span className="method-tag method-tag--get">GET</span>
+                  <h3>{chiTietBaoCao.title}</h3>
+                </div>
+                <button type="button" className="nut-dong-endpoint" onClick={() => setChiTietBaoCao(null)}>
+                  ×
+                </button>
+              </div>
+
+              {loiChiTietBaoCao ? <div className="thong-bao-loi">{loiChiTietBaoCao}</div> : null}
+
+              {dangTaiChiTietBaoCao ? (
+                <div className="khung-du-lieu khung-du-lieu--trong">Đang tải dữ liệu chi tiết...</div>
+              ) : chiTietBaoCao.type === 'revenue' ? (
+                <XemDanhSachHoaDon data={chiTietBaoCao.data} />
+              ) : (
+                <XemDanhSachThuChi data={chiTietBaoCao.data} />
+              )}
+            </article>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function InvoiceWorkspaceModern({ spec }) {
   const [hoaDon, setHoaDon] = useState([])
   const [dangTai, setDangTai] = useState(true)
   const [loi, setLoi] = useState('')
@@ -2695,6 +5061,36 @@ function InvoiceWorkspaceModern() {
   const [thangNamFilter, setThangNamFilter] = useState('')
   const [trangThaiFilter, setTrangThaiFilter] = useState('all')
   const [reloadKey, setReloadKey] = useState(0)
+
+  const invoiceActions = useMemo(() => {
+    const actions = Object.entries(spec?.paths || {})
+      .filter(([path]) => path.toLowerCase().startsWith('/api/invoices'))
+      .flatMap(([path, pathItem]) =>
+        METHOD_ORDER.filter((method) => pathItem[method]).map((method) => ({
+          path,
+          method,
+          operation: pathItem[method],
+        })),
+      )
+      .filter((item) => {
+        const method = item.method.toLowerCase()
+        const path = item.path.toLowerCase()
+        return (
+          method === 'post' &&
+          (path === '/api/invoices/preview' || path === '/api/invoices')
+        )
+      })
+      .sort((a, b) => sapXepEndpoint('invoices', a, b))
+
+    const seen = new Set()
+    return actions.filter((item) => {
+      const normalizedPath = item.path.toLowerCase().replace('{id:int}', '{id}')
+      const key = `${item.method.toLowerCase()} ${normalizedPath}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [spec])
 
   useEffect(() => {
     let active = true
@@ -2795,6 +5191,23 @@ function InvoiceWorkspaceModern() {
         </div>
       </section>
 
+      {invoiceActions.length ? (
+        <section className="khung invoice-actions-card">
+          <div className="danh-sach-endpoint invoice-actions-inline">
+            {invoiceActions.map((item) => (
+              <EndpointCard
+                key={`${item.method}-${item.path}`}
+                method={item.method}
+                moduleKey="invoices"
+                operation={item.operation}
+                path={item.path}
+                spec={spec}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section className="invoice-stats invoice-stats--five">
         <article className="invoice-stat-card">
           <span>Tổng hóa đơn</span>
@@ -2868,8 +5281,8 @@ function datTenEndpoint(moduleKey, method, path) {
       'post /api/contracts': 'Tạo hợp đồng mới',
       'put /api/contracts/{id:int}': 'Cập nhật thông tin hợp đồng',
       'put /api/contracts/{id}': 'Cập nhật thông tin hợp đồng',
-      'post /api/contracts/{id:int}/end-preview': 'Kết thúc hợp đồng và trả tiền cọc',
-      'post /api/contracts/{id}/end-preview': 'Kết thúc hợp đồng và trả tiền cọc',
+      'post /api/contracts/{id:int}/end-preview': 'Trả tiền cọc',
+      'post /api/contracts/{id}/end-preview': 'Trả tiền cọc',
       'post /api/contracts/{id:int}/end': 'Kết thúc hợp đồng',
       'post /api/contracts/{id}/end': 'Kết thúc hợp đồng',
       'delete /api/contracts/{id:int}': 'Xóa hợp đồng đã chấm dứt',
@@ -2946,7 +5359,35 @@ async function taiSwagger() {
 }
 
 async function guiRequest(url, options) {
-  const response = await fetch(url, options)
+  const { timeoutMs, signal, ...fetchOptions } = options || {}
+  const controller = new AbortController()
+  const timeoutId = timeoutMs
+    ? window.setTimeout(() => controller.abort(new DOMException('Request timed out', 'AbortError')), timeoutMs)
+    : null
+
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort(signal.reason)
+    } else {
+      signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
+    }
+  }
+
+  let response
+  try {
+    response = await fetch(url, {
+      ...fetchOptions,
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (timeoutId) window.clearTimeout(timeoutId)
+    if (error?.name === 'AbortError') {
+      throw new Error('Yêu cầu đã bị dừng sau 60 giây. Hãy thử lại với ảnh rõ hơn.')
+    }
+    throw error
+  }
+
+  if (timeoutId) window.clearTimeout(timeoutId)
   const contentType = response.headers.get('content-type') || ''
 
   let payload = null
@@ -3831,7 +6272,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                   const placeholderText = laChonHopDongDaKetThucTheoPhong
                     ? 'Chọn phòng đã chấm dứt'
                     : laKetThucHopDongTheoPhong
-                      ? 'Chọn phòng đang active'
+                      ? 'Chọn phòng'
                       : laChonHopDongTheoPhong
                         ? 'Chọn phòng có hợp đồng'
                         : moduleKey === 'rooms'
@@ -3842,7 +6283,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                     ? laChonHopDongDaKetThucTheoPhong
                       ? 'Đang tải phòng đã chấm dứt...'
                       : laKetThucHopDongTheoPhong
-                        ? 'Đang tải phòng đang active...'
+                        ? 'Đang tải phòng...'
                         : laChonHopDongTheoPhong
                           ? 'Đang tải danh sách hợp đồng...'
                           : moduleKey === 'rooms'
@@ -3853,7 +6294,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                       : laChonHopDongDaKetThucTheoPhong
                         ? 'Không có phòng đã chấm dứt'
                         : laKetThucHopDongTheoPhong
-                          ? 'Không có phòng đang active'
+                          ? 'Không có phòng'
                           : laChonHopDongTheoPhong
                             ? 'Không có hợp đồng'
                             : moduleKey === 'rooms'
@@ -3864,7 +6305,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                     ? laChonHopDongDaKetThucTheoPhong
                       ? 'Chọn phòng đã chấm dứt'
                       : laKetThucHopDongTheoPhong
-                        ? 'Chọn phòng đang active'
+                        ? 'Chọn phòng'
                         : laChonHopDongTheoPhong
                           ? 'Chọn phòng có hợp đồng'
                           : moduleKey === 'rooms'
@@ -4421,11 +6862,35 @@ function TrangModule({ module, spec }) {
   }, [module.prefix, module.key, spec])
 
   if (module.key === 'invoices') {
-    return <InvoiceWorkspaceModern />
+    return <InvoiceWorkspaceModern spec={spec} />
+  }
+
+  if (module.key === 'rooms') {
+    return <RoomsWorkspace />
+  }
+
+  if (module.key === 'tenants') {
+    return <TenantsWorkspace spec={spec} />
+  }
+
+  if (module.key === 'contracts') {
+    return <ContractsWorkspace spec={spec} />
   }
 
   if (module.key === 'meterreadings') {
     return <MeterReadingWorkspace />
+  }
+
+  if (module.key === 'payments') {
+    return <PaymentWorkspace />
+  }
+
+  if (module.key === 'transactions') {
+    return <TransactionWorkspace />
+  }
+
+  if (module.key === 'reports') {
+    return <ReportsWorkspace />
   }
 
   // Thêm MonthlyBulkCard vào cuối danh sách invoices

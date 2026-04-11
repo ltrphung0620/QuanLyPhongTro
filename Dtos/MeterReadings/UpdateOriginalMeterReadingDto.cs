@@ -4,6 +4,8 @@ namespace NhaTro.Dtos.MeterReadings
 {
     public class UpdateOriginalMeterReadingDto
     {
+        public int? MeterReadingId { get; set; }
+
         [Required]
         public string RoomCode { get; set; } = string.Empty;
 

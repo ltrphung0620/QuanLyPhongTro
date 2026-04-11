@@ -56,6 +56,16 @@ namespace NhaTro.Repositories
                     x.ReplacedByInvoiceId == null);
         }
 
+        public async Task<Invoice?> GetByContractAndMonthAsync(int contractId, DateOnly month)
+        {
+            return await _context.Invoices
+                .Include(x => x.Room)
+                .FirstOrDefaultAsync(x =>
+                    x.ContractId == contractId &&
+                    x.BillingMonth == month &&
+                    x.ReplacedByInvoiceId == null);
+        }
+
         public async Task<List<Invoice>> GetUnpaidAsync(DateOnly? month = null)
         {
             var query = _context.Invoices
@@ -76,6 +86,15 @@ namespace NhaTro.Repositories
             return await _context.Invoices
                 .Include(x => x.Room)
                 .FirstOrDefaultAsync(x => x.PaymentCode == normalized && x.ReplacedByInvoiceId == null);
+        }
+
+        public async Task<bool> PaymentCodeExistsAsync(string paymentCode)
+        {
+            var normalized = paymentCode.Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+                return false;
+
+            return await _context.Invoices.AnyAsync(x => x.PaymentCode == normalized);
         }
 
         public async Task AddAsync(Invoice invoice)
