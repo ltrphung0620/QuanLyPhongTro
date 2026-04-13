@@ -5,6 +5,8 @@ namespace NhaTro.Dtos.Invoices
         public int RoomId { get; set; }
         public int ContractId { get; set; }
         public DateOnly BillingMonth { get; set; }
+        public DateOnly FromDate { get; set; }
+        public DateOnly ToDate { get; set; }
 
         public decimal RoomFee { get; set; }
         public decimal ElectricityFee { get; set; }

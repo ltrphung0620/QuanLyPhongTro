@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.HttpOverrides;
+using QuestPDF.Infrastructure;
 using NhaTro.Data;
 using NhaTro.Interfaces.Repositories;
 using NhaTro.Interfaces.Services;
@@ -24,21 +26,26 @@ builder.Services.AddHttpClient<OcrSpaceMeterReadingImageReader>();
 builder.Services.AddScoped<IMeterReadingImageReader, OcrSpaceMeterReadingImageReader>();
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
+builder.Services.AddHttpClient<IInvoicePdfService, InvoicePdfService>();
 builder.Services.AddScoped<IPaymentTransactionRepository, PaymentTransactionRepository>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IDepositSettlementRepository, DepositSettlementRepository>();
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+
+QuestPDF.Settings.License = LicenseType.Community;
+
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
+app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
 
-app.UseHttpsRedirection();
+app.UseSwagger();
+app.UseSwaggerUI();
+
 app.UseAuthorization();
 app.MapControllers();
 

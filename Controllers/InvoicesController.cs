@@ -9,10 +9,12 @@ namespace NhaTro.Controllers
     public class InvoicesController : ControllerBase
     {
         private readonly IInvoiceService _service;
+        private readonly IInvoicePdfService _pdfService;
 
-        public InvoicesController(IInvoiceService service)
+        public InvoicesController(IInvoiceService service, IInvoicePdfService pdfService)
         {
             _service = service;
+            _pdfService = pdfService;
         }
 
         [HttpGet]
@@ -32,6 +34,25 @@ namespace NhaTro.Controllers
                 return NotFound(new { message = "Không tìm thấy hóa đơn." });
 
             return Ok(invoice);
+        }
+
+        [HttpGet("{id:int}/pdf")]
+        public async Task<IActionResult> DownloadPdf(int id)
+        {
+            try
+            {
+                var invoice = await _service.GetByIdAsync(id);
+                if (invoice == null)
+                    return NotFound(new { message = "Không tìm thấy hóa đơn." });
+
+                var fileBytes = await _pdfService.GenerateInvoicePdfAsync(invoice);
+                var fileName = _pdfService.BuildInvoicePdfFileName(invoice);
+                return File(fileBytes, "application/pdf", fileName);
+            }
+            catch
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Không tải được PDF hóa đơn." });
+            }
         }
 
         [HttpPost("preview")]
@@ -81,7 +102,7 @@ namespace NhaTro.Controllers
         {
             var invoice = await _service.GetByPaymentCodeAsync(paymentCode);
             if (invoice == null)
-                return NotFound(new { message = "Không tìm thấy hóa đơn theo payment code." });
+                return NotFound(new { message = "Không tìm thấy hóa đơn theo mã thanh toán." });
 
             return Ok(invoice);
         }
@@ -199,7 +220,7 @@ namespace NhaTro.Controllers
                 if (!deleted)
                     return NotFound(new { message = "Không tìm thấy hóa đơn." });
 
-                return Ok(new { message = "Xóa hóa đơn thành công." });
+                return Ok(new { message = "Xoa hoa don thanh cong." });
             }
             catch (Exception ex)
             {

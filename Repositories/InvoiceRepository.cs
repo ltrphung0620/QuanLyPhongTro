@@ -66,6 +66,20 @@ namespace NhaTro.Repositories
                     x.ReplacedByInvoiceId == null);
         }
 
+        public async Task<Invoice?> GetLatestBeforeMonthAsync(int roomId, DateOnly month)
+        {
+            return await _context.Invoices
+                .Include(x => x.Room)
+                .Where(x =>
+                    x.RoomId == roomId &&
+                    x.BillingMonth.HasValue &&
+                    x.BillingMonth.Value < month &&
+                    x.ReplacedByInvoiceId == null)
+                .OrderByDescending(x => x.BillingMonth)
+                .ThenByDescending(x => x.InvoiceId)
+                .FirstOrDefaultAsync();
+        }
+
         public async Task<List<Invoice>> GetUnpaidAsync(DateOnly? month = null)
         {
             var query = _context.Invoices

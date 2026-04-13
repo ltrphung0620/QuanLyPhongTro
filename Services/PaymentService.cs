@@ -38,13 +38,14 @@ namespace NhaTro.Services
 
         public async Task<PaymentTransactionDto> HandleSepayWebhookAsync(SepayWebhookDto dto)
         {
-            if (string.IsNullOrWhiteSpace(dto.Id))
+            var providerTransactionId = dto.Id?.ToString();
+            if (string.IsNullOrWhiteSpace(providerTransactionId))
                 throw new InvalidOperationException("Webhook không có transaction id.");
 
-            var existed = await _paymentRepo.GetByProviderTransactionIdAsync(dto.Id);
+            var existed = await _paymentRepo.GetByProviderTransactionIdAsync(providerTransactionId);
             if (existed != null)
             {
-                return MapToDto(existed);
+                return await TryFinalizeExistingPaymentAsync(existed);
             }
 
             DateTime? transactionDate = null;
@@ -58,7 +59,7 @@ namespace NhaTro.Services
             var payment = new PaymentTransaction
             {
                 Provider = "sepay",
-                ProviderTransactionId = dto.Id.Trim(),
+                ProviderTransactionId = providerTransactionId,
                 ReferenceCode = string.IsNullOrWhiteSpace(dto.ReferenceCode) ? null : dto.ReferenceCode.Trim(),
                 PaymentCode = resolvedPaymentCode,
                 AccountNumber = string.IsNullOrWhiteSpace(dto.AccountNumber) ? null : dto.AccountNumber.Trim(),
@@ -120,7 +121,7 @@ namespace NhaTro.Services
                 return MapToDto(payment);
             }
 
-            if (!payment.TransferAmount.HasValue || payment.TransferAmount.Value < invoice.TotalAmount)
+            if (!payment.TransferAmount.HasValue || payment.TransferAmount.Value < RoundCurrencyAmount(invoice.TotalAmount))
             {
                 payment.ProcessStatus = "failed";
                 payment.ProcessedAt = DateTime.UtcNow;
@@ -133,7 +134,7 @@ namespace NhaTro.Services
             await _invoiceService.MarkPaidAsync(invoice.InvoiceId, new MarkInvoicePaidDto
             {
                 Amount = payment.TransferAmount.Value,
-                PaymentMethod = "bank_transfer_sepay",
+                PaymentMethod = "Chuyển khoản",
                 PaymentReference = payment.ReferenceCode ?? payment.ProviderTransactionId
             });
 
@@ -157,12 +158,12 @@ namespace NhaTro.Services
 
             payment.MatchedInvoiceId = invoice.InvoiceId;
 
-            if (invoice.Status != "paid" && payment.TransferAmount.HasValue && payment.TransferAmount.Value >= invoice.TotalAmount)
+            if (invoice.Status != "paid" && payment.TransferAmount.HasValue && payment.TransferAmount.Value >= RoundCurrencyAmount(invoice.TotalAmount))
             {
                 await _invoiceService.MarkPaidAsync(invoice.InvoiceId, new MarkInvoicePaidDto
                 {
                     Amount = payment.TransferAmount.Value,
-                    PaymentMethod = "manual_reconcile",
+                    PaymentMethod = "Chuyển khoản",
                     PaymentReference = payment.ReferenceCode ?? payment.ProviderTransactionId
                 });
 
@@ -180,6 +181,80 @@ namespace NhaTro.Services
             return MapToDto(payment);
         }
 
+        public async Task<bool> DeleteAsync(int paymentTransactionId)
+        {
+            var payment = await _paymentRepo.GetByIdAsync(paymentTransactionId);
+            if (payment == null)
+                return false;
+
+            var processStatus = string.IsNullOrWhiteSpace(payment.ProcessStatus)
+                ? string.Empty
+                : payment.ProcessStatus.Trim().ToLowerInvariant();
+
+            if (processStatus == "paid")
+            {
+                throw new InvalidOperationException("Khong the xoa giao dich da danh dau thanh toan.");
+            }
+
+            _paymentRepo.Delete(payment);
+            await _paymentRepo.SaveChangesAsync();
+            return true;
+        }
+
+        private async Task<PaymentTransactionDto> TryFinalizeExistingPaymentAsync(PaymentTransaction payment)
+        {
+            if (payment.ProcessStatus == "paid")
+            {
+                return MapToDto(payment);
+            }
+
+            if (payment.TransferType != "in" || string.IsNullOrWhiteSpace(payment.PaymentCode))
+            {
+                return MapToDto(payment);
+            }
+
+            var invoice = await _invoiceRepo.GetByPaymentCodeAsync(payment.PaymentCode);
+            if (invoice == null)
+            {
+                return MapToDto(payment);
+            }
+
+            if (invoice.Status == "paid")
+            {
+                payment.ProcessStatus = "paid";
+                payment.MatchedInvoiceId = invoice.InvoiceId;
+                payment.ProcessedAt = DateTime.UtcNow;
+                _paymentRepo.Update(payment);
+                await _paymentRepo.SaveChangesAsync();
+                return MapToDto(payment);
+            }
+
+            if (!payment.TransferAmount.HasValue || payment.TransferAmount.Value < RoundCurrencyAmount(invoice.TotalAmount))
+            {
+                return MapToDto(payment);
+            }
+
+            await _invoiceService.MarkPaidAsync(invoice.InvoiceId, new MarkInvoicePaidDto
+            {
+                Amount = payment.TransferAmount.Value,
+                PaymentMethod = "Chuyển khoản",
+                PaymentReference = payment.ReferenceCode ?? payment.ProviderTransactionId
+            });
+
+            payment.ProcessStatus = "paid";
+            payment.MatchedInvoiceId = invoice.InvoiceId;
+            payment.ProcessedAt = DateTime.UtcNow;
+            _paymentRepo.Update(payment);
+            await _paymentRepo.SaveChangesAsync();
+
+            return MapToDto(payment);
+        }
+
+        private static decimal RoundCurrencyAmount(decimal amount)
+        {
+            return decimal.Round(amount, 0, MidpointRounding.AwayFromZero);
+        }
+
         private async Task<string?> ResolvePaymentCodeAsync(SepayWebhookDto dto)
         {
             if (!string.IsNullOrWhiteSpace(dto.Code))
@@ -195,7 +270,7 @@ namespace NhaTro.Services
             .Select(value => value!.Trim())
             .ToList();
 
-            if (!candidates.Count)
+            if (candidates.Count == 0)
                 return null;
 
             var unpaidInvoices = await _invoiceService.GetUnpaidAsync();

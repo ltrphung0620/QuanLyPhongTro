@@ -12,5 +12,7 @@ namespace NhaTro.Dtos.Invoices
 
         [MaxLength(100)]
         public string? PaymentReference { get; set; }
+
+        public string? Note { get; set; }
     }
 }

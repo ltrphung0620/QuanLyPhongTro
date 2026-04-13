@@ -8,6 +8,7 @@ namespace NhaTro.Interfaces.Repositories
         Task<PaymentTransaction?> GetByIdAsync(int paymentTransactionId);
         Task<PaymentTransaction?> GetByProviderTransactionIdAsync(string providerTransactionId);
         Task AddAsync(PaymentTransaction paymentTransaction);
+        void Delete(PaymentTransaction paymentTransaction);
         void Update(PaymentTransaction paymentTransaction);
         Task<bool> SaveChangesAsync();
     }

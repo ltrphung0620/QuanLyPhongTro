@@ -21,12 +21,12 @@ namespace NhaTro.Services
         {
             var billingMonth = NormalizeMonth(month);
 
-            var invoices = await _invoiceRepository.GetAllAsync(null, billingMonth, "paid");
+            var invoices = await _invoiceRepository.GetAllAsync(null, billingMonth, null);
             var transactions = await _transactionRepository.GetAllAsync(billingMonth, "income");
 
             var paidInvoicesRevenue = invoices
                 .Where(x => x.ReplacedByInvoiceId == null)
-                .Sum(x => x.PaidAmount ?? x.TotalAmount);
+                .Sum(CalculateRecognizedRevenue);
 
             var extraIncome = transactions.Sum(x => x.Amount);
             var totalRevenue = paidInvoicesRevenue + extraIncome;
@@ -95,6 +95,12 @@ namespace NhaTro.Services
         private static DateOnly NormalizeMonth(DateOnly date)
         {
             return new DateOnly(date.Year, date.Month, 1);
+        }
+
+        private static decimal CalculateRecognizedRevenue(Models.Invoice invoice)
+        {
+            var recognizedRevenue = invoice.TotalAmount - invoice.DebtAmount;
+            return recognizedRevenue > 0 ? recognizedRevenue : 0;
         }
     }
 }
