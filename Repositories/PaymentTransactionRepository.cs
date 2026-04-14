@@ -47,6 +47,11 @@ namespace NhaTro.Repositories
             await _context.PaymentTransactions.AddAsync(paymentTransaction);
         }
 
+        public void Delete(PaymentTransaction paymentTransaction)
+        {
+            _context.PaymentTransactions.Remove(paymentTransaction);
+        }
+
         public void Update(PaymentTransaction paymentTransaction)
         {
             _context.PaymentTransactions.Update(paymentTransaction);

@@ -264,7 +264,7 @@ namespace NhaTro.Services
 
                 if (consumedUnits < 0)
                 {
-                    throw new InvalidOperationException("Sá»‘ Ä‘iá»‡n má»›i khÃ´ng há»£p lá»‡.");
+                    throw new InvalidOperationException("Số điện mới không hợp lệ.");
                 }
 
                 if (existingMeter == null)

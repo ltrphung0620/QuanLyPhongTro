@@ -8,5 +8,6 @@ namespace NhaTro.Interfaces.Services
         Task<PaymentTransactionDto?> GetByIdAsync(int paymentTransactionId);
         Task<PaymentTransactionDto> HandleSepayWebhookAsync(SepayWebhookDto dto);
         Task<PaymentTransactionDto?> ReconcileAsync(int paymentTransactionId, ReconcilePaymentDto dto);
+        Task<bool> DeleteAsync(int paymentTransactionId);
     }
 }

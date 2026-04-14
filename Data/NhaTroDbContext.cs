@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using NhaTro.Models;
-using NhaTro.Models;
 namespace NhaTro.Data
 {
     public class NhaTroDbContext : DbContext

@@ -1,4 +1,4 @@
-using NhaTro.Dtos.Invoices;
+﻿using NhaTro.Dtos.Invoices;
 using NhaTro.Interfaces.Repositories;
 using NhaTro.Interfaces.Services;
 using NhaTro.Models;
@@ -29,7 +29,7 @@ namespace NhaTro.Services
 
         public async Task<List<InvoiceDto>> GetAllAsync(int? roomId = null, DateOnly? month = null, string? status = null)
         {
-            DateOnly? normalizedMonth = month.HasValue? NormalizeMonth(month.Value): null;
+            DateOnly? normalizedMonth = month.HasValue ? NormalizeMonth(month.Value) : null;
             var data = await _invoiceRepo.GetAllAsync(roomId, normalizedMonth, status);
             return data.Select(MapToDto).ToList();
         }
@@ -46,20 +46,22 @@ namespace NhaTro.Services
 
             var contract = await _contractRepo.GetActiveByRoomIdAsync(dto.RoomId);
             if (contract == null)
-                throw new InvalidOperationException("Contract không hợp lệ.");
+                throw new InvalidOperationException("Contract khong hop le.");
 
             var existed = await _invoiceRepo.GetByRoomAndMonthAsync(dto.RoomId, billingMonth);
             if (existed != null)
-                throw new InvalidOperationException("Đã có hóa đơn tháng này.");
+                throw new InvalidOperationException("Da co hoa don thang nay.");
 
             var meter = await _meterRepo.GetByContractAndMonthAsync(contract.ContractId, billingMonth);
 
             var electricity = meter?.Amount ?? 0;
-            var roomFee = contract.ActualRoomPrice;
+            var (fromDate, toDate) = GetInvoiceCoveragePeriod(contract, billingMonth);
+            var roomFee = CalculateRoomFeeForBillingMonth(contract, billingMonth, fromDate, toDate);
             var water = contract.OccupantCount * WATER_PER_PERSON;
             var trash = TRASH_FEE;
             var discount = dto.DiscountAmount;
-            var debt = dto.DebtAmount;
+            var carryOver = await GetCarryOverInfoAsync(dto.RoomId, billingMonth);
+            var debt = dto.DebtAmount + carryOver.Amount;
 
             var total = roomFee + electricity + water + trash + debt - discount;
             if (total < 0) total = 0;
@@ -69,6 +71,8 @@ namespace NhaTro.Services
                 RoomId = dto.RoomId,
                 ContractId = contract.ContractId,
                 BillingMonth = billingMonth,
+                FromDate = fromDate,
+                ToDate = toDate,
                 RoomFee = roomFee,
                 ElectricityFee = electricity,
                 WaterFee = water,
@@ -83,6 +87,7 @@ namespace NhaTro.Services
         {
             var billingMonth = NormalizeMonth(dto.BillingMonth);
             var preview = await PreviewAsync(dto);
+            var carryOver = await GetCarryOverInfoAsync(dto.RoomId, billingMonth);
 
             var invoice = new Invoice
             {
@@ -90,8 +95,8 @@ namespace NhaTro.Services
                 ContractId = preview.ContractId,
                 InvoiceType = "monthly",
                 BillingMonth = billingMonth,
-                FromDate = billingMonth,
-                ToDate = billingMonth.AddMonths(1).AddDays(-1),
+                FromDate = preview.FromDate,
+                ToDate = preview.ToDate,
                 RoomFee = preview.RoomFee,
                 ElectricityFee = preview.ElectricityFee,
                 WaterFee = preview.WaterFee,
@@ -101,6 +106,7 @@ namespace NhaTro.Services
                 TotalAmount = preview.TotalAmount,
                 Status = "unpaid",
                 PaymentCode = await GeneratePaymentCodeAsync("monthly", billingMonth, dto.RoomId),
+                Note = carryOver.Note,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -120,9 +126,7 @@ namespace NhaTro.Services
 
         public async Task<List<InvoiceDto>> GetUnpaidAsync(DateOnly? month = null)
         {
-            DateOnly? normalizedMonth = month.HasValue 
-    ? NormalizeMonth(month.Value) 
-    : null;
+            DateOnly? normalizedMonth = month.HasValue ? NormalizeMonth(month.Value) : null;
             var data = await _invoiceRepo.GetUnpaidAsync(normalizedMonth);
             return data.Select(MapToDto).ToList();
         }
@@ -140,14 +144,22 @@ namespace NhaTro.Services
                 return null;
 
             if (invoice.Status == "paid")
-                throw new InvalidOperationException("Hóa đơn đã thanh toán rồi.");
+                throw new InvalidOperationException("Hoa don da thanh toan roi.");
+
+            var oldRemainingAmount = GetRemainingAmount(invoice);
+            var paidAmount = dto.Amount > 0 ? dto.Amount : invoice.TotalAmount;
+            var effectivePaidAmount = Math.Min(paidAmount, invoice.TotalAmount);
+            var remainingAmount = invoice.TotalAmount - effectivePaidAmount;
 
             invoice.Status = "paid";
             invoice.PaidAt = DateTime.UtcNow;
-            invoice.PaidAmount = dto.Amount > 0 ? dto.Amount : invoice.TotalAmount;
-            invoice.PaymentMethod = string.IsNullOrWhiteSpace(dto.PaymentMethod) ? "manual" : dto.PaymentMethod.Trim();
+            invoice.PaidAmount = effectivePaidAmount;
+            invoice.PaymentMethod = NormalizePaymentMethod(dto.PaymentMethod);
             invoice.PaymentReference = string.IsNullOrWhiteSpace(dto.PaymentReference) ? null : dto.PaymentReference.Trim();
+            invoice.Note = BuildPaymentNote(invoice.Note, dto.Note, effectivePaidAmount, remainingAmount);
             invoice.UpdatedAt = DateTime.UtcNow;
+
+            await ApplyCarryOverAdjustmentToNextInvoiceAsync(invoice, oldRemainingAmount, remainingAmount);
 
             _invoiceRepo.Update(invoice);
             await _invoiceRepo.SaveChangesAsync();
@@ -161,12 +173,16 @@ namespace NhaTro.Services
             if (invoice == null)
                 return null;
 
+            var oldRemainingAmount = GetRemainingAmount(invoice);
+
             invoice.Status = "unpaid";
             invoice.PaidAt = null;
             invoice.PaidAmount = null;
             invoice.PaymentMethod = null;
             invoice.PaymentReference = null;
             invoice.UpdatedAt = DateTime.UtcNow;
+
+            await ApplyCarryOverAdjustmentToNextInvoiceAsync(invoice, oldRemainingAmount, invoice.TotalAmount);
 
             _invoiceRepo.Update(invoice);
             await _invoiceRepo.SaveChangesAsync();
@@ -177,11 +193,11 @@ namespace NhaTro.Services
         public async Task<InvoiceDto?> UpdateElectricityAsync(UpdateInvoiceElectricityDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.RoomCode))
-                throw new ArgumentException("RoomCode không hợp lệ.");
+                throw new ArgumentException("RoomCode khong hop le.");
 
             var room = await _roomRepo.GetByRoomCodeAsync(dto.RoomCode);
             if (room == null)
-                throw new InvalidOperationException("Không tìm thấy phòng theo roomCode.");
+                throw new InvalidOperationException("Khong tim thay phong theo roomCode.");
 
             var billingMonth = NormalizeMonth(dto.BillingMonth);
             var invoice = await _invoiceRepo.GetByRoomAndMonthAsync(room.RoomId, billingMonth);
@@ -224,11 +240,13 @@ namespace NhaTro.Services
                 var meter = await _meterRepo.GetByContractAndMonthAsync(contract.ContractId, billingMonth);
 
                 var electricity = meter?.Amount ?? 0;
-                var roomFee = contract.ActualRoomPrice;
+                var (fromDate, toDate) = GetInvoiceCoveragePeriod(contract, billingMonth);
+                var roomFee = CalculateRoomFeeForBillingMonth(contract, billingMonth, fromDate, toDate);
                 var water = contract.OccupantCount * WATER_PER_PERSON;
                 var trash = TRASH_FEE;
                 var discount = dto.DefaultDiscountAmount;
-                var debt = dto.DefaultDebtAmount;
+                var carryOver = await GetCarryOverInfoAsync(contract.RoomId, billingMonth);
+                var debt = dto.DefaultDebtAmount + carryOver.Amount;
                 var total = roomFee + electricity + water + trash + debt - discount;
 
                 if (total < 0) total = 0;
@@ -239,6 +257,8 @@ namespace NhaTro.Services
                     ContractId = contract.ContractId,
                     RoomCode = contract.Room?.RoomCode ?? string.Empty,
                     TenantName = contract.Tenant?.FullName ?? string.Empty,
+                    FromDate = fromDate,
+                    ToDate = toDate,
                     RoomFee = roomFee,
                     ElectricityFee = electricity,
                     WaterFee = water,
@@ -256,7 +276,7 @@ namespace NhaTro.Services
         {
             var billingMonth = NormalizeMonth(dto.BillingMonth);
             var previews = await MonthlyBulkPreviewAsync(dto);
-            var created = new List<InvoiceDto>();
+            var createdInvoices = new List<Invoice>();
 
             foreach (var item in previews)
             {
@@ -266,8 +286,8 @@ namespace NhaTro.Services
                     ContractId = item.ContractId,
                     InvoiceType = "monthly",
                     BillingMonth = billingMonth,
-                    FromDate = billingMonth,
-                    ToDate = billingMonth.AddMonths(1).AddDays(-1),
+                    FromDate = item.FromDate,
+                    ToDate = item.ToDate,
                     RoomFee = item.RoomFee,
                     ElectricityFee = item.ElectricityFee,
                     WaterFee = item.WaterFee,
@@ -277,16 +297,17 @@ namespace NhaTro.Services
                     TotalAmount = item.TotalAmount,
                     Status = "unpaid",
                     PaymentCode = await GeneratePaymentCodeAsync("monthly", billingMonth, item.RoomId),
+                    Note = (await GetCarryOverInfoAsync(item.RoomId, billingMonth)).Note,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
 
                 await _invoiceRepo.AddAsync(invoice);
-                created.Add(MapToDto(invoice));
+                createdInvoices.Add(invoice);
             }
 
             await _invoiceRepo.SaveChangesAsync();
-            return created;
+            return createdInvoices.Select(MapToDto).ToList();
         }
 
         public async Task<InvoiceDto?> ReplaceAsync(int invoiceId, InvoiceReplaceDto dto)
@@ -296,7 +317,7 @@ namespace NhaTro.Services
                 return null;
 
             if (oldInvoice.ReplacedByInvoiceId != null)
-                throw new InvalidOperationException("Hóa đơn này đã được thay thế.");
+                throw new InvalidOperationException("Hoa don nay da duoc thay the.");
 
             var billingMonth = oldInvoice.BillingMonth.HasValue
                 ? NormalizeMonth(oldInvoice.BillingMonth.Value)
@@ -344,6 +365,18 @@ namespace NhaTro.Services
             if (invoice == null)
                 return null;
 
+            if (dto.RoomFee.HasValue)
+                invoice.RoomFee = dto.RoomFee.Value;
+
+            if (dto.ElectricityFee.HasValue)
+                invoice.ElectricityFee = dto.ElectricityFee.Value;
+
+            if (dto.WaterFee.HasValue)
+                invoice.WaterFee = dto.WaterFee.Value;
+
+            if (dto.TrashFee.HasValue)
+                invoice.TrashFee = dto.TrashFee.Value;
+
             if (dto.DiscountAmount.HasValue)
                 invoice.DiscountAmount = dto.DiscountAmount.Value;
 
@@ -376,7 +409,7 @@ namespace NhaTro.Services
                 return false;
 
             if (invoice.Status == "paid")
-                throw new InvalidOperationException("Không thể xóa hóa đơn đã thanh toán.");
+                throw new InvalidOperationException("Khong the xoa hoa don da thanh toan.");
 
             var deleted = await _invoiceRepo.DeleteAsync(invoiceId);
             if (deleted)
@@ -402,16 +435,98 @@ namespace NhaTro.Services
             return total < 0 ? 0 : total;
         }
 
+        private static (DateOnly FromDate, DateOnly ToDate) GetInvoiceCoveragePeriod(Contract contract, DateOnly billingMonth)
+        {
+            var monthStart = NormalizeMonth(billingMonth);
+            var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+
+            var fromDate = contract.StartDate > monthStart ? contract.StartDate : monthStart;
+            var toDate = monthEnd;
+
+            if (contract.ActualEndDate.HasValue && contract.ActualEndDate.Value < toDate)
+            {
+                toDate = contract.ActualEndDate.Value;
+            }
+
+            if (toDate < fromDate)
+            {
+                toDate = fromDate;
+            }
+
+            return (fromDate, toDate);
+        }
+
+        private static decimal CalculateRoomFeeForBillingMonth(Contract contract, DateOnly billingMonth, DateOnly fromDate, DateOnly toDate)
+        {
+            var monthStart = NormalizeMonth(billingMonth);
+            if (fromDate == monthStart && toDate == monthStart.AddMonths(1).AddDays(-1))
+            {
+                return contract.ActualRoomPrice;
+            }
+
+            var daysInMonth = DateTime.DaysInMonth(billingMonth.Year, billingMonth.Month);
+            var occupiedDays = toDate.DayNumber - fromDate.DayNumber + 1;
+            if (occupiedDays <= 0 || daysInMonth <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Round((contract.ActualRoomPrice / daysInMonth) * occupiedDays, 2, MidpointRounding.AwayFromZero);
+        }
+
+        private async Task<(decimal Amount, string? Note)> GetCarryOverInfoAsync(int roomId, DateOnly billingMonth)
+        {
+            var previousInvoice = await _invoiceRepo.GetLatestBeforeMonthAsync(roomId, billingMonth);
+            if (previousInvoice == null)
+                return (0, null);
+
+            var remainingAmount = GetRemainingAmount(previousInvoice);
+            if (remainingAmount <= 0)
+                return (0, null);
+
+            return (remainingAmount, BuildCarryOverNote(previousInvoice, remainingAmount));
+        }
+
+        private async Task ApplyCarryOverAdjustmentToNextInvoiceAsync(Invoice sourceInvoice, decimal oldRemainingAmount, decimal newRemainingAmount)
+        {
+            if (!sourceInvoice.BillingMonth.HasValue)
+                return;
+
+            var nextMonth = sourceInvoice.BillingMonth.Value.AddMonths(1);
+            var nextInvoice = await _invoiceRepo.GetByRoomAndMonthAsync(sourceInvoice.RoomId, nextMonth);
+            if (nextInvoice == null)
+                return;
+
+            var delta = newRemainingAmount - oldRemainingAmount;
+            if (delta == 0)
+                return;
+
+            nextInvoice.DebtAmount = Math.Max(0, nextInvoice.DebtAmount + delta);
+            nextInvoice.TotalAmount = CalculateInvoiceTotal(
+                nextInvoice.RoomFee,
+                nextInvoice.ElectricityFee,
+                nextInvoice.WaterFee,
+                nextInvoice.TrashFee,
+                nextInvoice.DebtAmount,
+                nextInvoice.DiscountAmount);
+            nextInvoice.Note = UpsertCarryOverNote(nextInvoice.Note, sourceInvoice, newRemainingAmount);
+            nextInvoice.UpdatedAt = DateTime.UtcNow;
+
+            _invoiceRepo.Update(nextInvoice);
+        }
+
         private async Task<string> GeneratePaymentCodeAsync(string? invoiceType, DateOnly billingMonth, int roomId)
         {
-            var prefix = string.Equals(invoiceType?.Trim(), "final", StringComparison.OrdinalIgnoreCase)
-                ? "FINAL"
-                : "MONTHLY";
             var room = await _roomRepo.GetByIdAsync(roomId)
-                ?? throw new InvalidOperationException("Không tìm thấy phòng để sinh mã hóa đơn.");
+                ?? throw new InvalidOperationException("Khong tim thay phong de sinh ma hoa don.");
+
             var roomCode = SanitizePaymentCodePart(room.RoomCode);
             var monthPart = billingMonth.Month.ToString("00");
-            var baseCode = $"{prefix}-{monthPart}-{roomCode}";
+            var yearPart = billingMonth.Year.ToString("0000");
+            var prefix = string.Equals(invoiceType?.Trim(), "final", StringComparison.OrdinalIgnoreCase)
+                ? "FINAL"
+                : string.Empty;
+            var baseCode = $"{prefix}{roomCode}{monthPart}{yearPart}";
 
             if (!await _invoiceRepo.PaymentCodeExistsAsync(baseCode))
             {
@@ -420,12 +535,12 @@ namespace NhaTro.Services
 
             for (var suffix = 2; suffix <= 99; suffix++)
             {
-                var candidate = $"{baseCode}-{suffix:00}";
+                var candidate = $"{baseCode}{suffix:00}";
                 if (!await _invoiceRepo.PaymentCodeExistsAsync(candidate))
                     return candidate;
             }
 
-            throw new InvalidOperationException("Không thể sinh mã hóa đơn duy nhất. Vui lòng thử lại.");
+            throw new InvalidOperationException("Khong the sinh ma hoa don duy nhat. Vui long thu lai.");
         }
 
         private static string SanitizePaymentCodePart(string? value)
@@ -437,6 +552,99 @@ namespace NhaTro.Services
                 .ToArray());
 
             return string.IsNullOrWhiteSpace(cleaned) ? "ROOM" : cleaned;
+        }
+
+        private static string? BuildPaymentNote(string? existingNote, string? requestNote, decimal paidAmount, decimal remainingAmount)
+        {
+            var parts = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(existingNote))
+                parts.Add(existingNote.Trim());
+
+            if (!string.IsNullOrWhiteSpace(requestNote))
+                parts.Add(requestNote.Trim());
+
+            if (remainingAmount > 0)
+            {
+                parts.Add($"Thanh toán một phần: đã thu {FormatMoney(paidAmount)}, còn thiếu {FormatMoney(remainingAmount)}. Phần còn thiếu sẽ chuyển thành nợ cũ của hóa đơn tháng sau.");
+            }
+
+            if (parts.Count == 0)
+                return null;
+
+            return string.Join(" | ", parts.Distinct());
+        }
+
+        private static string? UpsertCarryOverNote(string? existingNote, Invoice sourceInvoice, decimal carryOverAmount)
+        {
+            var parts = SplitNoteParts(existingNote)
+                .Where(part => !IsCarryOverNoteForInvoice(part, sourceInvoice))
+                .ToList();
+
+            if (carryOverAmount > 0)
+            {
+                parts.Add(BuildCarryOverNote(sourceInvoice, carryOverAmount));
+            }
+
+            return parts.Count == 0 ? null : string.Join(" | ", parts.Distinct());
+        }
+
+        private static bool IsCarryOverNoteForInvoice(string notePart, Invoice sourceInvoice)
+        {
+            var billingMonthText = sourceInvoice.BillingMonth.HasValue
+                ? FormatBillingMonth(sourceInvoice.BillingMonth.Value)
+                : string.Empty;
+
+            return !string.IsNullOrWhiteSpace(notePart)
+                && notePart.Contains("Đã cộng", StringComparison.OrdinalIgnoreCase)
+                && notePart.Contains(billingMonthText, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string BuildCarryOverNote(Invoice sourceInvoice, decimal carryOverAmount)
+        {
+            var billingMonthText = sourceInvoice.BillingMonth.HasValue
+                ? FormatBillingMonth(sourceInvoice.BillingMonth.Value)
+                : "tháng trước";
+
+            return $"Đã cộng {FormatMoney(carryOverAmount)} từ hóa đơn {billingMonthText} còn thiếu.";
+        }
+
+        private static IEnumerable<string> SplitNoteParts(string? note)
+        {
+            return string.IsNullOrWhiteSpace(note)
+                ? Enumerable.Empty<string>()
+                : note.Split(" | ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+
+        private static string FormatBillingMonth(DateOnly billingMonth)
+        {
+            return $"tháng {billingMonth.Month:00}/{billingMonth.Year}";
+        }
+
+        private static string FormatMoney(decimal amount)
+        {
+            return amount.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("vi-VN"));
+        }
+
+        private static string NormalizePaymentMethod(string? paymentMethod)
+        {
+            var normalized = string.IsNullOrWhiteSpace(paymentMethod)
+                ? string.Empty
+                : paymentMethod.Trim().ToLowerInvariant();
+
+            if (normalized.Contains("sepay") || normalized.Contains("transfer") || normalized.Contains("bank") || normalized.Contains("chuyen"))
+            {
+                return "Chuyển khoản";
+            }
+
+            return "Tiền mặt";
+        }
+
+        private static decimal GetRemainingAmount(Invoice invoice)
+        {
+            var paidAmount = invoice.PaidAmount ?? 0;
+            var remainingAmount = invoice.TotalAmount - paidAmount;
+            return remainingAmount > 0 ? remainingAmount : 0;
         }
 
         private static InvoiceDto MapToDto(Invoice i)

@@ -2,7 +2,7 @@ namespace NhaTro.Dtos.Payments
 {
     public class SepayWebhookDto
     {
-        public string? Id { get; set; }
+        public long? Id { get; set; }
         public string? Gateway { get; set; }
         public string? TransactionDate { get; set; }
         public string? AccountNumber { get; set; }

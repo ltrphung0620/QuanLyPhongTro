@@ -16,6 +16,7 @@ namespace NhaTro.Controllers
         }
 
         [HttpPost("sepay/webhook")]
+        [HttpPost("/api/webhooks/sepay")]
         public async Task<IActionResult> HandleSepayWebhook([FromBody] SepayWebhookDto dto)
         {
             try
@@ -64,6 +65,23 @@ namespace NhaTro.Controllers
                     return NotFound(new { message = "Không tìm thấy giao dịch." });
 
                 return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpDelete("transactions/{id:int}")]
+        public async Task<IActionResult> DeleteTransaction(int id)
+        {
+            try
+            {
+                var deleted = await _service.DeleteAsync(id);
+                if (!deleted)
+                    return NotFound(new { message = "KhÃ´ng tÃ¬m tháº¥y giao dá»‹ch." });
+
+                return Ok(new { success = true, message = "ÄÃ£ xÃ³a giao dá»‹ch thanh toÃ¡n." });
             }
             catch (Exception ex)
             {

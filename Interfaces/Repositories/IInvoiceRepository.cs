@@ -8,6 +8,7 @@ namespace NhaTro.Interfaces.Repositories
         Task<Invoice?> GetByIdAsync(int invoiceId);
         Task<Invoice?> GetByRoomAndMonthAsync(int roomId, DateOnly month);
         Task<Invoice?> GetByContractAndMonthAsync(int contractId, DateOnly month);
+        Task<Invoice?> GetLatestBeforeMonthAsync(int roomId, DateOnly month);
         Task<List<Invoice>> GetUnpaidAsync(DateOnly? month = null);
         Task<Invoice?> GetByPaymentCodeAsync(string paymentCode);
         Task<bool> PaymentCodeExistsAsync(string paymentCode);

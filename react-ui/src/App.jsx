@@ -138,12 +138,18 @@ function typeLabel(schema) {
   return schema.type || 'Không xác định'
 }
 
-function normalizeValue(value, schema, spec) {
+function normalizeValue(value, schema, spec, fieldName = '') {
   const resolved = resolveSchema(schema, spec) || {}
   if (value === '' || value === null || value === undefined) return value
 
-  if (resolved.type === 'integer') return Number.parseInt(value, 10)
-  if (resolved.type === 'number') return Number.parseFloat(value)
+  if (resolved.type === 'integer') {
+    if (laFieldTien(fieldName)) return chuyenTienVeSo(value)
+    return Number.parseInt(value, 10)
+  }
+  if (resolved.type === 'number') {
+    if (laFieldTien(fieldName)) return chuyenTienVeSo(value)
+    return Number.parseFloat(value)
+  }
   if (resolved.type === 'boolean') return value === true || value === 'true'
   return value
 }
@@ -394,7 +400,8 @@ function nhanTruong(moduleKey, path, field) {
       waterfee: 'Tiền nước',
       trashfee: 'Tiền rác',
       discountamount: 'Giảm trừ',
-      debtamount: 'Công nợ',
+      debtamount: 'Nợ cũ',
+      recognizedrevenue: 'Doanh thu ghi nhận',
       totalamount: 'Tổng tiền',
       status: 'Trạng thái thanh toán',
       paymentcode: 'Mã thanh toán',
@@ -406,7 +413,7 @@ function nhanTruong(moduleKey, path, field) {
       createdat: 'Ngày tạo',
       tenantname: 'Tên người thuê',
       defaultdiscountamount: 'Giảm trừ mặc định',
-      defaultdebtamount: 'Công nợ mặc định',
+      defaultdebtamount: 'Nợ cũ mặc định',
     },
   }
 
@@ -425,7 +432,8 @@ function nhanTruong(moduleKey, path, field) {
     waterfee: 'Tiền nước',
     trashfee: 'Tiền rác',
     discountamount: 'Giảm trừ',
-    debtamount: 'Công nợ',
+    debtamount: 'Nợ cũ',
+    recognizedrevenue: 'Doanh thu ghi nhận',
     totalamount: 'Tổng tiền',
     paymentcode: 'Mã thanh toán',
     paidat: 'Thời gian thanh toán',
@@ -582,14 +590,19 @@ function sapXepEndpoint(moduleKey, a, b) {
   if (moduleKey !== 'rooms') return 0
 
   const order = {
-    'get /api/rooms': 0,
-    'get /api/rooms/by-code/{roomcode}': 1,
+    'post /api/rooms': 0,
+    'put /api/rooms/{id:int}': 1,
+    'put /api/rooms/{id}': 1,
+    'patch /api/rooms/{id:int}/status': 2,
+    'patch /api/rooms/{id}/status': 2,
+    'get /api/rooms': 3,
+    'get /api/rooms/by-code/{roomcode}': 4,
   }
 
   const keyA = `${a.method.toLowerCase()} ${a.path.toLowerCase()}`
   const keyB = `${b.method.toLowerCase()} ${b.path.toLowerCase()}`
-  const rankA = Object.prototype.hasOwnProperty.call(order, keyA) ? order[keyA] : 2
-  const rankB = Object.prototype.hasOwnProperty.call(order, keyB) ? order[keyB] : 2
+  const rankA = Object.prototype.hasOwnProperty.call(order, keyA) ? order[keyA] : 99
+  const rankB = Object.prototype.hasOwnProperty.call(order, keyB) ? order[keyB] : 99
 
   if (rankA !== rankB) return rankA - rankB
   if (a.method !== b.method) return METHOD_ORDER.indexOf(a.method) - METHOD_ORDER.indexOf(b.method)
@@ -641,9 +654,81 @@ function laFieldTien(field = '') {
     'debtamount',
     'defaultdiscountamount',
     'defaultdebtamount',
+    'transferamount',
   ])
 
   return moneyFields.has(normalized)
+}
+
+function tachGiaTriTienNhap(value) {
+  if (value === null || value === undefined || value === '') return ''
+
+  if (typeof value === 'number') {
+    return String(Math.round(value))
+  }
+
+  const rawText = String(value ?? '').trim()
+  if (!rawText) return ''
+
+  const normalized = rawText.replace(/\s|VND/gi, '')
+  const hasComma = normalized.includes(',')
+  const hasDot = normalized.includes('.')
+  const decimalMatch = normalized.match(/^(\d+)([.,])(\d{1,2})$/)
+
+  if (hasComma && hasDot) {
+    const decimalSeparator = hasComma ? ',' : '.'
+    const thousandSeparator = decimalSeparator === ',' ? '.' : ','
+    const withoutThousands = normalized.split(thousandSeparator).join('')
+    const decimalAsDot = withoutThousands.replace(decimalSeparator, '.')
+    const parsed = Number.parseFloat(decimalAsDot)
+    if (Number.isFinite(parsed)) {
+      return String(Math.round(parsed))
+    }
+  }
+
+  if (decimalMatch) {
+    const parsed = Number.parseFloat(`${decimalMatch[1]}.${decimalMatch[3]}`)
+    if (Number.isFinite(parsed)) {
+      const wholePart = Number.parseInt(decimalMatch[1], 10)
+      if (Number.isFinite(wholePart) && wholePart >= 0 && wholePart < 1000) {
+        return String(Math.round(parsed * 1000000))
+      }
+      return String(Math.round(parsed))
+    }
+  }
+
+  return normalized.replace(/[^\d]/g, '')
+}
+
+function dinhDangTienKhongDonVi(value) {
+  if (value === null || value === undefined || value === '') return ''
+
+  const raw = tachGiaTriTienNhap(value)
+  if (!raw) return ''
+
+  return new Intl.NumberFormat('vi-VN').format(Number(raw))
+}
+
+function laCuPhapTienRutGon(value) {
+  return /^\d+[.,]\d{1,2}$/.test(String(value ?? '').trim())
+}
+
+function chuanHoaTienKhiNhap(value) {
+  if (laCuPhapTienRutGon(value)) {
+    return String(value ?? '').trim()
+  }
+
+  return dinhDangTienKhongDonVi(value)
+}
+
+function chuyenTienVeSo(value) {
+  if (value === null || value === undefined || value === '') return 0
+
+  const raw = tachGiaTriTienNhap(value)
+  if (!raw) return 0
+
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function laFieldNgay(field = '') {
@@ -1207,10 +1292,12 @@ function XemDanhSachHoaDonCoNut({ data, onReload }) {
   const [thongBao, setThongBao] = useState({})
   const [chiTietHoaDon, setChiTietHoaDon] = useState({})
   const [dangTaiChiTiet, setDangTaiChiTiet] = useState({})
+  const [dangTaiPdf, setDangTaiPdf] = useState({})
   const [dangXoa, setDangXoa] = useState({})
   const [dangLuuSua, setDangLuuSua] = useState({})
   const [modalHoaDon, setModalHoaDon] = useState(null)
   const [duLieuSua, setDuLieuSua] = useState({})
+  const [xacNhanThanhToan, setXacNhanThanhToan] = useState(null)
 
   useEffect(() => {
     if (!modalHoaDon) return undefined
@@ -1314,19 +1401,89 @@ function XemDanhSachHoaDonCoNut({ data, onReload }) {
     }))
   }
 
+  const moThanhToanTienMat = (invoice) => {
+    const invoiceId = layInvoiceId(invoice)
+    const totalAmount = Number(invoice.totalAmount ?? invoice.TotalAmount ?? 0)
+    const paidAmount = Number(invoice.paidAmount ?? invoice.PaidAmount ?? 0)
+
+    setXacNhanThanhToan({
+      invoiceId,
+      roomCode: invoice.roomCode ?? invoice.RoomCode ?? '',
+      totalAmount,
+      amount: dinhDangTienKhongDonVi(totalAmount),
+      note: paidAmount > 0 && paidAmount < totalAmount
+        ? `Khách đã thanh toán trước ${dinhDangTien(paidAmount)}.`
+        : '',
+    })
+  }
+
+  const xacNhanThanhToanTienMat = async () => {
+    const invoiceId = xacNhanThanhToan?.invoiceId
+    if (!invoiceId) return
+
+    const amount = chuyenTienVeSo(xacNhanThanhToan.amount ?? 0)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setThongBao((prev) => ({
+        ...prev,
+        [invoiceId]: { ok: false, text: 'Số tiền thực thu phải lớn hơn 0.' },
+      }))
+      return
+    }
+
+    setDangXuLy((prev) => ({ ...prev, [invoiceId]: true }))
+    setThongBao((prev) => ({ ...prev, [invoiceId]: null }))
+
+    try {
+      await guiRequest(`/api/Invoices/${invoiceId}/mark-paid`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          amount,
+          paymentMethod: 'Tiền mặt',
+          note: xacNhanThanhToan.note ?? '',
+        }),
+      })
+
+      setThongBao((prev) => ({
+        ...prev,
+        [invoiceId]: { ok: true, text: 'Đã ghi nhận thanh toán tiền mặt.' },
+      }))
+      setXacNhanThanhToan(null)
+      if (onReload) onReload()
+    } catch (err) {
+      setThongBao((prev) => ({
+        ...prev,
+        [invoiceId]: { ok: false, text: thongDiepLoi(err) },
+      }))
+    } finally {
+      setDangXuLy((prev) => ({ ...prev, [invoiceId]: false }))
+    }
+  }
+
   const luuChinhSua = async (invoiceId) => {
     const payload = duLieuSua[invoiceId]
     if (!payload) return
 
     setDangLuuSua((prev) => ({ ...prev, [invoiceId]: true }))
     setThongBao((prev) => ({ ...prev, [invoiceId]: null }))
+    const updatePayload = {
+      roomFee: chuyenTienVeSo(payload.roomFee ?? payload.RoomFee ?? 0),
+      electricityFee: chuyenTienVeSo(payload.electricityFee ?? payload.ElectricityFee ?? 0),
+      waterFee: chuyenTienVeSo(payload.waterFee ?? payload.WaterFee ?? 0),
+      trashFee: chuyenTienVeSo(payload.trashFee ?? payload.TrashFee ?? 0),
+      discountAmount: chuyenTienVeSo(payload.discountAmount ?? payload.DiscountAmount ?? 0),
+      debtAmount: chuyenTienVeSo(payload.debtAmount ?? payload.DebtAmount ?? 0),
+      note: payload.note ?? payload.Note ?? null,
+    }
+
     try {
-      await guiRequest(`/api/Invoices/${invoiceId}`, {
+      const result = await guiRequest(`/api/Invoices/${invoiceId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/plain' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(updatePayload),
       })
-      setChiTietHoaDon((prev) => ({ ...prev, [invoiceId]: payload }))
+      setChiTietHoaDon((prev) => ({ ...prev, [invoiceId]: result.payload }))
+      setDuLieuSua((prev) => ({ ...prev, [invoiceId]: result.payload }))
       setThongBao((prev) => ({ ...prev, [invoiceId]: { ok: true, text: 'Cập nhật hóa đơn thành công' } }))
       setModalHoaDon({ id: invoiceId, mode: 'detail' })
       if (onReload) onReload()
@@ -1334,6 +1491,21 @@ function XemDanhSachHoaDonCoNut({ data, onReload }) {
       setThongBao((prev) => ({ ...prev, [invoiceId]: { ok: false, text: err.message } }))
     } finally {
       setDangLuuSua((prev) => ({ ...prev, [invoiceId]: false }))
+    }
+  }
+
+  const taiPdfHoaDon = async (invoice) => {
+    const invoiceId = layInvoiceId(invoice)
+    setDangTaiPdf((prev) => ({ ...prev, [invoiceId]: true }))
+    setThongBao((prev) => ({ ...prev, [invoiceId]: null }))
+
+    try {
+      await taiHoaDonPdf(invoice)
+      setThongBao((prev) => ({ ...prev, [invoiceId]: { ok: true, text: 'Đã tải PDF hóa đơn.' } }))
+    } catch (err) {
+      setThongBao((prev) => ({ ...prev, [invoiceId]: { ok: false, text: thongDiepLoi(err) } }))
+    } finally {
+      setDangTaiPdf((prev) => ({ ...prev, [invoiceId]: false }))
     }
   }
 
@@ -1371,10 +1543,11 @@ function XemDanhSachHoaDonCoNut({ data, onReload }) {
   const modalDetail = modalInvoiceId != null ? chiTietHoaDon[modalInvoiceId] : null
   const modalDraft = modalInvoiceId != null ? duLieuSua[modalInvoiceId] : null
   const modalDangTai = modalInvoiceId != null ? !!dangTaiChiTiet[modalInvoiceId] : false
+  const modalDangTaiPdf = modalInvoiceId != null ? !!dangTaiPdf[modalInvoiceId] : false
   const modalDangXoa = modalInvoiceId != null ? !!dangXoa[modalInvoiceId] : false
   const modalDangLuu = modalInvoiceId != null ? !!dangLuuSua[modalInvoiceId] : false
   const modalThongBao = modalInvoiceId != null ? thongBao[modalInvoiceId] : null
-  const hiddenEditFields = new Set(['invoiceid', 'createdat', 'updatedat'])
+  const editableFields = new Set(['roomfee', 'electricityfee', 'waterfee', 'trashfee', 'discountamount', 'debtamount', 'note'])
 
   return (
     <>
@@ -1431,6 +1604,14 @@ function XemDanhSachHoaDonCoNut({ data, onReload }) {
                   <button
                     type="button"
                     className="nut invoice-inline-button invoice-inline-button--secondary"
+                    disabled={isDeleting || isLoading || Boolean(dangTaiPdf[invoiceId])}
+                    onClick={() => taiPdfHoaDon(invoice)}
+                  >
+                    {Boolean(dangTaiPdf[invoiceId]) ? 'Đang tải PDF...' : 'Tải PDF'}
+                  </button>
+                  <button
+                    type="button"
+                    className="nut invoice-inline-button invoice-inline-button--secondary"
                     disabled={isDeleting || Boolean(dangLuuSua[invoiceId])}
                     onClick={() => moModalSua(invoice)}
                   >
@@ -1440,7 +1621,7 @@ function XemDanhSachHoaDonCoNut({ data, onReload }) {
                     type="button"
                     className="nut invoice-inline-button invoice-action-button invoice-action-button--paid"
                     disabled={isLoading || isPaid || isDeleting}
-                    onClick={() => doiTrangThai(invoice, true)}
+                    onClick={() => moThanhToanTienMat(invoice)}
                   >
                     Thanh toán
                   </button>
@@ -1492,15 +1673,19 @@ function XemDanhSachHoaDonCoNut({ data, onReload }) {
                 modalDraft ? (
                   <div className="invoice-edit-form">
                     {Object.entries(modalDraft)
-                      .filter(([key, value]) => !hiddenEditFields.has(String(key).toLowerCase()) && typeof value !== 'object')
+                      .filter(([key, value]) => editableFields.has(String(key).toLowerCase()) && typeof value !== 'object')
                       .map(([key, value]) => (
                         <label key={key} className="truong">
                           <span>{nhanTruong('invoices', '', key)}</span>
                           <input
-                            type={typeof value === 'number' ? 'number' : 'text'}
-                            value={value ?? ''}
+                            type={laFieldTien(key) ? 'text' : typeof value === 'number' ? 'number' : 'text'}
+                            value={laFieldTien(key) ? dinhDangTienKhongDonVi(value) : value ?? ''}
                             onChange={(event) => {
-                              const nextValue = typeof value === 'number' ? Number(event.target.value) : event.target.value
+                              const nextValue = laFieldTien(key)
+                                ? chuanHoaTienKhiNhap(event.target.value)
+                                : typeof value === 'number'
+                                  ? Number(event.target.value)
+                                  : event.target.value
                               capNhatDuLieuSua(modalInvoiceId, key, nextValue)
                             }}
                           />
@@ -1511,7 +1696,14 @@ function XemDanhSachHoaDonCoNut({ data, onReload }) {
                   <div className="khung-du-lieu khung-du-lieu--trong">Không tải được dữ liệu sửa hóa đơn.</div>
                 )
               ) : modalDetail ? (
-                <XemHoaDonChiTiet data={modalDetail} />
+                <XemHoaDonChiTiet
+                  data={modalDetail}
+                  actions={
+                    <button type="button" className="nut" disabled={modalDangTaiPdf} onClick={() => taiPdfHoaDon(modalDetail)}>
+                      {modalDangTaiPdf ? 'Đang tải PDF...' : 'Tải PDF'}
+                    </button>
+                  }
+                />
               ) : (
                 <div className="khung-du-lieu khung-du-lieu--trong">Không tải được chi tiết hóa đơn.</div>
               )}
@@ -1531,6 +1723,68 @@ function XemDanhSachHoaDonCoNut({ data, onReload }) {
                     {modalDangLuu ? 'Đang lưu...' : 'Lưu thay đổi'}
                   </button>
                 ) : null}
+              </div>
+            </article>
+          </div>
+        </div>
+      ) : null}
+
+      {xacNhanThanhToan ? (
+        <div className="lop-phu-endpoint" onClick={() => setXacNhanThanhToan(null)}>
+          <div className="hop-endpoint-mo" onClick={(event) => event.stopPropagation()}>
+            <article className="the-endpoint the-endpoint--mo invoice-modal-card">
+              <div className="the-endpoint__dau">
+                <div>
+                  <span className="method-tag method-tag--patch">PATCH</span>
+                  <h3>Ghi nhận thanh toán tiền mặt</h3>
+                </div>
+                <button type="button" className="nut-dong-endpoint" onClick={() => setXacNhanThanhToan(null)}>
+                  x
+                </button>
+              </div>
+
+              <div className="invoice-edit-form">
+                <label className="truong">
+                  <span>Phòng</span>
+                  <input type="text" value={xacNhanThanhToan.roomCode || 'Không có dữ liệu'} readOnly />
+                </label>
+                <label className="truong">
+                  <span>Tổng tiền hóa đơn</span>
+                  <input type="text" value={dinhDangTien(xacNhanThanhToan.totalAmount)} readOnly />
+                </label>
+                <label className="truong">
+                  <span>Số tiền thực thu</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={xacNhanThanhToan.amount}
+                    onFocus={(event) => event.target.select()}
+                    onChange={(event) => setXacNhanThanhToan((prev) => ({ ...prev, amount: chuanHoaTienKhiNhap(event.target.value) }))}
+                  />
+                </label>
+                <label className="truong truong--full">
+                  <span>Ghi chú</span>
+                  <textarea
+                    rows="5"
+                    value={xacNhanThanhToan.note}
+                    onChange={(event) => setXacNhanThanhToan((prev) => ({ ...prev, note: event.target.value }))}
+                    placeholder="Ví dụ: Khách trả một phần, phần còn lại chuyển thành nợ cũ của tháng sau."
+                  />
+                </label>
+              </div>
+
+              <div className="invoice-modal-actions">
+                <button type="button" className="nut nut--phu" onClick={() => setXacNhanThanhToan(null)}>
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  className="nut"
+                  onClick={xacNhanThanhToanTienMat}
+                  disabled={!!dangXuLy[xacNhanThanhToan.invoiceId]}
+                >
+                  {!!dangXuLy[xacNhanThanhToan.invoiceId] ? 'Đang xử lý...' : 'Xác nhận thanh toán'}
+                </button>
               </div>
             </article>
           </div>
@@ -1587,7 +1841,7 @@ function XemHoaDonChiTiet({ data, actions = null }) {
     return <XemDanhSachHoaDon data={data} />
   }
 
-  const hiddenFields = new Set(['invoiceid'])
+  const hiddenFields = new Set(['invoiceid', 'contractid', 'roomid'])
   const entries = Object.entries(data).filter(([key]) => !hiddenFields.has(key.toLowerCase()))
   const vietQrUrl = taoUrlVietQrHoaDon(data)
   const vietQrAddInfo = taoNoiDungVietQrHoaDon(data)
@@ -1681,6 +1935,67 @@ function taoUrlVietQrHoaDon(invoice) {
   return `https://img.vietqr.io/image/mbbank-556062006-compact2.jpg?${params.toString()}`
 }
 
+function layTenTepTuHeader(disposition) {
+  if (!disposition) return null
+
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1])
+    } catch {
+      return utf8Match[1]
+    }
+  }
+
+  const plainMatch = disposition.match(/filename="?([^\";]+)"?/i)
+  return plainMatch?.[1] ? plainMatch[1] : null
+}
+
+function kichHoatTaiTep(blob, fileName) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fileName
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+async function taiHoaDonPdf(invoice) {
+  const invoiceId = invoice?.invoiceId ?? invoice?.InvoiceId
+  if (!invoiceId) {
+    throw new Error('Không tìm thấy mã hóa đơn để tải PDF.')
+  }
+
+  const defaultName = `HoaDon-${layMaHoaDonQr(invoice) || invoiceId}.pdf`
+  const response = await fetch(`/api/Invoices/${invoiceId}/pdf`, {
+    method: 'GET',
+    headers: { Accept: 'application/pdf' },
+  })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload?.message || `Lỗi tải PDF hóa đơn ${invoiceId}.`)
+  }
+
+  const blob = await response.blob()
+  const fileName = layTenTepTuHeader(response.headers.get('Content-Disposition')) || defaultName
+  kichHoatTaiTep(blob, fileName)
+}
+
+async function taiNhieuHoaDonPdf(invoices) {
+  const danhSach = (Array.isArray(invoices) ? invoices : [invoices]).filter(Boolean)
+  if (!danhSach.length) {
+    throw new Error('Không có hóa đơn nào để tải PDF.')
+  }
+
+  for (const invoice of danhSach) {
+    await taiHoaDonPdf(invoice)
+    await new Promise((resolve) => window.setTimeout(resolve, 250))
+  }
+}
+
 function XemNguoiThue({ data }) {
   if (!data) {
     return <div className="khung-du-lieu khung-du-lieu--trong">Chưa có dữ liệu.</div>
@@ -1706,7 +2021,7 @@ function XemNguoiThue({ data }) {
 function ContractsWorkspace({ spec }) {
   const [contracts, setContracts] = useState([])
   const [tuKhoaFilter, setTuKhoaFilter] = useState('')
-  const [trangThaiFilter, setTrangThaiFilter] = useState('all')
+  const [trangThaiFilter, setTrangThaiFilter] = useState('active')
   const [dangTai, setDangTai] = useState(false)
   const [loi, setLoi] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
@@ -1778,10 +2093,6 @@ function ContractsWorkspace({ spec }) {
     })
   }, [contracts, tuKhoaFilter, trangThaiFilter])
 
-  const tongHopDong = contracts.length
-  const hopDongConHieuLuc = contracts.filter((item) => String(item.status ?? item.Status ?? '').trim().toLowerCase() === 'active').length
-  const hopDongHetHan = contracts.filter((item) => String(item.status ?? item.Status ?? '').trim().toLowerCase() === 'ended').length
-
   return (
     <div className="invoice-workspace contracts-workspace">
       <section className="invoice-hero khung">
@@ -1828,25 +2139,6 @@ function ContractsWorkspace({ spec }) {
           </div>
         </section>
       ) : null}
-
-      <section className="invoice-stats">
-        <article className="invoice-stat-card">
-          <span>Tổng hợp đồng</span>
-          <strong>{tongHopDong}</strong>
-        </article>
-        <article className="invoice-stat-card">
-          <span>Còn hiệu lực</span>
-          <strong>{hopDongConHieuLuc}</strong>
-        </article>
-        <article className="invoice-stat-card">
-          <span>Đã hết hạn</span>
-          <strong>{hopDongHetHan}</strong>
-        </article>
-        <article className="invoice-stat-card">
-          <span>Hiển thị</span>
-          <strong>{`${danhSachLoc.length}/${contracts.length}`}</strong>
-        </article>
-      </section>
 
       <section className="khung">
         <div className="xem-truoc__dau">
@@ -2009,10 +2301,6 @@ function TenantsWorkspace({ spec }) {
     })
   }, [tenants, tuKhoaFilter])
 
-  const tongNguoiThue = tenants.length
-  const coSoDienThoai = tenants.filter((tenant) => String(tenant.phone ?? tenant.Phone ?? '').trim()).length
-  const coCccd = tenants.filter((tenant) => String(tenant.cccd ?? tenant.CCCD ?? '').trim()).length
-
   return (
     <div className="invoice-workspace tenants-workspace">
       <section className="invoice-hero khung">
@@ -2052,25 +2340,6 @@ function TenantsWorkspace({ spec }) {
         </section>
       ) : null}
 
-      <section className="invoice-stats">
-        <article className="invoice-stat-card">
-          <span>Tổng số người thuê</span>
-          <strong>{tongNguoiThue}</strong>
-        </article>
-        <article className="invoice-stat-card">
-          <span>Có số điện thoại</span>
-          <strong>{coSoDienThoai}</strong>
-        </article>
-        <article className="invoice-stat-card">
-          <span>Có CCCD</span>
-          <strong>{coCccd}</strong>
-        </article>
-        <article className="invoice-stat-card">
-          <span>Hiển thị</span>
-          <strong>{`${danhSachLoc.length}/${tenants.length}`}</strong>
-        </article>
-      </section>
-
       <section className="khung">
         <div className="xem-truoc__dau">
           <strong>Danh sách người thuê</strong>
@@ -2095,6 +2364,8 @@ function MonthlyBulkCard({ onSuccess, compact = false }) {
   const [defaultDiscountAmount, setDefaultDiscountAmount] = useState(0)
   const [defaultDebtAmount, setDefaultDebtAmount] = useState(0)
   const [previewData, setPreviewData] = useState(null)
+  const [createdInvoices, setCreatedInvoices] = useState([])
+  const [dangTaiPdfLoat, setDangTaiPdfLoat] = useState(false)
   const [dangXemTruoc, setDangXemTruoc] = useState(false)
   const [dangTao, setDangTao] = useState(false)
   const [hienXacNhan, setHienXacNhan] = useState(false)
@@ -2116,16 +2387,18 @@ function MonthlyBulkCard({ onSuccess, compact = false }) {
     setTrangThai('')
     setMauTrangThai('')
     setPreviewData(null)
+    setCreatedInvoices([])
     setHienXacNhan(false)
     try {
       const res = await fetch('/api/Invoices/monthly-bulk-preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billingMonth, defaultDiscountAmount: Number(defaultDiscountAmount), defaultDebtAmount: Number(defaultDebtAmount) }),
+        body: JSON.stringify({ billingMonth, defaultDiscountAmount: chuyenTienVeSo(defaultDiscountAmount), defaultDebtAmount: chuyenTienVeSo(defaultDebtAmount) }),
       })
       const payload = await res.json()
       if (!res.ok) throw new Error(payload?.message || `Lỗi ${res.status}`)
       setPreviewData(Array.isArray(payload) ? payload : payload?.data ?? payload?.items ?? [])
+      setCreatedInvoices([])
       setTrangThai(`Xem trước thành công — ${Array.isArray(payload) ? payload.length : '?'} hóa đơn`)
       setMauTrangThai('thanh-cong')
     } catch (err) {
@@ -2145,19 +2418,38 @@ function MonthlyBulkCard({ onSuccess, compact = false }) {
       const res = await fetch('/api/Invoices/monthly-bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billingMonth, defaultDiscountAmount: Number(defaultDiscountAmount), defaultDebtAmount: Number(defaultDebtAmount) }),
+        body: JSON.stringify({ billingMonth, defaultDiscountAmount: chuyenTienVeSo(defaultDiscountAmount), defaultDebtAmount: chuyenTienVeSo(defaultDebtAmount) }),
       })
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(payload?.message || `Lỗi ${res.status}`)
+      const created = Array.isArray(payload) ? payload : payload?.data ?? payload?.items ?? []
       setTrangThai('Tạo hóa đơn hàng loạt thành công!')
       setMauTrangThai('thanh-cong')
       setPreviewData(null)
+      setCreatedInvoices(Array.isArray(created) ? created : [])
       if (onSuccess) onSuccess()
     } catch (err) {
       setTrangThai(err.message)
       setMauTrangThai('that-bai')
     } finally {
       setDangTao(false)
+    }
+  }
+
+  const taiTatCaPdfVuaTao = async () => {
+    setDangTaiPdfLoat(true)
+    setTrangThai('')
+    setMauTrangThai('')
+
+    try {
+      await taiNhieuHoaDonPdf(createdInvoices)
+      setTrangThai(`Đã tải ${createdInvoices.length} file PDF hóa đơn.`)
+      setMauTrangThai('thanh-cong')
+    } catch (err) {
+      setTrangThai(thongDiepLoi(err))
+      setMauTrangThai('that-bai')
+    } finally {
+      setDangTaiPdfLoat(false)
     }
   }
 
@@ -2183,12 +2475,12 @@ function MonthlyBulkCard({ onSuccess, compact = false }) {
             </label>
             <label className="truong">
               <span>Giảm trừ mặc định</span>
-              <input type="number" value={defaultDiscountAmount} onChange={(e) => setDefaultDiscountAmount(e.target.value)} min="0" />
+              <input type="text" value={defaultDiscountAmount} onChange={(e) => setDefaultDiscountAmount(chuanHoaTienKhiNhap(e.target.value))} />
               <small>Áp dụng cho tất cả hóa đơn trong tháng</small>
             </label>
             <label className="truong">
-              <span>Công nợ mặc định</span>
-              <input type="number" value={defaultDebtAmount} onChange={(e) => setDefaultDebtAmount(e.target.value)} min="0" />
+              <span>Nợ cũ mặc định</span>
+              <input type="text" value={defaultDebtAmount} onChange={(e) => setDefaultDebtAmount(chuanHoaTienKhiNhap(e.target.value))} />
               <small>Áp dụng cho tất cả hóa đơn trong tháng</small>
             </label>
           </div>
@@ -2202,6 +2494,14 @@ function MonthlyBulkCard({ onSuccess, compact = false }) {
       </div>
 
       {trangThai ? <div className={`thanh-trang-thai ${mauTrangThai}`}>{trangThai}</div> : null}
+
+      {createdInvoices.length ? (
+        <div className="invoice-modal-actions" style={{ marginTop: '12px' }}>
+          <button type="button" className="nut" disabled={dangTaiPdfLoat} onClick={taiTatCaPdfVuaTao}>
+            {dangTaiPdfLoat ? 'Đang tải PDF...' : `Tải ${createdInvoices.length} file PDF vừa tạo`}
+          </button>
+        </div>
+      ) : null}
 
       {previewData && previewData.length > 0 ? (
         <section className="khoi-con">
@@ -2322,22 +2622,45 @@ function InvoiceWorkspace() {
       setLoi('')
 
       try {
-        const result = await guiRequest('/api/Invoices', {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
+        const [invoiceResult, contractResult] = await Promise.all([
+          guiRequest('/api/Invoices', {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+          }),
+          guiRequest('/api/Contracts?status=active', {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+          }),
+        ])
+
+        const invoicePayload = invoiceResult.payload
+        const contractPayload = contractResult.payload
+        const danhSach = Array.isArray(invoicePayload)
+          ? invoicePayload
+          : Array.isArray(invoicePayload?.data)
+            ? invoicePayload.data
+            : Array.isArray(invoicePayload?.items)
+              ? invoicePayload.items
+              : []
+        const hopDongActive = Array.isArray(contractPayload)
+          ? contractPayload
+          : Array.isArray(contractPayload?.data)
+            ? contractPayload.data
+            : Array.isArray(contractPayload?.items)
+              ? contractPayload.items
+              : []
+        const activeContractIds = new Set(
+          hopDongActive
+            .map((item) => Number(item.contractId ?? item.ContractId))
+            .filter((value) => Number.isFinite(value) && value > 0),
+        )
+        const danhSachMacDinh = danhSach.filter((invoice) => {
+          const contractId = Number(invoice.contractId ?? invoice.ContractId)
+          return Number.isFinite(contractId) && activeContractIds.has(contractId)
         })
 
-        const payload = result.payload
-        const danhSach = Array.isArray(payload)
-          ? payload
-          : Array.isArray(payload?.data)
-            ? payload.data
-            : Array.isArray(payload?.items)
-              ? payload.items
-              : []
-
         if (conHieuLuc) {
-          setHoaDon(danhSach)
+          setHoaDon(danhSachMacDinh)
         }
       } catch (error) {
         if (conHieuLuc) {
@@ -2594,12 +2917,21 @@ function layTrangThaiGiaoDichThanhToan(item) {
     .toLowerCase()
 }
 
+function laPaymentCodeHoaDonHopLe(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase()
+
+  return /^(?:FINAL)?[A-Z0-9]+(?:0[1-9]|1[0-2])\d{4}(?:\d{2})?$/.test(normalized)
+}
+
 function dinhDangTrangThaiGiaoDichThanhToan(value) {
   const normalized = String(value || '')
     .trim()
     .toLowerCase()
 
   if (!normalized) return 'Chưa xử lý'
+  if (normalized === 'paid') return 'Đã thanh toán'
   if (normalized === 'pending') return 'Chờ xử lý'
   if (normalized === 'processed') return 'Đã xử lý'
   if (normalized === 'reconciled') return 'Đã đối soát'
@@ -2613,7 +2945,7 @@ function laySoTienGiaoDichThanhToan(item) {
   return Number(item?.transferAmount ?? item?.TransferAmount ?? 0)
 }
 
-function XemDanhSachGiaoDichThanhToan({ data }) {
+function XemDanhSachGiaoDichThanhToan({ data, onDelete, deletingId }) {
   if (!Array.isArray(data) || !data.length) {
     return <div className="khung-du-lieu khung-du-lieu--trong">Không có giao dịch thanh toán nào.</div>
   }
@@ -2634,13 +2966,15 @@ function XemDanhSachGiaoDichThanhToan({ data }) {
         const content = item.content ?? item.Content
         const processStatus = item.processStatus ?? item.ProcessStatus
         const statusClass = layTrangThaiGiaoDichThanhToan(item)
+        const isPaid = String(processStatus ?? '').trim().toLowerCase() === 'paid'
+        const isDeleting = deletingId === paymentTransactionId
 
         return (
           <div key={paymentTransactionId} className="dong-phong invoice-card">
             <div className="invoice-card__info">
               <div className="dong-phong__o invoice-card__meta-item">
                 <span>Mã giao dịch</span>
-                <strong>#{paymentTransactionId}</strong>
+                <strong>{providerTransactionId || 'Không có dữ liệu'}</strong>
               </div>
               <div className="dong-phong__o invoice-card__meta-item">
                 <span>Nhà cung cấp</span>
@@ -2682,12 +3016,23 @@ function XemDanhSachGiaoDichThanhToan({ data }) {
               </div>
               <div className="dong-phong__o invoice-card__meta-item">
                 <span>Hóa đơn đã khớp</span>
-                <strong>{matchedInvoiceId ? `#${matchedInvoiceId}` : 'Chưa đối soát'}</strong>
+                <strong>{matchedInvoiceId || 'Chưa đối soát'}</strong>
               </div>
               <div className="dong-phong__o invoice-card__meta-item">
                 <span>Nội dung chuyển khoản</span>
                 <strong>{content || 'Không có dữ liệu'}</strong>
               </div>
+            </div>
+            <div className="invoice-inline-actions">
+              <button
+                type="button"
+                className="nut nut--phu invoice-inline-button invoice-action-button invoice-action-button--unpaid"
+                onClick={() => onDelete?.(item)}
+                disabled={!onDelete || isPaid || isDeleting}
+                title={isPaid ? 'Không thể xóa giao dịch đã đánh dấu thanh toán' : 'Xóa giao dịch thanh toán'}
+              >
+                {isDeleting ? 'Đang xóa...' : 'Xóa'}
+              </button>
             </div>
           </div>
         )
@@ -3222,13 +3567,43 @@ function MeterReadingCreateButton({ onSuccess }) {
   )
 }
 
-function RoomsWorkspace() {
+function RoomsWorkspace({ spec }) {
   const [rooms, setRooms] = useState([])
   const [phongFilter, setPhongFilter] = useState('')
   const [trangThaiFilter, setTrangThaiFilter] = useState('all')
   const [dangTai, setDangTai] = useState(false)
   const [loi, setLoi] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
+
+  const roomActions = useMemo(() => {
+    const actions = Object.entries(spec?.paths || {})
+      .filter(([path]) => path.toLowerCase().startsWith('/api/rooms'))
+      .flatMap(([path, pathItem]) =>
+        METHOD_ORDER.filter((method) => pathItem[method]).map((method) => ({
+          path,
+          method,
+          operation: pathItem[method],
+        })),
+      )
+      .filter((item) => {
+        const method = item.method.toLowerCase()
+        const path = item.path.toLowerCase()
+        return (
+          (method === 'post' && path === '/api/rooms') ||
+          (method === 'put' && (path === '/api/rooms/{id:int}' || path === '/api/rooms/{id}')) ||
+          (method === 'patch' && (path === '/api/rooms/{id:int}/status' || path === '/api/rooms/{id}/status'))
+        )
+      })
+      .sort((a, b) => sapXepEndpoint('rooms', a, b))
+
+    const seen = new Set()
+    return actions.filter((item) => {
+      const key = `${item.method.toLowerCase()} ${item.path.toLowerCase()}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [spec])
 
   useEffect(() => {
     let ignore = false
@@ -3305,6 +3680,23 @@ function RoomsWorkspace() {
           </div>
         </div>
       </section>
+
+      {roomActions.length ? (
+        <section className="khung invoice-actions-card">
+          <div className="danh-sach-endpoint invoice-actions-inline">
+            {roomActions.map((item) => (
+              <EndpointCard
+                key={`${item.method}-${item.path}`}
+                method={item.method}
+                moduleKey="rooms"
+                operation={item.operation}
+                path={item.path}
+                spec={spec}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="invoice-stats">
         <article className="invoice-stat-card">
@@ -3842,6 +4234,8 @@ function PaymentWorkspace() {
   const [tuKhoaFilter, setTuKhoaFilter] = useState('')
   const [trangThaiFilter, setTrangThaiFilter] = useState('all')
   const [reloadKey, setReloadKey] = useState(0)
+  const [xacNhanXoa, setXacNhanXoa] = useState(null)
+  const [dangXoaId, setDangXoaId] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -3885,13 +4279,19 @@ function PaymentWorkspace() {
     }
   }, [reloadKey, trangThaiFilter])
 
+  const giaoDichHopLe = useMemo(() => {
+    return transactions.filter((item) => {
+      const paymentCode = item.paymentCode ?? item.PaymentCode
+      return laPaymentCodeHoaDonHopLe(paymentCode)
+    })
+  }, [transactions])
+
   const danhSachLoc = useMemo(() => {
     const keyword = String(tuKhoaFilter || '').trim().toLowerCase()
-    if (!keyword) return transactions
+    if (!keyword) return giaoDichHopLe
 
-    return transactions.filter((item) => {
+    return giaoDichHopLe.filter((item) => {
       const targets = [
-        item.paymentTransactionId ?? item.PaymentTransactionId,
         item.provider ?? item.Provider,
         item.providerTransactionId ?? item.ProviderTransactionId,
         item.referenceCode ?? item.ReferenceCode,
@@ -3903,7 +4303,38 @@ function PaymentWorkspace() {
 
       return targets.some((value) => String(value ?? '').toLowerCase().includes(keyword))
     })
-  }, [transactions, tuKhoaFilter])
+  }, [giaoDichHopLe, tuKhoaFilter])
+
+  const moXacNhanXoa = (transaction) => {
+    const paymentTransactionId = transaction?.paymentTransactionId ?? transaction?.PaymentTransactionId
+    if (!paymentTransactionId) return
+
+    setXacNhanXoa({
+      paymentTransactionId,
+      paymentCode: transaction?.paymentCode ?? transaction?.PaymentCode ?? '',
+    })
+  }
+
+  const xoaGiaoDichThanhToan = async () => {
+    const paymentTransactionId = xacNhanXoa?.paymentTransactionId
+    if (!paymentTransactionId) return
+
+    setDangXoaId(paymentTransactionId)
+    setLoi('')
+
+    try {
+      await guiRequest(`/api/Payments/transactions/${paymentTransactionId}`, {
+        method: 'DELETE',
+        headers: { Accept: 'application/json' },
+      })
+      setXacNhanXoa(null)
+      setReloadKey((value) => value + 1)
+    } catch (error) {
+      setLoi(thongDiepLoi(error))
+    } finally {
+      setDangXoaId(null)
+    }
+  }
 
   return (
     <div className="invoice-workspace payment-workspace">
@@ -3924,6 +4355,7 @@ function PaymentWorkspace() {
               <span>Trạng thái xử lý</span>
               <select value={trangThaiFilter} onChange={(event) => setTrangThaiFilter(event.target.value)}>
                 <option value="all">Tất cả</option>
+                <option value="paid">Đã thanh toán</option>
                 <option value="pending">Chờ xử lý</option>
                 <option value="processed">Đã xử lý</option>
                 <option value="reconciled">Đã đối soát</option>
@@ -3945,18 +4377,18 @@ function PaymentWorkspace() {
       <section className="khung">
         <div className="xem-truoc__dau">
           <strong>Danh sách giao dịch thanh toán</strong>
-          <span>
-            {tuKhoaFilter.trim() || trangThaiFilter !== 'all'
-              ? `Hiển thị ${danhSachLoc.length}/${transactions.length} giao dịch`
-              : `Hiển thị ${transactions.length} giao dịch`}
-          </span>
-        </div>
+            <span>
+              {tuKhoaFilter.trim() || trangThaiFilter !== 'all'
+                ? `Hiển thị ${danhSachLoc.length}/${giaoDichHopLe.length} giao dịch`
+                : `Hiển thị ${giaoDichHopLe.length} giao dịch`}
+            </span>
+          </div>
         {loi ? <div className="thong-bao-loi">{loi}</div> : null}
         {dangTai ? (
           <div className="khung-du-lieu khung-du-lieu--trong">Đang tải danh sách giao dịch thanh toán...</div>
         ) : danhSachLoc.length ? (
           <div className="invoice-list-wrap">
-            <XemDanhSachGiaoDichThanhToan data={danhSachLoc} />
+            <XemDanhSachGiaoDichThanhToan data={danhSachLoc} onDelete={moXacNhanXoa} deletingId={dangXoaId} />
           </div>
         ) : (
           <div className="khung-du-lieu khung-du-lieu--trong">
@@ -3966,6 +4398,44 @@ function PaymentWorkspace() {
           </div>
         )}
       </section>
+
+      {xacNhanXoa ? (
+        <div className="lop-phu-endpoint" onClick={() => !dangXoaId && setXacNhanXoa(null)}>
+          <div className="hop-endpoint-mo" onClick={(event) => event.stopPropagation()}>
+            <article className="the-endpoint the-endpoint--mo invoice-modal-card">
+              <div className="the-endpoint__dau">
+                <div>
+                  <span className="method-tag method-tag--delete">DELETE</span>
+                  <h3>Xóa giao dịch thanh toán</h3>
+                </div>
+                <button type="button" className="nut-dong-endpoint" onClick={() => setXacNhanXoa(null)} disabled={!!dangXoaId}>
+                  ×
+                </button>
+              </div>
+
+              <p>
+                Bạn có chắc muốn xóa giao dịch thanh toán này
+                {xacNhanXoa.paymentCode ? (
+                  <>
+                    {' '}
+                    với mã <strong>{xacNhanXoa.paymentCode}</strong>
+                  </>
+                ) : null}
+                ?
+              </p>
+
+              <div className="invoice-modal-actions">
+                <button type="button" className="nut nut--phu" onClick={() => setXacNhanXoa(null)} disabled={!!dangXoaId}>
+                  Hủy
+                </button>
+                <button type="button" className="nut" onClick={xoaGiaoDichThanhToan} disabled={!!dangXoaId}>
+                  {dangXoaId ? 'Đang xóa...' : 'Xác nhận xóa'}
+                </button>
+              </div>
+            </article>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -4039,7 +4509,7 @@ function TransactionCreateButton({ onSuccess }) {
           transactionDirection,
           category,
           itemName: itemName.trim() || null,
-          amount: Number(amount),
+          amount: chuyenTienVeSo(amount),
           transactionDate,
           description: description.trim() || null,
           relatedInvoiceId: relatedInvoiceId ? Number(relatedInvoiceId) : null,
@@ -4099,7 +4569,7 @@ function TransactionCreateButton({ onSuccess }) {
                 </label>
                 <label className="truong">
                   <span>Số tiền</span>
-                  <input type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="Nhập số tiền" />
+                  <input type="text" value={amount} onChange={(event) => setAmount(chuanHoaTienKhiNhap(event.target.value))} placeholder="Nhập số tiền" />
                 </label>
                 <label className="truong">
                   <span>Ngày giao dịch</span>
@@ -4137,7 +4607,7 @@ function TransactionRowActions({ transaction, onReload }) {
   const [transactionDirection, setTransactionDirection] = useState(String(transaction?.transactionDirection ?? transaction?.TransactionDirection ?? 'income').toLowerCase())
   const [category, setCategory] = useState(String(transaction?.category ?? transaction?.Category ?? 'operating').toLowerCase())
   const [itemName, setItemName] = useState(transaction?.itemName ?? transaction?.ItemName ?? '')
-  const [amount, setAmount] = useState(String(transaction?.amount ?? transaction?.Amount ?? ''))
+  const [amount, setAmount] = useState(dinhDangTienKhongDonVi(transaction?.amount ?? transaction?.Amount ?? ''))
   const [transactionDate, setTransactionDate] = useState(String(transaction?.transactionDate ?? transaction?.TransactionDate ?? ''))
   const [description, setDescription] = useState(transaction?.description ?? transaction?.Description ?? '')
   const [relatedInvoiceId, setRelatedInvoiceId] = useState(String(transaction?.relatedInvoiceId ?? transaction?.RelatedInvoiceId ?? ''))
@@ -4177,7 +4647,7 @@ function TransactionRowActions({ transaction, onReload }) {
           transactionDirection,
           category,
           itemName: String(itemName || '').trim() || null,
-          amount: Number(amount),
+          amount: chuyenTienVeSo(amount),
           transactionDate,
           description: String(description || '').trim() || null,
           relatedInvoiceId: relatedInvoiceId ? Number(relatedInvoiceId) : null,
@@ -4257,7 +4727,7 @@ function TransactionRowActions({ transaction, onReload }) {
                 </label>
                 <label className="truong">
                   <span>Số tiền</span>
-                  <input type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} />
+                  <input type="text" value={amount} onChange={(event) => setAmount(chuanHoaTienKhiNhap(event.target.value))} />
                 </label>
                 <label className="truong">
                   <span>Ngày giao dịch</span>
@@ -4816,8 +5286,14 @@ function ReportsWorkspace() {
         const chiTiet = danhSach.filter((invoice) => {
           const billingMonth = String(invoice.billingMonth ?? invoice.BillingMonth ?? '')
           const monthValue = billingMonth ? billingMonth.slice(0, 7) : ''
-          const status = String(invoice.status ?? invoice.Status ?? '').trim().toLowerCase()
-          return monthValue === thangBaoCao && status === 'paid'
+          return monthValue === thangBaoCao
+        }).map((invoice) => {
+          const totalAmount = Number(invoice.totalAmount ?? invoice.TotalAmount ?? 0)
+          const debtAmount = Number(invoice.debtAmount ?? invoice.DebtAmount ?? 0)
+          return {
+            ...invoice,
+            recognizedRevenue: Math.max(totalAmount - debtAmount, 0),
+          }
         })
 
         setChiTietBaoCao({
@@ -5251,6 +5727,348 @@ function InvoiceWorkspaceModern({ spec }) {
   )
 }
 
+function taoNoiDungMauThanhToanMotPhan(roomCode = '', relatedMonth = '') {
+  const thangLabel = relatedMonth || taoThangMacDinh().slice(0, 7)
+  const phongLabel = roomCode || 'A104'
+
+  return [
+    `Khach phong ${phongLabel} chi thanh toan mot phan hoa don thang ${thangLabel}.`,
+    'So tien da thu: ',
+    'So tien con thieu: ',
+    `Chuyen phan con thieu thanh no cu cua hoa don thang sau sau khi chot ky ${thangLabel}.`,
+    'Khi tao hoa don thang sau, cong khoan con thieu vao No cu va giu lai ghi chu nay de doi chieu.',
+  ].join('\n')
+}
+
+function layInvoiceIdTongQuat(invoice, fallback = '') {
+  return invoice?.invoiceId ?? invoice?.InvoiceId ?? fallback
+}
+
+function NotesWorkspace() {
+  const [invoices, setInvoices] = useState([])
+  const [dangTai, setDangTai] = useState(false)
+  const [dangLuu, setDangLuu] = useState(false)
+  const [filter, setFilter] = useState('partial-payment')
+  const [search, setSearch] = useState('')
+  const [editingInvoiceId, setEditingInvoiceId] = useState(null)
+  const [draftNote, setDraftNote] = useState('')
+  const [thongBao, setThongBao] = useState(null)
+
+  useEffect(() => {
+    taiDuLieu()
+  }, [])
+
+  const taiDuLieu = async () => {
+    setDangTai(true)
+    setThongBao(null)
+    try {
+      const result = await guiRequest('/api/Invoices', {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      })
+      setInvoices(Array.isArray(result.payload) ? result.payload : [])
+    } catch (error) {
+      setInvoices([])
+      setThongBao({ ok: false, text: thongDiepLoi(error) })
+    } finally {
+      setDangTai(false)
+    }
+  }
+
+  const resetEditor = () => {
+    setEditingInvoiceId(null)
+    setDraftNote('')
+  }
+
+  const moSuaGhiChu = (invoice) => {
+    setEditingInvoiceId(layInvoiceIdTongQuat(invoice))
+    setDraftNote(invoice.note ?? invoice.Note ?? '')
+    setThongBao(null)
+  }
+
+  const apDungMauThanhToanMotPhan = () => {
+    const invoice = invoices.find((item) => layInvoiceIdTongQuat(item) === editingInvoiceId)
+    if (!invoice) return
+    const roomCode = invoice.roomCode ?? invoice.RoomCode ?? ''
+    const month = String(invoice.billingMonth ?? invoice.BillingMonth ?? '').slice(0, 7)
+    setDraftNote(taoNoiDungMauThanhToanMotPhan(roomCode, month))
+  }
+
+  const luuGhiChu = async () => {
+    const invoice = invoices.find((item) => layInvoiceIdTongQuat(item) === editingInvoiceId)
+    if (!invoice) return
+
+    setDangLuu(true)
+    setThongBao(null)
+    try {
+      const payload = {
+        roomFee: chuyenTienVeSo(invoice.roomFee ?? invoice.RoomFee ?? 0),
+        electricityFee: chuyenTienVeSo(invoice.electricityFee ?? invoice.ElectricityFee ?? 0),
+        waterFee: chuyenTienVeSo(invoice.waterFee ?? invoice.WaterFee ?? 0),
+        trashFee: chuyenTienVeSo(invoice.trashFee ?? invoice.TrashFee ?? 0),
+        discountAmount: chuyenTienVeSo(invoice.discountAmount ?? invoice.DiscountAmount ?? 0),
+        debtAmount: chuyenTienVeSo(invoice.debtAmount ?? invoice.DebtAmount ?? 0),
+        note: draftNote.trim() || null,
+      }
+      const result = await guiRequest(`/api/Invoices/${editingInvoiceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const updated = result.payload
+      setInvoices((current) => current.map((item) => (layInvoiceIdTongQuat(item) === editingInvoiceId ? updated : item)))
+      setThongBao({ ok: true, text: 'Đã lưu ghi chú vào hóa đơn.' })
+      resetEditor()
+    } catch (error) {
+      setThongBao({ ok: false, text: thongDiepLoi(error) })
+    } finally {
+      setDangLuu(false)
+    }
+  }
+
+  const danhSachTheoDoi = useMemo(() => {
+    return invoices
+      .map((invoice) => {
+        const totalAmount = Number(invoice.totalAmount ?? invoice.TotalAmount ?? 0)
+        const paidAmount = Number(invoice.paidAmount ?? invoice.PaidAmount ?? 0)
+        const remainingAmount = Math.max(totalAmount - paidAmount, 0)
+        const note = String(invoice.note ?? invoice.Note ?? '').trim()
+        const paymentMethod = String(invoice.paymentMethod ?? invoice.PaymentMethod ?? '').trim()
+        const status = String(invoice.status ?? invoice.Status ?? '').trim().toLowerCase()
+        const roomCode = invoice.roomCode ?? invoice.RoomCode ?? ''
+        const billingMonth = String(invoice.billingMonth ?? invoice.BillingMonth ?? '').slice(0, 7)
+        const isPartialPayment = paidAmount > 0 && remainingAmount > 0
+        const hasWorkflowNote = Boolean(note)
+        const hasDebtCarryOver = remainingAmount > 0
+
+        return {
+          raw: invoice,
+          invoiceId: layInvoiceIdTongQuat(invoice),
+          roomCode,
+          billingMonth,
+          totalAmount,
+          paidAmount,
+          remainingAmount,
+          note,
+          paymentMethod,
+          status,
+          isPartialPayment,
+          hasWorkflowNote,
+          hasDebtCarryOver,
+        }
+      })
+      .filter((item) => item.hasWorkflowNote || item.isPartialPayment || item.hasDebtCarryOver)
+      .sort((left, right) => {
+        const leftDate = new Date(left.raw.updatedAt ?? left.raw.UpdatedAt ?? left.raw.createdAt ?? left.raw.CreatedAt ?? 0).getTime()
+        const rightDate = new Date(right.raw.updatedAt ?? right.raw.UpdatedAt ?? right.raw.createdAt ?? right.raw.CreatedAt ?? 0).getTime()
+        return rightDate - leftDate
+      })
+  }, [invoices])
+
+  const danhSachLoc = useMemo(() => {
+    const keyword = String(search || '').trim().toLowerCase()
+    return danhSachTheoDoi.filter((item) => {
+      if (filter === 'partial-payment' && !item.isPartialPayment) return false
+      if (filter === 'debt' && !item.hasDebtCarryOver) return false
+      if (filter === 'with-note' && !item.hasWorkflowNote) return false
+
+      if (!keyword) return true
+
+      return [
+        item.roomCode,
+        item.billingMonth,
+        item.note,
+        item.paymentMethod,
+        item.status,
+      ].some((value) => String(value || '').toLowerCase().includes(keyword))
+    })
+  }, [danhSachTheoDoi, filter, search])
+
+  const tongCaTheoDoi = danhSachTheoDoi.length
+  const thanhToanMotPhan = danhSachTheoDoi.filter((item) => item.isPartialPayment).length
+  const tongCongNoChuyenKy = danhSachTheoDoi.reduce((sum, item) => sum + item.remainingAmount, 0)
+  const tongCoGhiChu = danhSachTheoDoi.filter((item) => item.hasWorkflowNote).length
+  const invoiceDangSua = invoices.find((item) => layInvoiceIdTongQuat(item) === editingInvoiceId)
+
+  return (
+    <div className="invoice-workspace notes-workspace">
+      <section className="invoice-hero khung">
+        <div className="invoice-hero__main">
+          <p className="nhan">Ghi chú</p>
+          <h2>Theo dõi ghi chú và nợ cũ</h2>
+          <p className="mo-ta-trang">
+            Workspace này đọc trực tiếp từ dữ liệu hóa đơn. Khi khách trả tiền mặt nhưng chỉ thanh toán một phần, ghi chú sẽ lưu ngay trên hóa đơn và phần còn thiếu được dùng làm nợ cũ chuyển sang tháng sau.
+          </p>
+
+          <div className="invoice-toolbar notes-toolbar">
+            <label className="invoice-search">
+              <span>Tìm theo phòng, tháng, ghi chú</span>
+              <input type="text" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ví dụ: A104, 2026-04, thanh toán một phần" />
+            </label>
+            <label className="truong">
+              <span>Bộ lọc</span>
+              <select value={filter} onChange={(event) => setFilter(event.target.value)}>
+                <option value="partial-payment">Thanh toán một phần</option>
+                <option value="debt">Có nợ cũ chuyển kỳ</option>
+                <option value="with-note">Đã có ghi chú</option>
+                <option value="all">Tất cả case theo dõi</option>
+              </select>
+            </label>
+            <button type="button" className="nut nut--phu" onClick={taiDuLieu} disabled={dangTai}>
+              {dangTai ? 'Đang tải...' : 'Tải lại'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="invoice-stats">
+        <article className="invoice-stat-card">
+          <span>Case theo dõi</span>
+          <strong>{tongCaTheoDoi}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Thanh toán một phần</span>
+          <strong>{thanhToanMotPhan}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Tổng nợ cũ còn thiếu</span>
+          <strong>{dinhDangTien(tongCongNoChuyenKy)}</strong>
+        </article>
+        <article className="invoice-stat-card">
+          <span>Đã có ghi chú</span>
+          <strong>{tongCoGhiChu}</strong>
+        </article>
+      </section>
+
+      <section className="khung notes-layout">
+        <div className="notes-editor">
+          <div className="xem-truoc__dau">
+            <strong>{invoiceDangSua ? `Ghi chú hóa đơn phòng ${invoiceDangSua.roomCode ?? invoiceDangSua.RoomCode ?? ''}` : 'Chọn một hóa đơn để cập nhật ghi chú'}</strong>
+            <span>{invoiceDangSua ? 'Ghi chú sẽ lưu trực tiếp vào dữ liệu hóa đơn.' : 'Ưu tiên các case thanh toán một phần để theo dõi nợ cũ.'}</span>
+          </div>
+
+          {invoiceDangSua ? (
+            <>
+              <div className="notes-form-grid">
+                <label className="truong">
+                  <span>Phòng</span>
+                  <input type="text" value={invoiceDangSua.roomCode ?? invoiceDangSua.RoomCode ?? ''} readOnly />
+                </label>
+                <label className="truong">
+                  <span>Tháng</span>
+                  <input type="text" value={String(invoiceDangSua.billingMonth ?? invoiceDangSua.BillingMonth ?? '').slice(0, 7)} readOnly />
+                </label>
+                <label className="truong">
+                  <span>Đã thu</span>
+                  <input type="text" value={dinhDangTien(invoiceDangSua.paidAmount ?? invoiceDangSua.PaidAmount ?? 0)} readOnly />
+                </label>
+                <label className="truong">
+                  <span>Còn thiếu</span>
+                  <input
+                    type="text"
+                    value={dinhDangTien(
+                      Math.max(
+                        Number(invoiceDangSua.totalAmount ?? invoiceDangSua.TotalAmount ?? 0) -
+                          Number(invoiceDangSua.paidAmount ?? invoiceDangSua.PaidAmount ?? 0),
+                        0,
+                      ),
+                    )}
+                    readOnly
+                  />
+                </label>
+                <label className="truong truong--full">
+                  <span>Ghi chú</span>
+                  <textarea
+                    value={draftNote}
+                    onChange={(event) => setDraftNote(event.target.value)}
+                    rows="8"
+                    placeholder="Ví dụ: Khách trả 3.000.000 tiền mặt, còn thiếu 1.250.000 chuyển nợ cũ tháng sau."
+                  />
+                </label>
+              </div>
+
+              <div className="invoice-modal-actions">
+                <button type="button" className="nut" onClick={luuGhiChu} disabled={dangLuu}>
+                  {dangLuu ? 'Đang lưu...' : 'Lưu ghi chú'}
+                </button>
+                <button type="button" className="nut nut--phu" onClick={apDungMauThanhToanMotPhan}>
+                  Dùng mẫu thanh toán một phần
+                </button>
+                <button type="button" className="nut nut--phu" onClick={resetEditor}>
+                  Bỏ chọn
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="khung-du-lieu khung-du-lieu--trong">
+              Chọn một hóa đơn trong danh sách bên phải để thêm hoặc cập nhật ghi chú nghiệp vụ.
+            </div>
+          )}
+
+          {thongBao ? <div className="invoice-inline-message" style={{ marginTop: '12px', color: thongBao.ok ? '#16a34a' : '#dc2626' }}>{thongBao.text}</div> : null}
+        </div>
+
+        <div className="notes-list">
+          <div className="xem-truoc__dau">
+            <strong>Danh sách case cần theo dõi</strong>
+            <span>{`Hiển thị ${danhSachLoc.length}/${tongCaTheoDoi} case`}</span>
+          </div>
+
+          {dangTai ? (
+            <div className="khung-du-lieu khung-du-lieu--trong">Đang tải dữ liệu hóa đơn...</div>
+          ) : danhSachLoc.length ? (
+            <div className="danh-sach-phong">
+              {danhSachLoc.map((item) => (
+                <div key={item.invoiceId} className="dong-phong invoice-card notes-card">
+                  <div className="invoice-card__info">
+                    <div className="dong-phong__o invoice-card__meta-item">
+                      <span>Phòng</span>
+                      <strong>{item.roomCode || 'Không có dữ liệu'}</strong>
+                    </div>
+                    <div className="dong-phong__o invoice-card__meta-item">
+                      <span>Tháng</span>
+                      <strong>{item.billingMonth || 'Không có dữ liệu'}</strong>
+                    </div>
+                    <div className="dong-phong__o invoice-card__meta-item">
+                      <span>Đã thu</span>
+                      <strong>{dinhDangTien(item.paidAmount)}</strong>
+                    </div>
+                    <div className="dong-phong__o invoice-card__meta-item">
+                      <span>Còn thiếu</span>
+                      <strong className={item.remainingAmount > 0 ? 'invoice-amount invoice-amount--unpaid' : 'invoice-amount invoice-amount--paid'}>
+                        {dinhDangTien(item.remainingAmount)}
+                      </strong>
+                    </div>
+                    <div className="dong-phong__o invoice-card__meta-item notes-card__content">
+                      <span>Ghi chú</span>
+                      <strong>{item.note || 'Chưa có ghi chú'}</strong>
+                    </div>
+                    <div className="dong-phong__o invoice-card__meta-item">
+                      <span>Phương thức</span>
+                      <strong>{item.paymentMethod || 'Chưa có dữ liệu'}</strong>
+                    </div>
+                    <div className="dong-phong__o invoice-card__meta-item">
+                      <span>Trạng thái</span>
+                      <strong>{item.status === 'paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}</strong>
+                    </div>
+                    <div className="invoice-card__button-row">
+                      <button type="button" className="nut invoice-inline-button invoice-inline-button--secondary" onClick={() => moSuaGhiChu(item.raw)}>
+                        {editingInvoiceId === item.invoiceId ? 'Đang chọn' : 'Cập nhật ghi chú'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="khung-du-lieu khung-du-lieu--trong">Chưa có case nào khớp bộ lọc hiện tại.</div>
+          )}
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function datTenEndpoint(moduleKey, method, path) {
   const cleanPath = path.toLowerCase()
 
@@ -5422,7 +6240,131 @@ function useTrangHienTai() {
 }
 
 function TrangTongQuan() {
-  return <div className="trang-trong" />
+  const workspaces = [
+    { key: 'rooms', label: 'Phòng', accent: 'amber', desc: 'Cụm thẻ phòng với nhịp sáng tối như trạng thái sử dụng.' },
+    { key: 'tenants', label: 'Người thuê', accent: 'teal', desc: 'Các hồ sơ nổi lên theo lớp như dòng người đang vận hành.' },
+    { key: 'contracts', label: 'Hợp đồng', accent: 'copper', desc: 'Các thanh thời hạn trượt nhẹ để gợi cảm giác tiến trình.' },
+    { key: 'meter', label: 'Chỉ số điện nước', accent: 'olive', desc: 'Xung dao động mô phỏng dữ liệu tiêu thụ tăng dần.' },
+    { key: 'invoices', label: 'Hóa đơn', accent: 'amber', desc: 'Các mã hóa đơn lật lớp như một bảng phát hành động.' },
+    { key: 'payments', label: 'Thanh toán', accent: 'teal', desc: 'Dòng tiền chuyển động theo quỹ đạo và điểm đối soát xanh.' },
+    { key: 'transactions', label: 'Thu chi phát sinh', accent: 'copper', desc: 'Nhịp lên xuống của doanh thu và chi phí trong tháng.' },
+    { key: 'reports', label: 'Báo cáo', accent: 'olive', desc: 'Các cột báo cáo nhấp nhô như một dashboard trình diễn.' },
+  ]
+
+  return (
+    <div className="khung-trang tong-quan-song-dong">
+      <section className="tong-quan-hero khung">
+        <div className="tong-quan-hero__content tong-quan-hero__content--full">
+          <p className="nhan">Không gian giới thiệu</p>
+          <h2>Quản lý nhà trọ</h2>
+          <p className="mo-ta-trang">
+            Mỗi workspace được mô phỏng bằng một cảnh chuyển động riêng để trang tổng quan trở thành màn hình mở đầu giàu cảm xúc, thay vì chỉ là danh sách chức năng.
+          </p>
+        </div>
+      </section>
+
+      <section className="tong-quan-scenes">
+        {workspaces.map((item, index) => (
+          <article key={item.key} className={`tong-quan-scene-card tong-quan-scene-card--${item.accent} khung`} style={{ '--delay': `${index * 0.08}s` }}>
+            <div className="tong-quan-scene-card__header">
+              <span className="tong-quan-scene-card__label">{item.label}</span>
+              <p>{item.desc}</p>
+            </div>
+
+            <div className={`tong-quan-scene tong-quan-scene--${item.key}`} aria-hidden="true">
+              {item.key === 'rooms' ? (
+                <div className="scene-room-grid">
+                  <span className="scene-room-grid__cell scene-room-grid__cell--active" />
+                  <span className="scene-room-grid__cell" />
+                  <span className="scene-room-grid__cell scene-room-grid__cell--pulse" />
+                  <span className="scene-room-grid__cell" />
+                </div>
+              ) : null}
+
+              {item.key === 'tenants' ? (
+                <div className="scene-tenant-stack">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              ) : null}
+
+              {item.key === 'contracts' ? (
+                <div className="scene-contract-lines">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              ) : null}
+
+              {item.key === 'meter' ? (
+                <div className="scene-meter-wave">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              ) : null}
+
+              {item.key === 'invoices' ? (
+                <div className="scene-invoice-stack">
+                  <span>MONTHLY</span>
+                  <span>FINAL</span>
+                  <span>QR</span>
+                </div>
+              ) : null}
+
+              {item.key === 'payments' ? (
+                <div className="scene-payment-orbit">
+                  <span className="scene-payment-orbit__ring" />
+                  <span className="scene-payment-orbit__dot scene-payment-orbit__dot--a" />
+                  <span className="scene-payment-orbit__dot scene-payment-orbit__dot--b" />
+                  <span className="scene-payment-orbit__center" />
+                </div>
+              ) : null}
+
+              {item.key === 'transactions' ? (
+                <div className="scene-transaction-bars">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              ) : null}
+
+              {item.key === 'reports' ? (
+                <div className="scene-report-columns">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              ) : null}
+            </div>
+          </article>
+        ))}
+      </section>
+
+      <section className="tong-quan-highlights">
+        <article className="tong-quan-highlight-card khung" style={{ '--delay': '0s' }}>
+          <span className="tong-quan-highlight-card__index">01</span>
+          <h3>Dữ liệu chuyển thành chuyển động</h3>
+          <p>Mỗi scene đều được thiết kế riêng để gợi đúng tinh thần của từng khu vực quản lý trong hệ thống.</p>
+        </article>
+        <article className="tong-quan-highlight-card khung" style={{ '--delay': '0.12s' }}>
+          <span className="tong-quan-highlight-card__index">02</span>
+          <h3>Nhìn một lần là hiểu cấu trúc</h3>
+          <p>Phòng, hợp đồng, chỉ số, hóa đơn, thanh toán và báo cáo xuất hiện như các lớp vận hành nối tiếp nhau.</p>
+        </article>
+        <article className="tong-quan-highlight-card khung" style={{ '--delay': '0.24s' }}>
+          <span className="tong-quan-highlight-card__index">03</span>
+          <h3>Sinh động nhưng vẫn gọn</h3>
+          <p>Không thêm nút dư thừa, chỉ giữ title trung tâm và các animation giới thiệu để menu bên trái tiếp tục làm nhiệm vụ điều hướng.</p>
+        </article>
+      </section>
+    </div>
+  )
 }
 
 function EndpointCard({ path, method, operation, spec, moduleKey }) {
@@ -5583,9 +6525,10 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
   const anTieuDeKhoiPath = laCapNhatThongTinPhong || laChonHopDongTheoPhong
 
   const capNhatField = (setter, name, value) => {
+    const nextValue = laFieldTien(name) ? chuanHoaTienKhiNhap(value) : value
     setter((current) => ({
       ...current,
-      [name]: value,
+      [name]: nextValue,
     }))
   }
 
@@ -6027,7 +6970,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
       queryParams.forEach((param) => {
         const rawValue = queryValues[param.name]
         if (rawValue !== '' && rawValue !== null && rawValue !== undefined) {
-          query.set(param.name, normalizeValue(rawValue, param.schema, spec))
+          query.set(param.name, normalizeValue(rawValue, param.schema, spec, param.name))
         }
       })
 
@@ -6043,7 +6986,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
           let bodyObject = Object.fromEntries(
             Object.entries(jsonSchema?.properties || {}).map(([name, schema]) => [
               name,
-              normalizeValue(formValues[name], schema, spec),
+              normalizeValue(formValues[name], schema, spec, name),
             ]),
           )
 
@@ -6100,7 +7043,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
           const bodyObject = Object.fromEntries(
             Object.entries(jsonSchema?.properties || {}).map(([name, schema]) => [
               name,
-              normalizeValue(bodyValues[name], schema, spec),
+              normalizeValue(bodyValues[name], schema, spec, name),
             ]),
           )
           options.body = JSON.stringify(bodyObject)
@@ -6122,7 +7065,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
 
           const value = formValues[name]
           if (value !== '' && value !== null && value !== undefined) {
-            formData.append(name, normalizeValue(value, schema, spec))
+            formData.append(name, normalizeValue(value, schema, spec, name))
           }
         })
 
@@ -6156,7 +7099,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
       const sourceValues = dungFormJsonRieng ? formValues : bodyValues
       const requestPayload = Object.fromEntries(
         Object.entries(jsonSchema?.properties || {})
-          .map(([name, schema]) => [name, normalizeValue(sourceValues[name], schema, spec)])
+          .map(([name, schema]) => [name, normalizeValue(sourceValues[name], schema, spec, name)])
           .filter(([, value]) => value !== '' && value !== null && value !== undefined),
       )
 
@@ -6331,7 +7274,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                         </select>
                       ) : (
                         <input
-                          type={kieuInput(param.schema, spec)}
+                          type={laFieldTien(param.name) ? 'text' : kieuInput(param.schema, spec)}
                           value={pathValues[param.name] ?? ''}
                           onChange={(event) => capNhatField(setPathValues, param.name, event.target.value)}
                           placeholder={param.name}
@@ -6411,7 +7354,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                       </select>
                     ) : (
                       <input
-                        type={kieuInput(param.schema, spec)}
+                        type={laFieldTien(param.name) ? 'text' : kieuInput(param.schema, spec)}
                         value={queryValues[param.name] ?? ''}
                         onChange={(event) => capNhatField(setQueryValues, param.name, event.target.value)}
                         placeholder={tenDep(param.name)}
@@ -6549,7 +7492,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                           </select>
                         ) : (
                           <input
-                            type={kieuInput(schema, spec)}
+                            type={laFieldTien(name) ? 'text' : kieuInput(schema, spec)}
                             value={formValues[name] ?? ''}
                             onChange={(event) => capNhatField(setFormValues, name, event.target.value)}
                             placeholder={nhanTruong(moduleKey, path, name)}
@@ -6615,7 +7558,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                           </select>
                         ) : (
                           <input
-                            type={kieuInput(schema, spec)}
+                            type={laFieldTien(name) ? 'text' : kieuInput(schema, spec)}
                             value={bodyValues[name] ?? ''}
                             onChange={(event) => capNhatField(setBodyValues, name, event.target.value)}
                             placeholder={nhanTruong(moduleKey, path, name)}
@@ -6662,7 +7605,7 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                       <label key={name} className="truong">
                         <span>{name}</span>
                         <input
-                          type={kieuInput(schema, spec)}
+                          type={laFieldTien(name) ? 'text' : kieuInput(schema, spec)}
                           value={formValues[name] ?? ''}
                           onChange={(event) => capNhatField(setFormValues, name, event.target.value)}
                           placeholder={resolved.format === 'date' ? 'YYYY-MM-DD' : name}
@@ -6866,7 +7809,7 @@ function TrangModule({ module, spec }) {
   }
 
   if (module.key === 'rooms') {
-    return <RoomsWorkspace />
+    return <RoomsWorkspace spec={spec} />
   }
 
   if (module.key === 'tenants') {
@@ -7011,7 +7954,7 @@ function App() {
             <p className="nhan">Có lỗi kết nối</p>
             <h2>Không thể lấy được tài liệu Swagger từ backend</h2>
             <p className="mo-ta-trang">
-              Hãy bảo đảm backend đang chạy ở <code>http://localhost:5103</code> hoặc Vite proxy đang trỏ đúng cổng.
+              Hãy bảo đảm backend đang chạy và endpoint <code>/swagger/v1/swagger.json</code> truy cập được trên cùng máy chủ này.
             </p>
             <div className="thong-bao-loi">{loi}</div>
           </section>
