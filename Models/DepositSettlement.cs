@@ -6,7 +6,7 @@ namespace NhaTro.Models
     {
         public int DepositSettlementId { get; set; }
 
-        public int ContractId { get; set; }
+        public int? ContractId { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal DepositAmount { get; set; }
@@ -23,6 +23,8 @@ namespace NhaTro.Models
         public DateTime SettledAt { get; set; } = DateTime.UtcNow;
 
         public string? Note { get; set; }
+
+        public string? ContractSnapshotJson { get; set; }
 
         public Contract? Contract { get; set; }
     }

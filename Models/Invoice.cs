@@ -9,7 +9,7 @@ namespace NhaTro.Models
 
         public int RoomId { get; set; }
 
-        public int ContractId { get; set; }
+        public int? ContractId { get; set; }
 
         [Required]
         [MaxLength(20)]
@@ -32,6 +32,9 @@ namespace NhaTro.Models
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal TrashFee { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal ExtraFee { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal DiscountAmount { get; set; }
@@ -62,7 +65,11 @@ namespace NhaTro.Models
 
         public int? ReplacedByInvoiceId { get; set; }
 
+        public string? ExtraFeeNote { get; set; }
+
         public string? Note { get; set; }
+
+        public string? ContractSnapshotJson { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

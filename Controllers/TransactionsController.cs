@@ -9,10 +9,12 @@ namespace NhaTro.Controllers
     public class TransactionsController : ControllerBase
     {
         private readonly ITransactionService _transactionService;
+        private readonly IRealtimeService _realtimeService;
 
-        public TransactionsController(ITransactionService transactionService)
+        public TransactionsController(ITransactionService transactionService, IRealtimeService realtimeService)
         {
             _transactionService = transactionService;
+            _realtimeService = realtimeService;
         }
 
         [HttpGet]
@@ -47,6 +49,7 @@ namespace NhaTro.Controllers
             try
             {
                 var created = await _transactionService.CreateAsync(dto);
+                await _realtimeService.PublishAsync("transaction.created", "transactions", "invoices", "reports");
                 return CreatedAtAction(nameof(GetById), new { id = created.TransactionId }, created);
             }
             catch (Exception ex)
@@ -66,6 +69,7 @@ namespace NhaTro.Controllers
                     return NotFound(new { message = "Không tìm thấy giao dịch." });
                 }
 
+                await _realtimeService.PublishAsync("transaction.updated", "transactions", "invoices", "reports");
                 return Ok(updated);
             }
             catch (Exception ex)
@@ -83,6 +87,7 @@ namespace NhaTro.Controllers
                 return NotFound(new { message = "Không tìm thấy giao dịch." });
             }
 
+            await _realtimeService.PublishAsync("transaction.deleted", "transactions", "invoices", "reports");
             return NoContent();
         }
     }

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using NhaTro.Dtos.Reports;
 using NhaTro.Interfaces.Services;
 
 namespace NhaTro.Controllers
@@ -40,6 +41,22 @@ namespace NhaTro.Controllers
         {
             var result = await _reportService.GetPaymentStatusAsync(month);
             return Ok(result);
+        }
+
+        [HttpGet("sales-ledger")]
+        public async Task<IActionResult> GetSalesLedger([FromQuery] int year, [FromQuery] int period)
+        {
+            var result = await _reportService.GetSalesLedgerAsync(year, period);
+            return Ok(result);
+        }
+
+        [HttpPost("sales-ledger/pdf")]
+        public async Task<IActionResult> ExportSalesLedgerPdf([FromBody] SalesLedgerPdfRequestDto request)
+        {
+            var pdfBytes = await _reportService.GenerateSalesLedgerPdfAsync(request);
+            var fileName = _reportService.BuildSalesLedgerPdfFileName(request.Year, request.Period);
+
+            return File(pdfBytes, "application/pdf", fileName);
         }
     }
 }

@@ -5,3 +5,7 @@ obj/
 .env
 .vscode/
 appsettings.Development.json
+nhatro-deploy.tar.gz
+.deploy-server/
+.Migrations/
+.temp-build-check/

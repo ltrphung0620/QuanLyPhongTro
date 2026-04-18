@@ -9,10 +9,12 @@ namespace NhaTro.Controllers
     public class PaymentsController : ControllerBase
     {
         private readonly IPaymentService _service;
+        private readonly IRealtimeService _realtimeService;
 
-        public PaymentsController(IPaymentService service)
+        public PaymentsController(IPaymentService service, IRealtimeService realtimeService)
         {
             _service = service;
+            _realtimeService = realtimeService;
         }
 
         [HttpPost("sepay/webhook")]
@@ -22,6 +24,7 @@ namespace NhaTro.Controllers
             try
             {
                 var result = await _service.HandleSepayWebhookAsync(dto);
+                await _realtimeService.PublishAsync("payment.webhook-received", "payments", "invoices", "reports");
                 return Ok(new
                 {
                     success = true,
@@ -50,7 +53,9 @@ namespace NhaTro.Controllers
         {
             var payment = await _service.GetByIdAsync(id);
             if (payment == null)
+            {
                 return NotFound(new { message = "Không tìm thấy giao dịch." });
+            }
 
             return Ok(payment);
         }
@@ -62,8 +67,11 @@ namespace NhaTro.Controllers
             {
                 var result = await _service.ReconcileAsync(id, dto);
                 if (result == null)
+                {
                     return NotFound(new { message = "Không tìm thấy giao dịch." });
+                }
 
+                await _realtimeService.PublishAsync("payment.reconciled", "payments", "invoices", "reports");
                 return Ok(result);
             }
             catch (Exception ex)
@@ -79,9 +87,12 @@ namespace NhaTro.Controllers
             {
                 var deleted = await _service.DeleteAsync(id);
                 if (!deleted)
-                    return NotFound(new { message = "KhÃ´ng tÃ¬m tháº¥y giao dá»‹ch." });
+                {
+                    return NotFound(new { message = "Không tìm thấy giao dịch." });
+                }
 
-                return Ok(new { success = true, message = "ÄÃ£ xÃ³a giao dá»‹ch thanh toÃ¡n." });
+                await _realtimeService.PublishAsync("payment.deleted", "payments", "reports");
+                return Ok(new { success = true, message = "Đã xóa giao dịch thanh toán." });
             }
             catch (Exception ex)
             {

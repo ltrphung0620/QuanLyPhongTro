@@ -6,6 +6,8 @@ namespace NhaTro.Interfaces.Repositories
     {
         Task<List<Transaction>> GetAllAsync(DateOnly? month = null, string? type = null);
         Task<Transaction?> GetByIdAsync(int transactionId);
+        Task<List<Transaction>> GetByRelatedInvoiceIdAsync(int invoiceId);
+        Task<List<Transaction>> GetPendingRoomChargeTransactionsAsync(int roomId, DateOnly month);
         Task AddAsync(Transaction transaction);
         void Update(Transaction transaction);
         void Delete(Transaction transaction);

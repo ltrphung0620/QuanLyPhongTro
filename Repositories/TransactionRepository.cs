@@ -16,7 +16,11 @@ namespace NhaTro.Repositories
 
         public async Task<List<Transaction>> GetAllAsync(DateOnly? month = null, string? type = null)
         {
-            var query = _context.Transactions.AsQueryable();
+            var query = _context.Transactions
+                .Include(x => x.RelatedRoom)
+                .Include(x => x.RelatedInvoice)
+                .ThenInclude(x => x!.Room)
+                .AsQueryable();
 
             if (month.HasValue)
             {
@@ -39,7 +43,43 @@ namespace NhaTro.Repositories
 
         public async Task<Transaction?> GetByIdAsync(int transactionId)
         {
-            return await _context.Transactions.FirstOrDefaultAsync(x => x.TransactionId == transactionId);
+            return await _context.Transactions
+                .Include(x => x.RelatedRoom)
+                .Include(x => x.RelatedInvoice)
+                .ThenInclude(x => x!.Room)
+                .FirstOrDefaultAsync(x => x.TransactionId == transactionId);
+        }
+
+        public async Task<List<Transaction>> GetByRelatedInvoiceIdAsync(int invoiceId)
+        {
+            return await _context.Transactions
+                .Include(x => x.RelatedRoom)
+                .Include(x => x.RelatedInvoice)
+                .ThenInclude(x => x!.Room)
+                .Where(x => x.RelatedInvoiceId == invoiceId)
+                .OrderBy(x => x.TransactionDate)
+                .ThenBy(x => x.TransactionId)
+                .ToListAsync();
+        }
+
+        public async Task<List<Transaction>> GetPendingRoomChargeTransactionsAsync(int roomId, DateOnly month)
+        {
+            var monthStart = new DateOnly(month.Year, month.Month, 1);
+            var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+
+            return await _context.Transactions
+                .Include(x => x.RelatedRoom)
+                .Include(x => x.RelatedInvoice)
+                .ThenInclude(x => x!.Room)
+                .Where(x =>
+                    x.RelatedRoomId == roomId &&
+                    x.RelatedInvoiceId == null &&
+                    x.TransactionDirection == "income" &&
+                    x.TransactionDate >= monthStart &&
+                    x.TransactionDate <= monthEnd)
+                .OrderBy(x => x.TransactionDate)
+                .ThenBy(x => x.TransactionId)
+                .ToListAsync();
         }
 
         public async Task AddAsync(Transaction transaction)

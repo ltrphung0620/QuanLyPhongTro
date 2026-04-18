@@ -10,11 +10,13 @@ namespace NhaTro.Controllers
     {
         private readonly IInvoiceService _service;
         private readonly IInvoicePdfService _pdfService;
+        private readonly IRealtimeService _realtimeService;
 
-        public InvoicesController(IInvoiceService service, IInvoicePdfService pdfService)
+        public InvoicesController(IInvoiceService service, IInvoicePdfService pdfService, IRealtimeService realtimeService)
         {
             _service = service;
             _pdfService = pdfService;
+            _realtimeService = realtimeService;
         }
 
         [HttpGet]
@@ -31,7 +33,9 @@ namespace NhaTro.Controllers
         {
             var invoice = await _service.GetByIdAsync(id);
             if (invoice == null)
+            {
                 return NotFound(new { message = "Không tìm thấy hóa đơn." });
+            }
 
             return Ok(invoice);
         }
@@ -43,7 +47,9 @@ namespace NhaTro.Controllers
             {
                 var invoice = await _service.GetByIdAsync(id);
                 if (invoice == null)
+                {
                     return NotFound(new { message = "Không tìm thấy hóa đơn." });
+                }
 
                 var fileBytes = await _pdfService.GenerateInvoicePdfAsync(invoice);
                 var fileName = _pdfService.BuildInvoicePdfFileName(invoice);
@@ -73,7 +79,9 @@ namespace NhaTro.Controllers
         {
             try
             {
-                return Ok(await _service.CreateAsync(dto));
+                var invoice = await _service.CreateAsync(dto);
+                await _realtimeService.PublishAsync("invoice.created", "invoices", "reports");
+                return Ok(invoice);
             }
             catch (Exception ex)
             {
@@ -86,7 +94,9 @@ namespace NhaTro.Controllers
         {
             var invoice = await _service.GetByRoomAndMonthAsync(roomId, month);
             if (invoice == null)
+            {
                 return NotFound(new { message = "Không tìm thấy hóa đơn theo phòng và tháng." });
+            }
 
             return Ok(invoice);
         }
@@ -102,7 +112,9 @@ namespace NhaTro.Controllers
         {
             var invoice = await _service.GetByPaymentCodeAsync(paymentCode);
             if (invoice == null)
+            {
                 return NotFound(new { message = "Không tìm thấy hóa đơn theo mã thanh toán." });
+            }
 
             return Ok(invoice);
         }
@@ -114,8 +126,11 @@ namespace NhaTro.Controllers
             {
                 var invoice = await _service.MarkPaidAsync(id, dto);
                 if (invoice == null)
+                {
                     return NotFound(new { message = "Không tìm thấy hóa đơn." });
+                }
 
+                await _realtimeService.PublishAsync("invoice.marked-paid", "invoices", "payments", "reports");
                 return Ok(invoice);
             }
             catch (Exception ex)
@@ -129,8 +144,11 @@ namespace NhaTro.Controllers
         {
             var invoice = await _service.MarkUnpaidAsync(id);
             if (invoice == null)
+            {
                 return NotFound(new { message = "Không tìm thấy hóa đơn." });
+            }
 
+            await _realtimeService.PublishAsync("invoice.marked-unpaid", "invoices", "payments", "reports");
             return Ok(invoice);
         }
 
@@ -141,8 +159,11 @@ namespace NhaTro.Controllers
             {
                 var invoice = await _service.UpdateElectricityAsync(dto);
                 if (invoice == null)
+                {
                     return NotFound(new { message = "Không tìm thấy hóa đơn theo phòng và tháng." });
+                }
 
+                await _realtimeService.PublishAsync("invoice.electricity-updated", "invoices", "reports");
                 return Ok(invoice);
             }
             catch (Exception ex)
@@ -169,7 +190,9 @@ namespace NhaTro.Controllers
         {
             try
             {
-                return Ok(await _service.MonthlyBulkCreateAsync(dto));
+                var invoices = await _service.MonthlyBulkCreateAsync(dto);
+                await _realtimeService.PublishAsync("invoice.bulk-created", "invoices", "reports");
+                return Ok(invoices);
             }
             catch (Exception ex)
             {
@@ -184,8 +207,11 @@ namespace NhaTro.Controllers
             {
                 var invoice = await _service.ReplaceAsync(id, dto);
                 if (invoice == null)
+                {
                     return NotFound(new { message = "Không tìm thấy hóa đơn." });
+                }
 
+                await _realtimeService.PublishAsync("invoice.replaced", "invoices", "reports");
                 return Ok(invoice);
             }
             catch (Exception ex)
@@ -201,8 +227,11 @@ namespace NhaTro.Controllers
             {
                 var invoice = await _service.UpdateAsync(id, dto);
                 if (invoice == null)
+                {
                     return NotFound(new { message = "Không tìm thấy hóa đơn." });
+                }
 
+                await _realtimeService.PublishAsync("invoice.updated", "invoices", "reports");
                 return Ok(invoice);
             }
             catch (Exception ex)
@@ -218,9 +247,12 @@ namespace NhaTro.Controllers
             {
                 var deleted = await _service.DeleteAsync(id);
                 if (!deleted)
+                {
                     return NotFound(new { message = "Không tìm thấy hóa đơn." });
+                }
 
-                return Ok(new { message = "Xoa hoa don thanh cong." });
+                await _realtimeService.PublishAsync("invoice.deleted", "invoices", "reports");
+                return Ok(new { message = "Xóa hóa đơn thành công." });
             }
             catch (Exception ex)
             {

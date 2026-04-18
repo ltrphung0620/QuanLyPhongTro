@@ -1,6 +1,7 @@
 using NhaTro.Data;
 using NhaTro.Interfaces.Repositories;
 using NhaTro.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace NhaTro.Repositories
 {
@@ -16,6 +17,16 @@ namespace NhaTro.Repositories
         public async Task AddAsync(DepositSettlement depositSettlement)
         {
             await _context.DepositSettlements.AddAsync(depositSettlement);
+        }
+
+        public async Task<DepositSettlement?> GetByContractIdAsync(int contractId)
+        {
+            return await _context.DepositSettlements.FirstOrDefaultAsync(x => x.ContractId == contractId);
+        }
+
+        public void Update(DepositSettlement depositSettlement)
+        {
+            _context.DepositSettlements.Update(depositSettlement);
         }
 
         public async Task<bool> SaveChangesAsync()

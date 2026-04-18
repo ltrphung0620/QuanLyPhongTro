@@ -17,7 +17,7 @@ namespace NhaTro.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.14")
+                .HasAnnotation("ProductVersion", "9.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -107,9 +107,13 @@ namespace NhaTro.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("DepositSettlementId"));
 
-                    b.Property<int>("ContractId")
+                    b.Property<int?>("ContractId")
                         .HasColumnType("int")
                         .HasColumnName("contract_id");
+
+                    b.Property<string>("ContractSnapshotJson")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("contract_snapshot_json");
 
                     b.Property<decimal>("DeductedAmount")
                         .HasPrecision(18, 2)
@@ -142,7 +146,8 @@ namespace NhaTro.Migrations
                     b.HasKey("DepositSettlementId");
 
                     b.HasIndex("ContractId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[contract_id] IS NOT NULL");
 
                     b.ToTable("deposit_settlements", null, t =>
                         {
@@ -211,9 +216,13 @@ namespace NhaTro.Migrations
                         .HasColumnType("date")
                         .HasColumnName("billing_month");
 
-                    b.Property<int>("ContractId")
+                    b.Property<int?>("ContractId")
                         .HasColumnType("int")
                         .HasColumnName("contract_id");
+
+                    b.Property<string>("ContractSnapshotJson")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("contract_snapshot_json");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2")
@@ -233,6 +242,15 @@ namespace NhaTro.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)")
                         .HasColumnName("electricity_fee");
+
+                    b.Property<decimal>("ExtraFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("extra_fee");
+
+                    b.Property<string>("ExtraFeeNote")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("extra_fee_note");
 
                     b.Property<DateOnly?>("FromDate")
                         .HasColumnType("date")
@@ -357,9 +375,13 @@ namespace NhaTro.Migrations
                         .HasColumnType("int")
                         .HasColumnName("consumed_units");
 
-                    b.Property<int>("ContractId")
+                    b.Property<int?>("ContractId")
                         .HasColumnType("int")
                         .HasColumnName("contract_id");
+
+                    b.Property<string>("ContractSnapshotJson")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("contract_snapshot_json");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2")
@@ -632,6 +654,10 @@ namespace NhaTro.Migrations
                         .HasColumnType("int")
                         .HasColumnName("related_invoice_id");
 
+                    b.Property<int?>("RelatedRoomId")
+                        .HasColumnType("int")
+                        .HasColumnName("related_room_id");
+
                     b.Property<DateOnly>("TransactionDate")
                         .HasColumnType("date")
                         .HasColumnName("transaction_date");
@@ -645,6 +671,8 @@ namespace NhaTro.Migrations
                     b.HasKey("TransactionId");
 
                     b.HasIndex("RelatedInvoiceId");
+
+                    b.HasIndex("RelatedRoomId");
 
                     b.ToTable("transactions", null, t =>
                         {
@@ -680,8 +708,7 @@ namespace NhaTro.Migrations
                     b.HasOne("NhaTro.Models.Contract", "Contract")
                         .WithOne("DepositSettlement")
                         .HasForeignKey("NhaTro.Models.DepositSettlement", "ContractId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Contract");
                 });
@@ -691,8 +718,7 @@ namespace NhaTro.Migrations
                     b.HasOne("NhaTro.Models.Contract", "Contract")
                         .WithMany("Invoices")
                         .HasForeignKey("ContractId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("NhaTro.Models.Invoice", "ReplacedByInvoice")
                         .WithMany("ReplacingInvoices")
@@ -717,8 +743,7 @@ namespace NhaTro.Migrations
                     b.HasOne("NhaTro.Models.Contract", "Contract")
                         .WithMany("MeterReadings")
                         .HasForeignKey("ContractId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("NhaTro.Models.Room", "Room")
                         .WithMany("MeterReadings")
@@ -748,7 +773,14 @@ namespace NhaTro.Migrations
                         .HasForeignKey("RelatedInvoiceId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("NhaTro.Models.Room", "RelatedRoom")
+                        .WithMany("Transactions")
+                        .HasForeignKey("RelatedRoomId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("RelatedInvoice");
+
+                    b.Navigation("RelatedRoom");
                 });
 
             modelBuilder.Entity("NhaTro.Models.Contract", b =>
@@ -776,6 +808,8 @@ namespace NhaTro.Migrations
                     b.Navigation("Invoices");
 
                     b.Navigation("MeterReadings");
+
+                    b.Navigation("Transactions");
                 });
 
             modelBuilder.Entity("NhaTro.Models.Tenant", b =>

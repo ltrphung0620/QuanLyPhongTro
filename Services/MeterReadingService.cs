@@ -183,7 +183,10 @@ namespace NhaTro.Services
             _meterRepo.UpdateRange(readings);
             await _meterRepo.SaveChangesAsync();
 
-            await SyncInvoiceElectricityAsync(target.ContractId, billingMonth, target.Amount);
+            if (target.ContractId.HasValue)
+            {
+                await SyncInvoiceElectricityAsync(target.ContractId.Value, billingMonth, target.Amount);
+            }
 
             return readings.Select(MapToDto).ToList();
         }
@@ -266,11 +269,17 @@ namespace NhaTro.Services
             _meterRepo.Delete(target);
             await _meterRepo.SaveChangesAsync();
 
-            await SyncInvoiceElectricityAsync(target.ContractId, month, 0);
+            if (target.ContractId.HasValue)
+            {
+                await SyncInvoiceElectricityAsync(target.ContractId.Value, month, 0);
+            }
 
             foreach (var reading in changedReadings)
             {
-                await SyncInvoiceElectricityAsync(reading.ContractId, NormalizeMonth(reading.BillingMonth), reading.Amount);
+                if (reading.ContractId.HasValue)
+                {
+                    await SyncInvoiceElectricityAsync(reading.ContractId.Value, NormalizeMonth(reading.BillingMonth), reading.Amount);
+                }
             }
 
             return true;
@@ -284,7 +293,10 @@ namespace NhaTro.Services
             var activeContracts = await _contractRepo.GetAllAsync("active", null);
             var readings = await _meterRepo.GetAllAsync(null, month);
 
-            var contractIdsWithReading = readings.Select(r => r.ContractId).ToHashSet();
+            var contractIdsWithReading = readings
+                .Where(r => r.ContractId.HasValue)
+                .Select(r => r.ContractId!.Value)
+                .ToHashSet();
 
             var missing = activeContracts
                 .Where(c => !contractIdsWithReading.Contains(c.ContractId))

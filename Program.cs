@@ -19,7 +19,8 @@ builder.Services.AddScoped<IRoomService, RoomService>();
 builder.Services.AddScoped<ITenantRepository, TenantRepository>();
 builder.Services.AddScoped<ITenantService, TenantService>();
 builder.Services.AddScoped<IContractRepository, ContractRepository>();
-builder.Services.AddScoped<IContractService, ContractService>();
+builder.Services.AddScoped<ContractService>();
+builder.Services.AddScoped<IContractService, SafeDeleteContractService>();
 builder.Services.AddScoped<IMeterReadingRepository, MeterReadingRepository>();
 builder.Services.AddScoped<IMeterReadingService, MeterReadingService>();
 builder.Services.AddHttpClient<OcrSpaceMeterReadingImageReader>();
@@ -33,6 +34,7 @@ builder.Services.AddScoped<IDepositSettlementRepository, DepositSettlementReposi
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddSingleton<IRealtimeService, RealtimeService>();
 
 QuestPDF.Settings.License = LicenseType.Community;
 

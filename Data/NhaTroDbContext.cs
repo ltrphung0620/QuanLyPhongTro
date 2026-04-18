@@ -197,8 +197,10 @@ namespace NhaTro.Data
                     .IsRequired();
 
                 entity.Property(e => e.ContractId)
-                    .HasColumnName("contract_id")
-                    .IsRequired();
+                    .HasColumnName("contract_id");
+
+                entity.Property(e => e.ContractSnapshotJson)
+                    .HasColumnName("contract_snapshot_json");
 
                 entity.Property(e => e.BillingMonth)
                     .HasColumnName("billing_month");
@@ -231,7 +233,7 @@ namespace NhaTro.Data
                 entity.HasOne(e => e.Contract)
                     .WithMany(c => c.MeterReadings)
                     .HasForeignKey(e => e.ContractId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                    .OnDelete(DeleteBehavior.SetNull);
 
                 entity.HasIndex(e => new { e.RoomId, e.BillingMonth })
                     .IsUnique();
@@ -260,8 +262,7 @@ namespace NhaTro.Data
                     .IsRequired();
 
                 entity.Property(e => e.ContractId)
-                    .HasColumnName("contract_id")
-                    .IsRequired();
+                    .HasColumnName("contract_id");
 
                 entity.Property(e => e.InvoiceType)
                     .HasColumnName("invoice_type")
@@ -291,6 +292,10 @@ namespace NhaTro.Data
 
                 entity.Property(e => e.TrashFee)
                     .HasColumnName("trash_fee")
+                    .HasPrecision(18, 2);
+
+                entity.Property(e => e.ExtraFee)
+                    .HasColumnName("extra_fee")
                     .HasPrecision(18, 2);
 
                 entity.Property(e => e.DiscountAmount)
@@ -332,8 +337,14 @@ namespace NhaTro.Data
                 entity.Property(e => e.ReplacedByInvoiceId)
                     .HasColumnName("replaced_by_invoice_id");
 
+                entity.Property(e => e.ExtraFeeNote)
+                    .HasColumnName("extra_fee_note");
+
                 entity.Property(e => e.Note)
                     .HasColumnName("note");
+
+                entity.Property(e => e.ContractSnapshotJson)
+                    .HasColumnName("contract_snapshot_json");
 
                 entity.Property(e => e.CreatedAt)
                     .HasColumnName("created_at");
@@ -349,7 +360,7 @@ namespace NhaTro.Data
                 entity.HasOne(e => e.Contract)
                     .WithMany(c => c.Invoices)
                     .HasForeignKey(e => e.ContractId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                    .OnDelete(DeleteBehavior.SetNull);
 
                 entity.HasOne(e => e.ReplacedByInvoice)
                     .WithMany(i => i.ReplacingInvoices)
@@ -382,8 +393,7 @@ namespace NhaTro.Data
                     .HasColumnName("deposit_settlement_id");
 
                 entity.Property(e => e.ContractId)
-                    .HasColumnName("contract_id")
-                    .IsRequired();
+                    .HasColumnName("contract_id");
 
                 entity.Property(e => e.DepositAmount)
                     .HasColumnName("deposit_amount")
@@ -407,13 +417,17 @@ namespace NhaTro.Data
                 entity.Property(e => e.Note)
                     .HasColumnName("note");
 
+                entity.Property(e => e.ContractSnapshotJson)
+                    .HasColumnName("contract_snapshot_json");
+
                 entity.HasOne(e => e.Contract)
                     .WithOne(c => c.DepositSettlement)
                     .HasForeignKey<DepositSettlement>(e => e.ContractId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                    .OnDelete(DeleteBehavior.SetNull);
 
                 entity.HasIndex(e => e.ContractId)
-                    .IsUnique();
+                    .IsUnique()
+                    .HasFilter("[contract_id] IS NOT NULL");
 
                 entity.ToTable(t =>
                 {
@@ -458,11 +472,19 @@ namespace NhaTro.Data
                 entity.Property(e => e.Description)
                     .HasColumnName("description");
 
+                entity.Property(e => e.RelatedRoomId)
+                    .HasColumnName("related_room_id");
+
                 entity.Property(e => e.RelatedInvoiceId)
                     .HasColumnName("related_invoice_id");
 
                 entity.Property(e => e.CreatedAt)
                     .HasColumnName("created_at");
+
+                entity.HasOne(e => e.RelatedRoom)
+                    .WithMany(r => r.Transactions)
+                    .HasForeignKey(e => e.RelatedRoomId)
+                    .OnDelete(DeleteBehavior.SetNull);
 
                 entity.HasOne(e => e.RelatedInvoice)
                     .WithMany(i => i.Transactions)
