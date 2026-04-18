@@ -6,6 +6,7 @@ obj/
 .vscode/
 appsettings.Development.json
 nhatro-deploy.tar.gz
-.deploy-server/
-.Migrations/
-.temp-build-check/
+deploy-server/
+Migrations/
+Properties/
+publish/
