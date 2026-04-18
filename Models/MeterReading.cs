@@ -9,7 +9,7 @@ namespace NhaTro.Models
 
         public int RoomId { get; set; }
 
-        public int ContractId { get; set; }
+        public int? ContractId { get; set; }
 
         public DateOnly BillingMonth { get; set; }
 
@@ -26,6 +26,8 @@ namespace NhaTro.Models
         public decimal Amount { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        public string? ContractSnapshotJson { get; set; }
 
         public Room? Room { get; set; }
 

@@ -23,5 +23,6 @@ namespace NhaTro.Models
         public ICollection<Contract> Contracts { get; set; } = new List<Contract>();
         public ICollection<MeterReading> MeterReadings { get; set; } = new List<MeterReading>();
         public ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
+        public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
     }
 }

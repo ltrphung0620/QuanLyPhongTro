@@ -5,7 +5,7 @@ namespace NhaTro.Dtos.MeterReadings
         public int MeterReadingId { get; set; }
         public int RoomId { get; set; }
         public string RoomCode { get; set; } = string.Empty;
-        public int ContractId { get; set; }
+        public int? ContractId { get; set; }
         public DateOnly BillingMonth { get; set; }
         public int PreviousReading { get; set; }
         public int CurrentReading { get; set; }

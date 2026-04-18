@@ -66,6 +66,15 @@ namespace NhaTro.Repositories
                     x.ReplacedByInvoiceId == null);
         }
 
+        public async Task<List<Invoice>> GetByContractIdAsync(int contractId)
+        {
+            return await _context.Invoices
+                .Include(x => x.Room)
+                .Where(x => x.ContractId == contractId)
+                .OrderByDescending(x => x.CreatedAt)
+                .ToListAsync();
+        }
+
         public async Task<Invoice?> GetLatestBeforeMonthAsync(int roomId, DateOnly month)
         {
             return await _context.Invoices

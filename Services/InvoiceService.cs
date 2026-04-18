@@ -11,6 +11,7 @@ namespace NhaTro.Services
         private readonly IContractRepository _contractRepo;
         private readonly IMeterReadingRepository _meterRepo;
         private readonly IRoomRepository _roomRepo;
+        private readonly ITransactionRepository _transactionRepo;
 
         private const decimal WATER_PER_PERSON = 50000;
         private const decimal TRASH_FEE = 30000;
@@ -19,12 +20,14 @@ namespace NhaTro.Services
             IInvoiceRepository invoiceRepo,
             IContractRepository contractRepo,
             IMeterReadingRepository meterRepo,
-            IRoomRepository roomRepo)
+            IRoomRepository roomRepo,
+            ITransactionRepository transactionRepo)
         {
             _invoiceRepo = invoiceRepo;
             _contractRepo = contractRepo;
             _meterRepo = meterRepo;
             _roomRepo = roomRepo;
+            _transactionRepo = transactionRepo;
         }
 
         public async Task<List<InvoiceDto>> GetAllAsync(int? roomId = null, DateOnly? month = null, string? status = null)
@@ -59,11 +62,12 @@ namespace NhaTro.Services
             var roomFee = CalculateRoomFeeForBillingMonth(contract, billingMonth, fromDate, toDate);
             var water = contract.OccupantCount * WATER_PER_PERSON;
             var trash = TRASH_FEE;
+            var extraChargeInfo = await GetPendingExtraChargeInfoAsync(dto.RoomId, billingMonth);
             var discount = dto.DiscountAmount;
             var carryOver = await GetCarryOverInfoAsync(dto.RoomId, billingMonth);
             var debt = dto.DebtAmount + carryOver.Amount;
 
-            var total = roomFee + electricity + water + trash + debt - discount;
+            var total = roomFee + electricity + water + trash + extraChargeInfo.Amount + debt - discount;
             if (total < 0) total = 0;
 
             return new InvoicePreviewDto
@@ -77,6 +81,7 @@ namespace NhaTro.Services
                 ElectricityFee = electricity,
                 WaterFee = water,
                 TrashFee = trash,
+                ExtraFee = extraChargeInfo.Amount,
                 DiscountAmount = discount,
                 DebtAmount = debt,
                 TotalAmount = total
@@ -101,11 +106,13 @@ namespace NhaTro.Services
                 ElectricityFee = preview.ElectricityFee,
                 WaterFee = preview.WaterFee,
                 TrashFee = preview.TrashFee,
+                ExtraFee = preview.ExtraFee,
                 DiscountAmount = preview.DiscountAmount,
                 DebtAmount = preview.DebtAmount,
                 TotalAmount = preview.TotalAmount,
                 Status = "unpaid",
                 PaymentCode = await GeneratePaymentCodeAsync("monthly", billingMonth, dto.RoomId),
+                ExtraFeeNote = (await GetPendingExtraChargeInfoAsync(dto.RoomId, billingMonth)).Note,
                 Note = carryOver.Note,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -113,8 +120,10 @@ namespace NhaTro.Services
 
             await _invoiceRepo.AddAsync(invoice);
             await _invoiceRepo.SaveChangesAsync();
+            await AttachPendingTransactionsToInvoiceAsync(invoice);
 
-            return MapToDto(invoice);
+            var refreshedInvoice = await _invoiceRepo.GetByIdAsync(invoice.InvoiceId) ?? invoice;
+            return MapToDto(refreshedInvoice);
         }
 
         public async Task<InvoiceDto?> GetByRoomAndMonthAsync(int roomId, DateOnly month)
@@ -210,6 +219,7 @@ namespace NhaTro.Services
                 invoice.ElectricityFee,
                 invoice.WaterFee,
                 invoice.TrashFee,
+                invoice.ExtraFee,
                 invoice.DebtAmount,
                 invoice.DiscountAmount);
 
@@ -244,10 +254,11 @@ namespace NhaTro.Services
                 var roomFee = CalculateRoomFeeForBillingMonth(contract, billingMonth, fromDate, toDate);
                 var water = contract.OccupantCount * WATER_PER_PERSON;
                 var trash = TRASH_FEE;
+                var extraChargeInfo = await GetPendingExtraChargeInfoAsync(contract.RoomId, billingMonth);
                 var discount = dto.DefaultDiscountAmount;
                 var carryOver = await GetCarryOverInfoAsync(contract.RoomId, billingMonth);
                 var debt = dto.DefaultDebtAmount + carryOver.Amount;
-                var total = roomFee + electricity + water + trash + debt - discount;
+                var total = roomFee + electricity + water + trash + extraChargeInfo.Amount + debt - discount;
 
                 if (total < 0) total = 0;
 
@@ -263,6 +274,7 @@ namespace NhaTro.Services
                     ElectricityFee = electricity,
                     WaterFee = water,
                     TrashFee = trash,
+                    ExtraFee = extraChargeInfo.Amount,
                     DiscountAmount = discount,
                     DebtAmount = debt,
                     TotalAmount = total
@@ -292,11 +304,13 @@ namespace NhaTro.Services
                     ElectricityFee = item.ElectricityFee,
                     WaterFee = item.WaterFee,
                     TrashFee = item.TrashFee,
+                    ExtraFee = item.ExtraFee,
                     DiscountAmount = item.DiscountAmount,
                     DebtAmount = item.DebtAmount,
                     TotalAmount = item.TotalAmount,
                     Status = "unpaid",
                     PaymentCode = await GeneratePaymentCodeAsync("monthly", billingMonth, item.RoomId),
+                    ExtraFeeNote = (await GetPendingExtraChargeInfoAsync(item.RoomId, billingMonth)).Note,
                     Note = (await GetCarryOverInfoAsync(item.RoomId, billingMonth)).Note,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -307,6 +321,11 @@ namespace NhaTro.Services
             }
 
             await _invoiceRepo.SaveChangesAsync();
+            foreach (var invoice in createdInvoices)
+            {
+                await AttachPendingTransactionsToInvoiceAsync(invoice);
+            }
+
             return createdInvoices.Select(MapToDto).ToList();
         }
 
@@ -338,11 +357,20 @@ namespace NhaTro.Services
                 ElectricityFee = dto.ElectricityFee,
                 WaterFee = dto.WaterFee,
                 TrashFee = dto.TrashFee,
+                ExtraFee = oldInvoice.ExtraFee,
                 DiscountAmount = dto.DiscountAmount,
                 DebtAmount = dto.DebtAmount,
-                TotalAmount = total,
+                TotalAmount = CalculateInvoiceTotal(
+                    dto.RoomFee,
+                    dto.ElectricityFee,
+                    dto.WaterFee,
+                    dto.TrashFee,
+                    oldInvoice.ExtraFee,
+                    dto.DebtAmount,
+                    dto.DiscountAmount),
                 Status = "unpaid",
                 PaymentCode = await GeneratePaymentCodeAsync(oldInvoice.InvoiceType, billingMonth, oldInvoice.RoomId),
+                ExtraFeeNote = oldInvoice.ExtraFeeNote,
                 Note = dto.Note,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -391,6 +419,7 @@ namespace NhaTro.Services
                 invoice.ElectricityFee,
                 invoice.WaterFee,
                 invoice.TrashFee,
+                invoice.ExtraFee,
                 invoice.DebtAmount,
                 invoice.DiscountAmount);
 
@@ -428,10 +457,11 @@ namespace NhaTro.Services
             decimal electricityFee,
             decimal waterFee,
             decimal trashFee,
+            decimal extraFee,
             decimal debtAmount,
             decimal discountAmount)
         {
-            var total = roomFee + electricityFee + waterFee + trashFee + debtAmount - discountAmount;
+            var total = roomFee + electricityFee + waterFee + trashFee + extraFee + debtAmount - discountAmount;
             return total < 0 ? 0 : total;
         }
 
@@ -487,6 +517,41 @@ namespace NhaTro.Services
             return (remainingAmount, BuildCarryOverNote(previousInvoice, remainingAmount));
         }
 
+        private async Task<(decimal Amount, string? Note)> GetPendingExtraChargeInfoAsync(int roomId, DateOnly billingMonth)
+        {
+            var pendingTransactions = await _transactionRepo.GetPendingRoomChargeTransactionsAsync(roomId, billingMonth);
+            if (pendingTransactions.Count == 0)
+            {
+                return (0, null);
+            }
+
+            return (
+                pendingTransactions.Sum(x => x.Amount),
+                TransactionService.BuildExtraFeeNote(pendingTransactions));
+        }
+
+        private async Task AttachPendingTransactionsToInvoiceAsync(Invoice invoice)
+        {
+            if (!invoice.BillingMonth.HasValue)
+            {
+                return;
+            }
+
+            var pendingTransactions = await _transactionRepo.GetPendingRoomChargeTransactionsAsync(invoice.RoomId, invoice.BillingMonth.Value);
+            if (pendingTransactions.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var transaction in pendingTransactions)
+            {
+                transaction.RelatedInvoiceId = invoice.InvoiceId;
+                _transactionRepo.Update(transaction);
+            }
+
+            await _transactionRepo.SaveChangesAsync();
+        }
+
         private async Task ApplyCarryOverAdjustmentToNextInvoiceAsync(Invoice sourceInvoice, decimal oldRemainingAmount, decimal newRemainingAmount)
         {
             if (!sourceInvoice.BillingMonth.HasValue)
@@ -507,6 +572,7 @@ namespace NhaTro.Services
                 nextInvoice.ElectricityFee,
                 nextInvoice.WaterFee,
                 nextInvoice.TrashFee,
+                nextInvoice.ExtraFee,
                 nextInvoice.DebtAmount,
                 nextInvoice.DiscountAmount);
             nextInvoice.Note = UpsertCarryOverNote(nextInvoice.Note, sourceInvoice, newRemainingAmount);
@@ -663,6 +729,7 @@ namespace NhaTro.Services
                 ElectricityFee = i.ElectricityFee,
                 WaterFee = i.WaterFee,
                 TrashFee = i.TrashFee,
+                ExtraFee = i.ExtraFee,
                 DiscountAmount = i.DiscountAmount,
                 DebtAmount = i.DebtAmount,
                 TotalAmount = i.TotalAmount,
@@ -672,6 +739,7 @@ namespace NhaTro.Services
                 PaidAmount = i.PaidAmount,
                 PaymentMethod = i.PaymentMethod,
                 PaymentReference = i.PaymentReference,
+                ExtraFeeNote = i.ExtraFeeNote,
                 Note = i.Note,
                 CreatedAt = i.CreatedAt
             };

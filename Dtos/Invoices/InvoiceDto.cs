@@ -6,7 +6,7 @@ namespace NhaTro.Dtos.Invoices
 
         public int RoomId { get; set; }
         public string? RoomCode { get; set; }
-        public int ContractId { get; set; }
+        public int? ContractId { get; set; }
 
         public string InvoiceType { get; set; } = string.Empty;
 
@@ -18,6 +18,7 @@ namespace NhaTro.Dtos.Invoices
         public decimal ElectricityFee { get; set; }
         public decimal WaterFee { get; set; }
         public decimal TrashFee { get; set; }
+        public decimal ExtraFee { get; set; }
 
         public decimal DiscountAmount { get; set; }
         public decimal DebtAmount { get; set; }
@@ -32,6 +33,7 @@ namespace NhaTro.Dtos.Invoices
         public string? PaymentMethod { get; set; }
         public string? PaymentReference { get; set; }
 
+        public string? ExtraFeeNote { get; set; }
         public string? Note { get; set; }
 
         public DateTime CreatedAt { get; set; }

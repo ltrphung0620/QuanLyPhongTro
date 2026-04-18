@@ -25,10 +25,13 @@ namespace NhaTro.Models
 
         public string? Description { get; set; }
 
+        public int? RelatedRoomId { get; set; }
+
         public int? RelatedInvoiceId { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        public Room? RelatedRoom { get; set; }
         public Invoice? RelatedInvoice { get; set; }
     }
 }

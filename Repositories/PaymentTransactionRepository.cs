@@ -16,7 +16,10 @@ namespace NhaTro.Repositories
 
         public async Task<List<PaymentTransaction>> GetAllAsync(string? processStatus = null)
         {
-            var query = _context.PaymentTransactions.AsQueryable();
+            var query = _context.PaymentTransactions
+                .Include(x => x.MatchedInvoice)
+                .ThenInclude(x => x!.Room)
+                .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(processStatus))
             {
@@ -32,6 +35,8 @@ namespace NhaTro.Repositories
         public async Task<PaymentTransaction?> GetByIdAsync(int paymentTransactionId)
         {
             return await _context.PaymentTransactions
+                .Include(x => x.MatchedInvoice)
+                .ThenInclude(x => x!.Room)
                 .FirstOrDefaultAsync(x => x.PaymentTransactionId == paymentTransactionId);
         }
 
@@ -39,6 +44,8 @@ namespace NhaTro.Repositories
         {
             var normalized = providerTransactionId.Trim();
             return await _context.PaymentTransactions
+                .Include(x => x.MatchedInvoice)
+                .ThenInclude(x => x!.Room)
                 .FirstOrDefaultAsync(x => x.ProviderTransactionId == normalized);
         }
 

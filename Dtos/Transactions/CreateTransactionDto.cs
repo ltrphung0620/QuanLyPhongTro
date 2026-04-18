@@ -23,6 +23,6 @@ namespace NhaTro.Dtos.Transactions
 
         public string? Description { get; set; }
 
-        public int? RelatedInvoiceId { get; set; }
+        public int? RelatedRoomId { get; set; }
     }
 }
