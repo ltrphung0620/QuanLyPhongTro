@@ -49,6 +49,31 @@ namespace NhaTro.Controllers
             }
         }
 
+        [HttpPost("{id:int}/image")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> UploadImage(int id, [FromForm] UploadMeterReadingImageDto dto)
+        {
+            try
+            {
+                if (dto.Image == null)
+                {
+                    return BadRequest(new { message = "Vui lòng chọn ảnh công tơ điện." });
+                }
+
+                var result = await _service.UploadImageAsync(id, dto.Image);
+                if (result == null)
+                {
+                    return NotFound(new { message = "KhÃ´ng tÃ¬m tháº¥y báº£n ghi chá»‰ sá»‘ Ä‘iá»‡n." });
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpPatch("current-reading")]
         public async Task<IActionResult> UpdateOriginalReading([FromBody] UpdateOriginalMeterReadingDto dto)
         {
@@ -101,19 +126,6 @@ namespace NhaTro.Controllers
             }
         }
 
-        [HttpPost("read-from-image")]
-        public async Task<IActionResult> ReadFromImage([FromForm] MeterReadingFromImageDto dto)
-        {
-            try
-            {
-                var result = await _service.ReadFromImageAsync(dto.Image);
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-        }
         [HttpGet("missing")]
         public async Task<IActionResult> GetMissing([FromQuery] DateOnly month)
         {

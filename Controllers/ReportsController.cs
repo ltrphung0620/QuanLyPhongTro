@@ -44,9 +44,9 @@ namespace NhaTro.Controllers
         }
 
         [HttpGet("sales-ledger")]
-        public async Task<IActionResult> GetSalesLedger([FromQuery] int year, [FromQuery] int period)
+        public async Task<IActionResult> GetSalesLedger([FromQuery] DateOnly fromMonth, [FromQuery] DateOnly toMonth)
         {
-            var result = await _reportService.GetSalesLedgerAsync(year, period);
+            var result = await _reportService.GetSalesLedgerAsync(fromMonth, toMonth);
             return Ok(result);
         }
 
@@ -54,7 +54,7 @@ namespace NhaTro.Controllers
         public async Task<IActionResult> ExportSalesLedgerPdf([FromBody] SalesLedgerPdfRequestDto request)
         {
             var pdfBytes = await _reportService.GenerateSalesLedgerPdfAsync(request);
-            var fileName = _reportService.BuildSalesLedgerPdfFileName(request.Year, request.Period);
+            var fileName = _reportService.BuildSalesLedgerPdfFileName(request.FromMonth, request.ToMonth);
 
             return File(pdfBytes, "application/pdf", fileName);
         }

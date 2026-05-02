@@ -16,16 +16,19 @@ namespace NhaTro.Services
         private static bool _fontsRegistered;
 
         private readonly HttpClient _httpClient;
+        private readonly IWebHostEnvironment _environment;
 
-        public InvoicePdfService(HttpClient httpClient)
+        public InvoicePdfService(HttpClient httpClient, IWebHostEnvironment environment)
         {
             _httpClient = httpClient;
+            _environment = environment;
             EnsurePdfFontsRegistered();
         }
 
         public async Task<byte[]> GenerateInvoicePdfAsync(InvoiceDto invoice)
         {
             var qrBytes = await TryGetQrBytesAsync(invoice);
+            var meterImageBytes = TryGetMeterImageBytes(invoice);
 
             using var stream = new MemoryStream();
 
@@ -42,8 +45,7 @@ namespace NhaTro.Services
                     {
                         column.Spacing(16);
 
-                        column.Item().Text("H\u00D3A \u0110\u01A0N TI\u1EC0N PH\u00D2NG").FontSize(22).SemiBold();
-                        column.Item().Text(BuildInvoiceTitle(invoice)).FontSize(12).FontColor(Colors.Grey.Darken1);
+                        column.Item().Text(BuildInvoiceHeading(invoice)).FontSize(22).SemiBold();
                         column.Item().Text($"Ng\u00E0y in: {FormatDateTime(DateTime.Now)}").FontSize(10).FontColor(Colors.Grey.Darken1);
 
                         column.Item().Element(Card).Column(costs =>
@@ -59,7 +61,7 @@ namespace NhaTro.Services
                                 });
 
                                 AddMoneyRow(table, "Ti\u1EC1n ph\u00F2ng", invoice.RoomFee);
-                                AddMoneyRow(table, "Ti\u1EC1n \u0111i\u1EC7n", invoice.ElectricityFee);
+                                AddMoneyRow(table, BuildElectricityLabel(invoice), invoice.ElectricityFee);
                                 AddMoneyRow(table, "Ti\u1EC1n n\u01B0\u1EDBc", invoice.WaterFee);
                                 AddMoneyRow(table, "Ti\u1EC1n r\u00E1c", invoice.TrashFee);
                                 AddMoneyRow(table, "Ph\u00ED ph\u00E1t sinh", invoice.ExtraFee);
@@ -106,10 +108,19 @@ namespace NhaTro.Services
                             }
                         });
 
+                        if (meterImageBytes != null)
+                        {
+                            column.Item().Element(Card).Column(meterImage =>
+                            {
+                                meterImage.Spacing(8);
+                                meterImage.Item().Text("\u1EA2nh c\u00F4ng t\u01A1 \u0111i\u1EC7n").SemiBold().FontSize(13);
+                                meterImage.Item().AlignCenter().MaxHeight(260).Image(meterImageBytes).FitArea();
+                            });
+                        }
+
                         column.Item().Element(Card).Column(qr =>
                         {
-                            qr.Spacing(8);
-                            qr.Item().Text("QR thanh to\u00E1n").SemiBold().FontSize(13);
+                            qr.Spacing(0);
 
                             if (qrBytes != null)
                             {
@@ -124,11 +135,6 @@ namespace NhaTro.Services
                                     .AlignCenter()
                                     .Text("Kh\u00F4ng t\u1EA3i \u0111\u01B0\u1EE3c QR thanh to\u00E1n.");
                             }
-
-                            qr.Item().Text($"N\u1ED9i dung: {GetPaymentCode(invoice)}").FontSize(10);
-                            qr.Item().Text($"S\u1ED1 t\u00E0i kho\u1EA3n: {BankAccount}").FontSize(10);
-                            qr.Item().Text($"Ch\u1EE7 t\u00E0i kho\u1EA3n: {AccountName}").FontSize(10);
-                            qr.Item().Text($"S\u1ED1 ti\u1EC1n QR: {FormatMoney(invoice.TotalAmount)}").FontSize(10);
                         });
 
                         column.Item()
@@ -231,6 +237,33 @@ namespace NhaTro.Services
             }
         }
 
+        private byte[]? TryGetMeterImageBytes(InvoiceDto invoice)
+        {
+            if (string.IsNullOrWhiteSpace(invoice.MeterImagePath))
+            {
+                return null;
+            }
+
+            var webRootPath = _environment.WebRootPath;
+            if (string.IsNullOrWhiteSpace(webRootPath))
+            {
+                webRootPath = Path.Combine(_environment.ContentRootPath, "wwwroot");
+            }
+
+            var fullPath = Path.GetFullPath(Path.Combine(webRootPath, invoice.MeterImagePath.Replace('/', Path.DirectorySeparatorChar)));
+            var uploadsRoot = Path.GetFullPath(Path.Combine(webRootPath, "uploads", "meter-readings"));
+            var uploadsRootWithSeparator = uploadsRoot.EndsWith(Path.DirectorySeparatorChar)
+                ? uploadsRoot
+                : uploadsRoot + Path.DirectorySeparatorChar;
+
+            if (!fullPath.StartsWith(uploadsRootWithSeparator, StringComparison.OrdinalIgnoreCase) || !File.Exists(fullPath))
+            {
+                return null;
+            }
+
+            return File.ReadAllBytes(fullPath);
+        }
+
         private static string BuildQrUrl(InvoiceDto invoice)
         {
             var amount = Math.Max(0, Math.Round(invoice.TotalAmount));
@@ -254,20 +287,23 @@ namespace NhaTro.Services
             return $"HD{invoice.InvoiceId}";
         }
 
-        private static string BuildInvoiceTitle(InvoiceDto invoice)
+        private static string BuildInvoiceHeading(InvoiceDto invoice)
         {
-            return $"{FormatInvoiceType(invoice.InvoiceType)} - {FormatBillingMonth(invoice.BillingMonth)}";
+            var roomCode = string.IsNullOrWhiteSpace(invoice.RoomCode)
+                ? $"PH\u00D2NG {invoice.RoomId}"
+                : invoice.RoomCode.Trim().ToUpperInvariant();
+
+            return $"H\u00D3A \u0110\u01A0N TI\u1EC0N PH\u00D2NG {roomCode} {FormatBillingMonth(invoice.BillingMonth).ToUpperInvariant()}";
         }
 
-        private static string FormatInvoiceType(string? invoiceType)
+        private static string BuildElectricityLabel(InvoiceDto invoice)
         {
-            var normalized = (invoiceType ?? string.Empty).Trim().ToLowerInvariant();
-            return normalized switch
+            if (invoice.PreviousReading.HasValue && invoice.CurrentReading.HasValue)
             {
-                "final" => "H\u00F3a \u0111\u01A1n ch\u1ED1t h\u1EE3p \u0111\u1ED3ng",
-                "monthly" => "H\u00F3a \u0111\u01A1n th\u00E1ng",
-                _ => string.IsNullOrWhiteSpace(invoiceType) ? "H\u00F3a \u0111\u01A1n" : invoiceType.Trim()
-            };
+                return $"Ti\u1EC1n \u0111i\u1EC7n\nS\u1ED1 \u0111i\u1EC7n th\u00E1ng tr\u01B0\u1EDBc: {invoice.PreviousReading.Value:N0} | S\u1ED1 \u0111i\u1EC7n th\u00E1ng n\u00E0y: {invoice.CurrentReading.Value:N0}";
+            }
+
+            return "Ti\u1EC1n \u0111i\u1EC7n";
         }
 
         private static string FormatBillingMonth(DateOnly? value)

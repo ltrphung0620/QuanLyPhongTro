@@ -98,6 +98,30 @@ namespace NhaTro.Services
             // Lưu snapshot trước - bước này phải tách riêng khỏi bước xóa contract
             await _contractRepository.SaveChangesAsync();
 
+            foreach (var invoice in relatedInvoices)
+            {
+                invoice.ContractId = null;
+                _invoiceRepository.Update(invoice);
+            }
+
+            if (relatedMeterReadings.Count > 0)
+            {
+                foreach (var meterReading in relatedMeterReadings)
+                {
+                    meterReading.ContractId = null;
+                }
+
+                _meterReadingRepository.UpdateRange(relatedMeterReadings);
+            }
+
+            if (relatedSettlement != null)
+            {
+                relatedSettlement.ContractId = null;
+                _depositSettlementRepository.Update(relatedSettlement);
+            }
+
+            await _contractRepository.SaveChangesAsync();
+
             // Bước 2: Sau khi snapshot đã được lưu an toàn, mới tiến hành xóa contract
             try
             {
@@ -107,7 +131,7 @@ namespace NhaTro.Services
             }
             catch (DbUpdateException)
             {
-                throw new InvalidOperationException("Hợp đồng đã có dữ liệu liên quan nên chưa thể xóa.");
+                throw new InvalidOperationException("Chưa thể xóa hợp đồng do còn ràng buộc dữ liệu khác.");
             }
         }
 
