@@ -225,6 +225,10 @@ namespace NhaTro.Data
                 entity.Property(e => e.CreatedAt)
                     .HasColumnName("created_at");
 
+                entity.Property(e => e.MeterImagePath)
+                    .HasColumnName("meter_image_path")
+                    .HasMaxLength(500);
+
                 entity.HasOne(e => e.Room)
                     .WithMany(r => r.MeterReadings)
                     .HasForeignKey(e => e.RoomId)

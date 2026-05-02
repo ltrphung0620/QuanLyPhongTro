@@ -2,6 +2,7 @@ name: .NET CI
 
 on:
   push:
+    branches: [ "main", "develop" ]
   pull_request:
     branches: [ "main" ]
 
@@ -23,3 +24,6 @@ jobs:
 
       - name: Build
         run: dotnet build NhaTro.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test NhaTro.sln --no-build --configuration Release

@@ -16,6 +16,10 @@ namespace NhaTro.Dtos.Invoices
 
         public decimal RoomFee { get; set; }
         public decimal ElectricityFee { get; set; }
+        public int? PreviousReading { get; set; }
+        public int? CurrentReading { get; set; }
+        public int? ConsumedUnits { get; set; }
+        public string? MeterImagePath { get; set; }
         public decimal WaterFee { get; set; }
         public decimal TrashFee { get; set; }
         public decimal ExtraFee { get; set; }

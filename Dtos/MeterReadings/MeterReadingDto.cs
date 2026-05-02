@@ -12,6 +12,7 @@ namespace NhaTro.Dtos.MeterReadings
         public int ConsumedUnits { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal Amount { get; set; }
+        public string? MeterImagePath { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }

@@ -106,9 +106,9 @@ namespace NhaTro.Services
                 .ToList();
         }
 
-        public async Task<SalesLedgerDto> GetSalesLedgerAsync(int year, int period)
+        public async Task<SalesLedgerDto> GetSalesLedgerAsync(DateOnly fromMonth, DateOnly toMonth)
         {
-            var (fromDate, toDate) = GetSalesLedgerRange(year, period);
+            var (fromDate, toDate) = GetSalesLedgerRange(fromMonth, toMonth);
 
             var paymentTransactions = await _paymentTransactionRepository.GetAllAsync("paid");
             var rows = paymentTransactions
@@ -126,8 +126,6 @@ namespace NhaTro.Services
 
             return new SalesLedgerDto
             {
-                Year = year,
-                Period = period,
                 FromDate = fromDate,
                 ToDate = toDate,
                 TotalAmount = rows.Sum(x => x.Amount),
@@ -137,7 +135,7 @@ namespace NhaTro.Services
 
         public async Task<byte[]> GenerateSalesLedgerPdfAsync(SalesLedgerPdfRequestDto request)
         {
-            var ledger = await GetSalesLedgerAsync(request.Year, request.Period);
+            var ledger = await GetSalesLedgerAsync(request.FromMonth, request.ToMonth);
 
             using var stream = new MemoryStream();
 
@@ -161,9 +159,11 @@ namespace NhaTro.Services
             return stream.ToArray();
         }
 
-        public string BuildSalesLedgerPdfFileName(int year, int period)
+        public string BuildSalesLedgerPdfFileName(DateOnly fromMonth, DateOnly toMonth)
         {
-            return $"SoDoanhThu-{year}-Ky{period}.pdf";
+            var normalizedFrom = NormalizeMonth(fromMonth);
+            var normalizedTo = NormalizeMonth(toMonth);
+            return $"SoDoanhThu-{normalizedFrom:yyyy-MM}-den-{normalizedTo:yyyy-MM}.pdf";
         }
 
         private static DateOnly NormalizeMonth(DateOnly date)
@@ -179,6 +179,22 @@ namespace NhaTro.Services
                 2 => (new DateOnly(year, 7, 1), new DateOnly(year, 12, 31)),
                 _ => throw new ArgumentException("Period chỉ được là 1 hoặc 2.")
             };
+        }
+
+        private static (DateOnly FromDate, DateOnly ToDate) GetSalesLedgerRange(DateOnly fromMonth, DateOnly toMonth)
+        {
+            var normalizedFrom = NormalizeMonth(fromMonth);
+            var normalizedTo = NormalizeMonth(toMonth);
+
+            if (normalizedFrom > normalizedTo)
+            {
+                throw new ArgumentException("Tháng bắt đầu không được lớn hơn tháng kết thúc.");
+            }
+
+            return (
+                new DateOnly(normalizedFrom.Year, normalizedFrom.Month, 1),
+                new DateOnly(normalizedTo.Year, normalizedTo.Month, DateTime.DaysInMonth(normalizedTo.Year, normalizedTo.Month))
+            );
         }
 
         private static string BuildLedgerPeriodLabel(DateOnly fromDate, DateOnly toDate)

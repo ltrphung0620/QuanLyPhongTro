@@ -11,22 +11,29 @@ namespace NhaTro.Services
         private readonly IContractRepository _contractRepo;
         private readonly IRoomRepository _roomRepo;
         private readonly IInvoiceRepository _invoiceRepo;
-        private readonly IMeterReadingImageReader _meterReadingImageReader;
+        private readonly IWebHostEnvironment _environment;
 
         private const decimal ELECTRIC_PRICE = 3500;
+        private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp"
+        };
 
         public MeterReadingService(
             IMeterReadingRepository meterRepo,
             IContractRepository contractRepo,
             IRoomRepository roomRepo,
             IInvoiceRepository invoiceRepo,
-            IMeterReadingImageReader meterReadingImageReader)
+            IWebHostEnvironment environment)
         {
             _meterRepo = meterRepo;
             _contractRepo = contractRepo;
             _roomRepo = roomRepo;
             _invoiceRepo = invoiceRepo;
-            _meterReadingImageReader = meterReadingImageReader;
+            _environment = environment;
         }
 
         public async Task<List<MeterReadingDto>> GetAllAsync(int? roomId = null, DateOnly? month = null)
@@ -81,6 +88,49 @@ namespace NhaTro.Services
             };
 
             await _meterRepo.AddAsync(meter);
+            await _meterRepo.SaveChangesAsync();
+
+            return MapToDto(meter);
+        }
+
+        public async Task<MeterReadingDto?> UploadImageAsync(int meterReadingId, IFormFile image)
+        {
+            var meter = await _meterRepo.GetByIdAsync(meterReadingId);
+            if (meter == null)
+            {
+                return null;
+            }
+
+            if (image == null || image.Length == 0)
+            {
+                throw new ArgumentException("Vui lòng chọn ảnh công tơ điện.");
+            }
+
+            var extension = Path.GetExtension(image.FileName);
+            if (string.IsNullOrWhiteSpace(extension) || !AllowedImageExtensions.Contains(extension))
+            {
+                throw new ArgumentException("Ảnh công tơ chỉ hỗ trợ JPG, PNG hoặc WEBP.");
+            }
+
+            var webRootPath = _environment.WebRootPath;
+            if (string.IsNullOrWhiteSpace(webRootPath))
+            {
+                webRootPath = Path.Combine(_environment.ContentRootPath, "wwwroot");
+            }
+
+            var uploadDirectory = Path.Combine(webRootPath, "uploads", "meter-readings");
+            Directory.CreateDirectory(uploadDirectory);
+
+            DeleteMeterImageIfExists(meter.MeterImagePath);
+
+            var fileName = $"{meter.MeterReadingId}-{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
+            var filePath = Path.Combine(uploadDirectory, fileName);
+            await using (var stream = File.Create(filePath))
+            {
+                await image.CopyToAsync(stream);
+            }
+
+            meter.MeterImagePath = $"uploads/meter-readings/{fileName}";
             await _meterRepo.SaveChangesAsync();
 
             return MapToDto(meter);
@@ -268,6 +318,7 @@ namespace NhaTro.Services
 
             _meterRepo.Delete(target);
             await _meterRepo.SaveChangesAsync();
+            DeleteMeterImageIfExists(target.MeterImagePath);
 
             if (target.ContractId.HasValue)
             {
@@ -284,9 +335,6 @@ namespace NhaTro.Services
 
             return true;
         }
-
-        public Task<MeterReadingImageResultDto> ReadFromImageAsync(IFormFile file)
-            => _meterReadingImageReader.ReadAsync(file);
 
         public async Task<List<MissingMeterDto>> GetMissingAsync(DateOnly month)
         {
@@ -368,8 +416,36 @@ namespace NhaTro.Services
                 ConsumedUnits = m.ConsumedUnits,
                 UnitPrice = m.UnitPrice,
                 Amount = m.Amount,
+                MeterImagePath = m.MeterImagePath,
                 CreatedAt = m.CreatedAt
             };
+        }
+
+        private void DeleteMeterImageIfExists(string? relativePath)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                return;
+            }
+
+            var webRootPath = _environment.WebRootPath;
+            if (string.IsNullOrWhiteSpace(webRootPath))
+            {
+                webRootPath = Path.Combine(_environment.ContentRootPath, "wwwroot");
+            }
+
+            var fullPath = Path.GetFullPath(Path.Combine(webRootPath, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            var uploadsRoot = Path.GetFullPath(Path.Combine(webRootPath, "uploads", "meter-readings"));
+            var uploadsRootWithSeparator = uploadsRoot.EndsWith(Path.DirectorySeparatorChar)
+                ? uploadsRoot
+                : uploadsRoot + Path.DirectorySeparatorChar;
+
+            if (!fullPath.StartsWith(uploadsRootWithSeparator, StringComparison.OrdinalIgnoreCase) || !File.Exists(fullPath))
+            {
+                return;
+            }
+
+            File.Delete(fullPath);
         }
     }
 }

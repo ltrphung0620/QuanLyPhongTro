@@ -1,12 +1,60 @@
-node_modules/
+# =========================
+# Build output
+# =========================
 bin/
 obj/
-*.log
-.env
-.vscode/
-appsettings.Development.json
-nhatro-deploy.tar.gz
-deploy-server/
-Migrations/
-Properties/
 publish/
+
+# =========================
+# User / IDE files
+# =========================
+.vscode/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# ASP.NET secrets
+# =========================
+appsettings.Development.json
+secrets.json
+
+# =========================
+# Node / React (react-ui)
+# =========================
+react-ui/node_modules/
+react-ui/dist/
+react-ui/build/
+
+# Nếu package ở root thì mở dòng dưới
+node_modules/
+
+# =========================
+# Test / coverage
+# =========================
+coverage/
+TestResults/
+
+# =========================
+# Temporary
+# =========================
+*.tmp
+*.temp
+
+# =========================
+# EF Migration snapshot cache (không phải migration thật)
+# =========================
+*.dbmdl

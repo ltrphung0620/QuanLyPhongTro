@@ -23,8 +23,6 @@ builder.Services.AddScoped<ContractService>();
 builder.Services.AddScoped<IContractService, SafeDeleteContractService>();
 builder.Services.AddScoped<IMeterReadingRepository, MeterReadingRepository>();
 builder.Services.AddScoped<IMeterReadingService, MeterReadingService>();
-builder.Services.AddHttpClient<OcrSpaceMeterReadingImageReader>();
-builder.Services.AddScoped<IMeterReadingImageReader, OcrSpaceMeterReadingImageReader>();
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddHttpClient<IInvoicePdfService, InvoicePdfService>();
@@ -48,6 +46,7 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 app.UseSwagger();
 app.UseSwaggerUI();
 
+app.UseStaticFiles();
 app.UseAuthorization();
 app.MapControllers();
 

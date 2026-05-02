@@ -27,6 +27,8 @@ namespace NhaTro.Models
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        public string? MeterImagePath { get; set; }
+
         public string? ContractSnapshotJson { get; set; }
 
         public Room? Room { get; set; }

@@ -40,7 +40,7 @@ namespace NhaTro.Services
         public async Task<InvoiceDto?> GetByIdAsync(int invoiceId)
         {
             var invoice = await _invoiceRepo.GetByIdAsync(invoiceId);
-            return invoice == null ? null : MapToDto(invoice);
+            return invoice == null ? null : await MapToDtoWithMeterReadingAsync(invoice);
         }
 
         public async Task<InvoicePreviewDto> PreviewAsync(CreateInvoiceDto dto)
@@ -743,6 +743,25 @@ namespace NhaTro.Services
                 Note = i.Note,
                 CreatedAt = i.CreatedAt
             };
+        }
+
+        private async Task<InvoiceDto> MapToDtoWithMeterReadingAsync(Invoice invoice)
+        {
+            var dto = MapToDto(invoice);
+
+            if (invoice.ContractId.HasValue && invoice.BillingMonth.HasValue)
+            {
+                var meter = await _meterRepo.GetByContractAndMonthAsync(invoice.ContractId.Value, invoice.BillingMonth.Value);
+                if (meter != null)
+                {
+                    dto.PreviousReading = meter.PreviousReading;
+                    dto.CurrentReading = meter.CurrentReading;
+                    dto.ConsumedUnits = meter.ConsumedUnits;
+                    dto.MeterImagePath = meter.MeterImagePath;
+                }
+            }
+
+            return dto;
         }
     }
 }

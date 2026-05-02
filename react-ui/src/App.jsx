@@ -2,7 +2,7 @@
 import './App.css'
 
 const MODULES = [
-  { key: 'tong-quan', title: 'Khai thuế', prefix: '' },
+  { key: 'reports', title: 'Báo cáo', prefix: '/api/Reports' },
   { key: 'rooms', title: 'Phòng', prefix: '/api/Rooms' },
   { key: 'tenants', title: 'Người thuê', prefix: '/api/Tenants' },
   { key: 'contracts', title: 'Hợp đồng', prefix: '/api/Contracts' },
@@ -10,10 +10,12 @@ const MODULES = [
   { key: 'invoices', title: 'Hóa đơn', prefix: '/api/Invoices' },
   { key: 'payments', title: 'Thanh toán', prefix: '/api/Payments' },
   { key: 'transactions', title: 'Thu chi phát sinh', prefix: '/api/Transactions' },
-  { key: 'reports', title: 'Báo cáo', prefix: '/api/Reports' },
+  { key: 'tong-quan', title: 'Khai thuế', prefix: '' },
 ]
 
 const METHOD_ORDER = ['get', 'post', 'put', 'patch', 'delete']
+const MUI_GIO_VIET_NAM = 'Asia/Ho_Chi_Minh'
+const BUILD_ID = '2026-04-18-1639'
 
 const FALLBACK_METER_READING_UPDATE_ENDPOINT = {
   path: '/api/MeterReadings/current-reading',
@@ -113,7 +115,7 @@ function sampleValue(schema, spec, name = '') {
 
   switch (resolved.type) {
     case 'string':
-      if (resolved.format === 'date') return taoThangMacDinh()
+      if (resolved.format === 'date') return laFieldThang(name) ? taoGiaTriThangMacDinh() : taoThangMacDinh()
       if (resolved.format === 'date-time') return taoThoiGianMacDinh()
       if (resolved.format === 'binary') return ''
       if (lowerName.includes('phone')) return '0900000000'
@@ -150,6 +152,10 @@ function normalizeValue(value, schema, spec, fieldName = '') {
   const resolved = resolveSchema(schema, spec) || {}
   if (value === '' || value === null || value === undefined) return value
 
+  if (resolved.format === 'date' && laFieldThang(fieldName)) {
+    return chuanHoaGiaTriThang(value)
+  }
+
   if (resolved.type === 'integer') {
     if (laFieldTien(fieldName)) return chuyenTienVeSo(value)
     return Number.parseInt(value, 10)
@@ -162,13 +168,29 @@ function normalizeValue(value, schema, spec, fieldName = '') {
   return value
 }
 
-function kieuInput(schema, spec) {
+function kieuInput(schema, spec, fieldName = '') {
   const resolved = resolveSchema(schema, spec) || {}
 
-  if (resolved.format === 'date') return 'date'
+  if (resolved.format === 'date') return laFieldThang(fieldName) ? 'month' : 'date'
   if (resolved.format === 'date-time') return 'datetime-local'
   if (resolved.type === 'number' || resolved.type === 'integer') return 'number'
   return 'text'
+}
+
+function giaTriInput(schema, spec, fieldName, value) {
+  const resolved = resolveSchema(schema, spec) || {}
+  if (value === null || value === undefined) return ''
+  if (resolved.format === 'date' && laFieldThang(fieldName)) {
+    return String(value).slice(0, 7)
+  }
+  return value
+}
+
+function placeholderInput(schema, spec, fieldName, fallback) {
+  const resolved = resolveSchema(schema, spec) || {}
+  if (resolved.format === 'date' && laFieldThang(fieldName)) return 'YYYY-MM'
+  if (resolved.format === 'date') return 'YYYY-MM-DD'
+  return fallback
 }
 
 function thongDiepLoi(error) {
@@ -231,55 +253,6 @@ function soSanhMaPhong(a, b) {
   if (roomA.number !== roomB.number) return roomA.number - roomB.number
 
   return roomA.raw.localeCompare(roomB.raw, 'vi', { numeric: true, sensitivity: 'base' })
-}
-
-async function nenAnhOCR(file, { maxDimension = 1400, quality = 0.82 } = {}) {
-  if (!(file instanceof File) || !file.type.startsWith('image/')) {
-    return file
-  }
-
-  const objectUrl = URL.createObjectURL(file)
-
-  try {
-    const image = await new Promise((resolve, reject) => {
-      const img = new Image()
-      img.onload = () => resolve(img)
-      img.onerror = () => reject(new Error('Không thể đọc tệp ảnh để tối ưu OCR.'))
-      img.src = objectUrl
-    })
-
-    const width = image.width
-    const height = image.height
-    const scale = Math.min(1, maxDimension / Math.max(width, height))
-
-    if (scale >= 0.999) {
-      return file
-    }
-
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.max(1, Math.round(width * scale))
-    canvas.height = Math.max(1, Math.round(height * scale))
-
-    const context = canvas.getContext('2d')
-    if (!context) {
-      return file
-    }
-
-    context.drawImage(image, 0, 0, canvas.width, canvas.height)
-
-    const blob = await new Promise((resolve) => {
-      canvas.toBlob(resolve, 'image/jpeg', quality)
-    })
-
-    if (!blob) {
-      return file
-    }
-
-    const baseName = file.name.replace(/\.[^.]+$/, '')
-    return new File([blob], `${baseName}-ocr.jpg`, { type: 'image/jpeg' })
-  } finally {
-    URL.revokeObjectURL(objectUrl)
-  }
 }
 
 function laFormTaoPhong(moduleKey, method, path) {
@@ -750,23 +723,46 @@ function laFieldNgay(field = '') {
 
 function laFieldThang(field = '') {
   const normalized = String(field || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-  return normalized === 'billingmonth'
+  return normalized === 'month' || normalized.endsWith('month') || normalized === 'frommonth' || normalized === 'tomonth'
+}
+
+function chuyenNgayGioServer(value) {
+  if (value === null || value === undefined || value === '') return null
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+
+  const textValue = String(value).trim()
+  if (!textValue) return null
+
+  const coMuiGio = /(?:Z|[+-]\d{2}:\d{2})$/i.test(textValue)
+  const normalizedValue = !coMuiGio && /^\d{4}-\d{2}-\d{2}T/.test(textValue)
+    ? `${textValue}Z`
+    : textValue
+
+  const date = new Date(normalizedValue)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function layMocThoiGian(value) {
+  const date = chuyenNgayGioServer(value)
+  return date ? date.getTime() : 0
 }
 
 function dinhDangNgay(value) {
   if (value === null || value === undefined || value === '') return 'Không có dữ liệu'
 
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
+  const date = chuyenNgayGioServer(value)
+  if (!date) return String(value)
 
-  return new Intl.DateTimeFormat('vi-VN').format(date)
+  return new Intl.DateTimeFormat('vi-VN', {
+    timeZone: MUI_GIO_VIET_NAM,
+  }).format(date)
 }
 
 function dinhDangNgayGio(value) {
   if (value === null || value === undefined || value === '') return 'Không có dữ liệu'
 
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
+  const date = chuyenNgayGioServer(value)
+  if (!date) return String(value)
 
   return new Intl.DateTimeFormat('vi-VN', {
     hour: '2-digit',
@@ -774,6 +770,7 @@ function dinhDangNgayGio(value) {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
+    timeZone: MUI_GIO_VIET_NAM,
   }).format(date)
 }
 
@@ -787,11 +784,164 @@ function dinhDangThang(value) {
   return `Tháng ${match[2]}/${match[1]}`
 }
 
-function dinhDangKyKeKhaiSauThang(year, period) {
-  if (!year || !period) return ''
-  if (String(period) === '1') return `Từ tháng 01/${year} đến tháng 06/${year}`
-  if (String(period) === '2') return `Từ tháng 07/${year} đến tháng 12/${year}`
-  return `Năm ${year}`
+function taoGiaTriThangMacDinh(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+function taoKhoangThangMacDinh() {
+  const now = new Date()
+  const month = now.getMonth() + 1
+
+  if (month <= 6) {
+    return {
+      fromMonth: `${now.getFullYear()}-01`,
+      toMonth: `${now.getFullYear()}-06`,
+    }
+  }
+
+  return {
+    fromMonth: `${now.getFullYear()}-07`,
+    toMonth: `${now.getFullYear()}-12`,
+  }
+}
+
+const DANH_SACH_THANG_KE_KHAI = Array.from({ length: 12 }, (_, index) => ({
+  value: String(index + 1).padStart(2, '0'),
+  label: `Tháng ${String(index + 1).padStart(2, '0')}`,
+}))
+
+function chuanHoaGiaTriThang(value) {
+  if (!value) return ''
+  return /^\d{4}-\d{2}$/.test(String(value)) ? `${value}-01` : String(value)
+}
+
+function tachGiaTriThang(value) {
+  const normalized = String(value || '')
+  const match = normalized.match(/^(\d{4})-(\d{2})/)
+
+  if (!match) {
+    const year = String(taoNamHienTai())
+    return { year, month: '01' }
+  }
+
+  return {
+    year: match[1],
+    month: match[2],
+  }
+}
+
+function taoDanhSachNamKeKhai(fromMonth, toMonth) {
+  const currentYear = taoNamHienTai()
+  const years = new Set([
+    currentYear - 3,
+    currentYear - 2,
+    currentYear - 1,
+    currentYear,
+    currentYear + 1,
+    currentYear + 2,
+    Number(tachGiaTriThang(fromMonth).year),
+    Number(tachGiaTriThang(toMonth).year),
+  ])
+
+  return [...years]
+    .filter((year) => Number.isFinite(year))
+    .sort((left, right) => left - right)
+    .map((year) => String(year))
+}
+
+function capNhatGiaTriThang(value, nextPart) {
+  const current = tachGiaTriThang(value)
+  const nextYear = nextPart.year ?? current.year
+  const nextMonth = nextPart.month ?? current.month
+  return `${nextYear}-${nextMonth}`
+}
+
+function taoDanhSachNamChon(value, selectedYear = '') {
+  const currentYear = taoNamHienTai()
+  const valueYear = Number(tachGiaTriThang(value).year)
+  const draftYear = Number(selectedYear)
+  const years = new Set([
+    currentYear - 3,
+    currentYear - 2,
+    currentYear - 1,
+    currentYear,
+    currentYear + 1,
+    currentYear + 2,
+    valueYear,
+    draftYear,
+  ])
+
+  return Array.from(years)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b)
+    .map(String)
+}
+
+function MonthYearFilter({ label, value, onChange, allowEmpty = true }) {
+  const parts = value ? tachGiaTriThang(value) : { month: '', year: '' }
+  const [draftMonth, setDraftMonth] = useState(parts.month)
+  const [draftYear, setDraftYear] = useState(parts.year)
+  const yearOptions = taoDanhSachNamChon(value, draftYear)
+
+  useEffect(() => {
+    if (value) {
+      const nextParts = tachGiaTriThang(value)
+      setDraftMonth(nextParts.month)
+      setDraftYear(nextParts.year)
+    } else if (!allowEmpty) {
+      const nextParts = tachGiaTriThang(taoGiaTriThangMacDinh())
+      setDraftMonth(nextParts.month)
+      setDraftYear(nextParts.year)
+      onChange(`${nextParts.year}-${nextParts.month}`)
+    }
+  }, [allowEmpty, onChange, value])
+
+  const updateValue = ({ month = draftMonth, year = draftYear }) => {
+    setDraftMonth(month)
+    setDraftYear(year)
+
+    if (!month || !year) {
+      onChange('')
+      return
+    }
+
+    onChange(`${year}-${month}`)
+  }
+
+  return (
+    <label className="invoice-search invoice-search--month">
+      <span>{label}</span>
+      <div className="month-year-filter">
+        <select
+          value={draftMonth}
+          onChange={(event) => updateValue({ month: event.target.value })}
+        >
+          {allowEmpty ? <option value="">Chọn tháng</option> : null}
+          {DANH_SACH_THANG_KE_KHAI.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={draftYear}
+          onChange={(event) => updateValue({ year: event.target.value })}
+        >
+          {allowEmpty ? <option value="">Chọn năm</option> : null}
+          {yearOptions.map((year) => (
+            <option key={year} value={year}>
+              Năm {year}
+            </option>
+          ))}
+        </select>
+      </div>
+    </label>
+  )
+}
+
+function dinhDangKyKeKhaiSauThang(fromMonth, toMonth) {
+  if (!fromMonth || !toMonth) return ''
+  return `${dinhDangThang(chuanHoaGiaTriThang(fromMonth))} đến ${dinhDangThang(chuanHoaGiaTriThang(toMonth))}`
 }
 
 function dinhDangLoaiHoaDon(value) {
@@ -1377,37 +1527,6 @@ function XemDanhSachHoaDonCoNut({ data, onReload }) {
     }
   }
 
-  const doiTrangThai = async (invoice, markPaid) => {
-    const invoiceId = layInvoiceId(invoice)
-    const currentStatus = String(invoice.status ?? invoice.Status ?? '').trim().toLowerCase()
-    if (markPaid && currentStatus === 'paid') return
-    if (!markPaid && currentStatus === 'unpaid') return
-
-    setDangXuLy((prev) => ({ ...prev, [invoiceId]: true }))
-    setThongBao((prev) => ({ ...prev, [invoiceId]: null }))
-
-    try {
-      const response = await fetch(`/api/Invoices/${invoiceId}/${markPaid ? 'mark-paid' : 'mark-unpaid'}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}))
-        throw new Error(payload?.message || `Loi ${response.status}`)
-      }
-      setThongBao((prev) => ({
-        ...prev,
-        [invoiceId]: { ok: true, text: markPaid ? 'Đã đánh dấu thanh toán' : 'Đã đánh dấu chưa thanh toán' },
-      }))
-      if (onReload) onReload()
-    } catch (err) {
-      setThongBao((prev) => ({ ...prev, [invoiceId]: { ok: false, text: err.message } }))
-    } finally {
-      setDangXuLy((prev) => ({ ...prev, [invoiceId]: false }))
-    }
-  }
-
   const capNhatDuLieuSua = (invoiceId, field, value) => {
     setDuLieuSua((prev) => ({
       ...prev,
@@ -1651,14 +1770,6 @@ function XemDanhSachHoaDonCoNut({ data, onReload }) {
                     onClick={() => moThanhToanTienMat(invoice)}
                   >
                     Thanh toán
-                  </button>
-                  <button
-                    type="button"
-                    className="nut invoice-inline-button invoice-action-button invoice-action-button--unpaid"
-                    disabled={isLoading || !isPaid || isDeleting}
-                    onClick={() => doiTrangThai(invoice, false)}
-                  >
-                    Chưa thanh toán
                   </button>
                   <button
                     type="button"
@@ -2059,7 +2170,7 @@ async function taiSoDoanhThuPdf(payload) {
   const blob = await response.blob()
   const fileName =
     layTenTepTuHeader(response.headers.get('Content-Disposition')) ||
-    `SoDoanhThu-${payload?.year || taoNamHienTai()}-Ky${payload?.period || taoKySauThangHienTai()}.pdf`
+    `SoDoanhThu-${payload?.fromMonth || taoGiaTriThangMacDinh()}-den-${payload?.toMonth || taoGiaTriThangMacDinh()}.pdf`
 
   kichHoatTaiTep(blob, fileName)
 }
@@ -2538,8 +2649,8 @@ function MonthlyBulkCard({ onSuccess, compact = false }) {
           <div className="luoi-input">
             <label className="truong">
               <span>Tháng lập hóa đơn</span>
-              <input type="date" value={billingMonth} onChange={(e) => setBillingMonth(e.target.value)} />
-              <small>Ngày đầu tháng, ví dụ: 2026-04-01</small>
+              <input type="month" value={String(billingMonth || '').slice(0, 7)} onChange={(e) => setBillingMonth(chuanHoaGiaTriThang(e.target.value))} />
+              <small>Chọn tháng, hệ thống tự gửi ngày đầu tháng.</small>
             </label>
             <label className="truong">
               <span>Giảm trừ mặc định</span>
@@ -2751,6 +2862,7 @@ function InvoiceWorkspace() {
   const tongGiaTriDaThanhToan = danhSachLoc
     .filter((invoice) => layTrangThaiHoaDon(invoice) === 'paid')
     .reduce((tong, invoice) => tong + layTongTienHoaDon(invoice), 0)
+  const tongGiaTri = danhSachLoc.reduce((tong, invoice) => tong + layTongTienHoaDon(invoice), 0)
 
   return (
     <div className="invoice-workspace">
@@ -2762,15 +2874,24 @@ function InvoiceWorkspace() {
             Danh sách được tải tự động khi mở trang. Bạn có thể tìm nhanh theo mã hóa đơn, phòng, tháng, người thuê hoặc trạng thái.
           </p>
 
-          <div className="invoice-toolbar">
+          <div className="invoice-toolbar invoice-toolbar--invoices">
             <label className="invoice-search">
-              <span>Tìm kiếm</span>
+              <span>Tìm theo phòng</span>
               <input
                 type="text"
-                value={tuKhoa}
-                onChange={(event) => setTuKhoa(event.target.value)}
-                placeholder="Ví dụ: P101, 2026-04, unpaid..."
+                value={phongFilter}
+                onChange={(event) => setPhongFilter(event.target.value)}
+                placeholder="Ví dụ: A01, P101..."
               />
+            </label>
+            <MonthYearFilter label="Tháng - năm" value={thangNamFilter} onChange={setThangNamFilter} />
+            <label className="invoice-search invoice-search--status">
+              <span>Trạng thái</span>
+              <select value={trangThaiFilter} onChange={(event) => setTrangThaiFilter(event.target.value)}>
+                <option value="all">Tất cả</option>
+                <option value="paid">Đã thanh toán</option>
+                <option value="unpaid">Chưa thanh toán</option>
+              </select>
             </label>
 
             <button
@@ -2781,7 +2902,6 @@ function InvoiceWorkspace() {
             >
               {dangTai ? 'Đang tải...' : 'Làm mới danh sách'}
             </button>
-            <MonthlyBulkCard onSuccess={() => setReloadKey((value) => value + 1)} compact />
             <MonthlyBulkCard onSuccess={() => setReloadKey((value) => value + 1)} compact />
           </div>
         </div>
@@ -2819,7 +2939,9 @@ function InvoiceWorkspace() {
         <div className="xem-truoc__dau">
           <strong>Danh sách hóa đơn</strong>
           <span>
-            {tuKhoa.trim() ? `Hiển thị ${danhSachLoc.length}/${tongHoaDon} hóa đơn` : `Hiển thị ${tongHoaDon} hóa đơn`}
+            {phongFilter.trim() || thangNamFilter || trangThaiFilter !== 'all'
+              ? `Hiển thị ${danhSachLoc.length}/${hoaDon.length} hóa đơn`
+              : `Hiển thị ${tongHoaDon} hóa đơn`}
           </span>
         </div>
 
@@ -2833,7 +2955,9 @@ function InvoiceWorkspace() {
           </div>
         ) : (
           <div className="khung-du-lieu khung-du-lieu--trong">
-            {tuKhoa.trim() ? 'Không có hóa đơn nào khớp với từ khóa tìm kiếm.' : 'Chưa có hóa đơn nào trong hệ thống.'}
+            {phongFilter.trim() || thangNamFilter || trangThaiFilter !== 'all'
+              ? 'Không có hóa đơn nào khớp với bộ lọc hiện tại.'
+              : 'Chưa có hóa đơn nào trong hệ thống.'}
           </div>
         )}
       </section>
@@ -2854,77 +2978,73 @@ function laDuLieuChiSoDien(value) {
   )
 }
 
-function laySoDienChiSo(item) {
-  return Number(item?.currentReading ?? item?.CurrentReading ?? 0)
-}
-
-function laySoTieuThuChiSo(item) {
-  return Number(item?.consumedUnits ?? item?.ConsumedUnits ?? 0)
-}
-
-function layTienChiSo(item) {
-  return Number(item?.amount ?? item?.Amount ?? 0)
-}
-
-function XemDanhSachChiSoDien({ data, onDelete = null, deletingId = null }) {
+function XemDanhSachChiSoDien({ data, onEdit = null, editingId = null, onDelete = null, deletingId = null }) {
   if (!Array.isArray(data) || !data.length) {
     return <div className="khung-du-lieu khung-du-lieu--trong">Không có chỉ số điện nào.</div>
   }
 
   return (
-    <div className="danh-sach-phong invoice-cards">
-      {data.map((item, index) => {
-        const meterReadingId = item.meterReadingId ?? item.MeterReadingId ?? index
-        const roomCode = item.roomCode ?? item.RoomCode
-        const billingMonth = item.billingMonth ?? item.BillingMonth
-        const currentReading = item.currentReading ?? item.CurrentReading
-        const previousReading = item.previousReading ?? item.PreviousReading
-        const consumedUnits = item.consumedUnits ?? item.ConsumedUnits
-        const amount = item.amount ?? item.Amount
+    <div className="meter-list-table-wrap">
+      <table className="meter-list-table">
+        <thead>
+          <tr>
+            <th>Phòng</th>
+            <th>Tháng ghi số</th>
+            <th>Chỉ số tháng trước</th>
+            <th>Chỉ số mới</th>
+            <th>Tiêu thụ</th>
+            {onEdit || onDelete ? <th>Thao tác</th> : null}
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((item, index) => {
+            const meterReadingId = item.meterReadingId ?? item.MeterReadingId ?? index
+            const roomCode = item.roomCode ?? item.RoomCode
+            const billingMonth = item.billingMonth ?? item.BillingMonth
+            const currentReading = item.currentReading ?? item.CurrentReading
+            const previousReading = item.previousReading ?? item.PreviousReading
+            const consumedUnits = item.consumedUnits ?? item.ConsumedUnits
 
-        return (
-          <div key={meterReadingId} className="dong-phong invoice-card">
-            <div className="invoice-card__info">
-              <div className="dong-phong__o invoice-card__meta-item">
-                <span>Phòng</span>
-                <strong>{roomCode || 'Không có dữ liệu'}</strong>
-              </div>
-              <div className="dong-phong__o invoice-card__meta-item">
-                <span>Tháng ghi số</span>
-                <strong>{giaTriDep(billingMonth, 'billingMonth')}</strong>
-              </div>
-              <div className="dong-phong__o invoice-card__meta-item">
-                <span>Chỉ số cũ</span>
-                <strong>{giaTriDep(previousReading, 'previousReading')}</strong>
-              </div>
-              <div className="dong-phong__o invoice-card__meta-item">
-                <span>Chỉ số mới</span>
-                <strong>{giaTriDep(currentReading, 'currentReading')}</strong>
-              </div>
-              <div className="dong-phong__o invoice-card__meta-item">
-                <span>Số điện tiêu thụ</span>
-                <strong>{giaTriDep(consumedUnits, 'consumedUnits')}</strong>
-              </div>
-              <div className="dong-phong__o invoice-card__amount">
-                <span>Thành tiền</span>
-                <strong className="invoice-amount">{giaTriDep(amount, 'amount')}</strong>
-              </div>
-            </div>
-            {onDelete ? (
-              <div className="invoice-card__actions meter-card__actions">
-                <button
-                  type="button"
-                  className="nut nut--phu meter-card__delete"
-                  onClick={() => onDelete(meterReadingId, roomCode)}
-                  disabled={deletingId === meterReadingId}
-                >
-                  {deletingId === meterReadingId ? 'Đang xóa...' : 'Xóa'}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        )
-      })}
+            return (
+              <tr key={meterReadingId}>
+                <td>
+                  <strong>{roomCode || 'Không có dữ liệu'}</strong>
+                </td>
+                <td>{giaTriDep(billingMonth, 'billingMonth')}</td>
+                <td>{giaTriDep(previousReading, 'previousReading')}</td>
+                <td>{giaTriDep(currentReading, 'currentReading')}</td>
+                <td>{giaTriDep(consumedUnits, 'consumedUnits')}</td>
+                {onEdit || onDelete ? (
+                  <td>
+                    <div className="meter-table-actions">
+                      {onEdit ? (
+                        <button
+                          type="button"
+                          className="nut nut--phu meter-card__delete"
+                          onClick={() => onEdit(item)}
+                          disabled={editingId === meterReadingId || deletingId === meterReadingId}
+                        >
+                          {editingId === meterReadingId ? 'Đang sửa...' : 'Sửa chỉ số'}
+                        </button>
+                      ) : null}
+                      {onDelete ? (
+                        <button
+                          type="button"
+                          className="nut nut--phu meter-card__delete"
+                          onClick={() => onDelete(item)}
+                          disabled={editingId === meterReadingId || deletingId === meterReadingId}
+                        >
+                          {deletingId === meterReadingId ? 'Đang xóa...' : 'Xóa'}
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                ) : null}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -2978,8 +3098,6 @@ function dinhDangTrangThaiGiaoDichThanhToan(value) {
   if (normalized === 'paid') return 'Đã thanh toán'
   if (normalized === 'pending') return 'Chờ xử lý'
   if (normalized === 'processed') return 'Đã xử lý'
-  if (normalized === 'reconciled') return 'Đã đối soát'
-  if (normalized === 'matched') return 'Đã khớp hóa đơn'
   if (normalized === 'ignored') return 'Bỏ qua'
   if (normalized === 'failed') return 'Thất bại'
   return value || 'Không có dữ liệu'
@@ -3006,11 +3124,9 @@ function XemDanhSachGiaoDichThanhToan({ data, onDelete, deletingId }) {
         const transferType = item.transferType ?? item.TransferType
         const transactionDate = item.transactionDate ?? item.TransactionDate
         const createdAt = item.createdAt ?? item.CreatedAt
-        const matchedInvoiceId = item.matchedInvoiceId ?? item.MatchedInvoiceId
         const content = item.content ?? item.Content
         const processStatus = item.processStatus ?? item.ProcessStatus
         const statusClass = layTrangThaiGiaoDichThanhToan(item)
-        const isPaid = String(processStatus ?? '').trim().toLowerCase() === 'paid'
         const isDeleting = deletingId === paymentTransactionId
 
         return (
@@ -3059,10 +3175,6 @@ function XemDanhSachGiaoDichThanhToan({ data, onDelete, deletingId }) {
                 <strong>{dinhDangNgayGio(createdAt)}</strong>
               </div>
               <div className="dong-phong__o invoice-card__meta-item">
-                <span>Hóa đơn đã khớp</span>
-                <strong>{matchedInvoiceId || 'Chưa đối soát'}</strong>
-              </div>
-              <div className="dong-phong__o invoice-card__meta-item">
                 <span>Nội dung chuyển khoản</span>
                 <strong>{content || 'Không có dữ liệu'}</strong>
               </div>
@@ -3072,8 +3184,8 @@ function XemDanhSachGiaoDichThanhToan({ data, onDelete, deletingId }) {
                 type="button"
                 className="nut nut--phu invoice-inline-button invoice-action-button invoice-action-button--unpaid"
                 onClick={() => onDelete?.(item)}
-                disabled={!onDelete || isPaid || isDeleting}
-                title={isPaid ? 'Không thể xóa giao dịch đã đánh dấu thanh toán' : 'Xóa giao dịch thanh toán'}
+                disabled={!onDelete || isDeleting}
+                title="Xóa giao dịch thanh toán"
               >
                 {isDeleting ? 'Đang xóa...' : 'Xóa'}
               </button>
@@ -3224,11 +3336,10 @@ function MeterReadingCreateButton({ onSuccess }) {
   const [dangMo, setDangMo] = useState(false)
   const [roomOptions, setRoomOptions] = useState([])
   const [roomOptionsLoading, setRoomOptionsLoading] = useState(true)
+  const [meterReadingHistory, setMeterReadingHistory] = useState([])
   const [billingMonth, setBillingMonth] = useState(taoThangMacDinh())
   const [bulkReadings, setBulkReadings] = useState({})
   const [bulkImageFiles, setBulkImageFiles] = useState({})
-  const [bulkImageResults, setBulkImageResults] = useState({})
-  const [dangDocAnhTungDong, setDangDocAnhTungDong] = useState({})
   const [dangLuuTungDong, setDangLuuTungDong] = useState({})
   const [dangLuuTatCa, setDangLuuTatCa] = useState(false)
   const [trangThai, setTrangThai] = useState('')
@@ -3249,6 +3360,8 @@ function MeterReadingCreateButton({ onSuccess }) {
   }, [dangMo])
 
   useEffect(() => {
+    if (!dangMo) return undefined
+
     let active = true
 
     async function taiPhongDangActive() {
@@ -3260,12 +3373,24 @@ function MeterReadingCreateButton({ onSuccess }) {
         })
 
         const payload = result.payload
+        const historyResult = await guiRequest('/api/MeterReadings', {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        })
+        const historyPayload = historyResult.payload
         const contracts = Array.isArray(payload)
           ? payload
           : Array.isArray(payload?.data)
             ? payload.data
             : Array.isArray(payload?.items)
               ? payload.items
+              : []
+        const history = Array.isArray(historyPayload)
+          ? historyPayload
+          : Array.isArray(historyPayload?.data)
+            ? historyPayload.data
+            : Array.isArray(historyPayload?.items)
+              ? historyPayload.items
               : []
 
         if (!active) return
@@ -3290,11 +3415,13 @@ function MeterReadingCreateButton({ onSuccess }) {
           .sort((a, b) => soSanhMaPhong(a.value, b.value))
 
         setRoomOptions(nextOptions)
+        setMeterReadingHistory(history)
       } catch (error) {
         if (!active) return
         setTrangThai(thongDiepLoi(error))
         setMauTrangThai('that-bai')
         setRoomOptions([])
+        setMeterReadingHistory([])
       } finally {
         if (active) setRoomOptionsLoading(false)
       }
@@ -3304,7 +3431,7 @@ function MeterReadingCreateButton({ onSuccess }) {
     return () => {
       active = false
     }
-  }, [])
+  }, [dangMo])
 
   useEffect(() => {
     setBulkReadings((current) => {
@@ -3322,6 +3449,28 @@ function MeterReadingCreateButton({ onSuccess }) {
     setMauTrangThai('')
   }
 
+  const chiSoThangTruocTheoPhong = useMemo(() => {
+    const map = new Map()
+
+    meterReadingHistory.forEach((item) => {
+      const roomId = Number(item.roomId ?? item.RoomId)
+      const billingDate = String(item.billingMonth ?? item.BillingMonth ?? '')
+      const currentReading = item.currentReading ?? item.CurrentReading
+
+      if (!Number.isFinite(roomId) || !billingDate || currentReading == null) return
+
+      const currentBest = map.get(roomId)
+      if (!currentBest || billingDate > currentBest.billingDate) {
+        map.set(roomId, {
+          billingDate,
+          currentReading,
+        })
+      }
+    })
+
+    return map
+  }, [meterReadingHistory])
+
   const capNhatChiSoDong = (rowKey, value) => {
     setBulkReadings((current) => ({
       ...current,
@@ -3334,68 +3483,21 @@ function MeterReadingCreateButton({ onSuccess }) {
       ...current,
       [rowKey]: file || null,
     }))
-    setBulkImageResults((current) => ({
-      ...current,
-      [rowKey]: null,
-    }))
   }
 
-  const docChiSoTuAnhTheoDong = async (option) => {
-    const rowKey = `${option.roomId}-${option.contractId}`
-    const imageFile = bulkImageFiles[rowKey]
-
-    if (!imageFile) {
-      setTrangThai(`Vui lòng chọn ảnh công tơ cho phòng ${option.value}.`)
-      setMauTrangThai('that-bai')
-      return
+  const uploadAnhCongTo = async (meterReadingId, imageFile) => {
+    if (!imageFile) return
+    if (!meterReadingId) {
+      throw new Error('Không lấy được mã bản ghi để lưu ảnh công tơ.')
     }
 
-    setDangDocAnhTungDong((current) => ({ ...current, [rowKey]: true }))
-    resetMessages()
+    const formData = new FormData()
+    formData.append('image', imageFile)
 
-    try {
-      const optimizedImageFile = await nenAnhOCR(imageFile)
-      const formData = new FormData()
-      formData.append('image', optimizedImageFile)
-
-      const result = await guiRequest('/api/MeterReadings/read-from-image', {
-        method: 'POST',
-        body: formData,
-      })
-
-      const payload = result.payload || {}
-      const detectedReading = payload.detectedReading ?? payload.DetectedReading
-
-      if (detectedReading === null || detectedReading === undefined || Number.isNaN(Number(detectedReading))) {
-        throw new Error('Không đọc được chỉ số điện từ hình ảnh.')
-      }
-
-      setBulkReadings((current) => ({
-        ...current,
-        [rowKey]: String(detectedReading),
-      }))
-      setBulkImageResults((current) => ({
-        ...current,
-        [rowKey]: payload,
-      }))
-      const processingMode = payload.processingMode ?? payload.ProcessingMode
-      const elapsedMs = payload.elapsedMs ?? payload.ElapsedMs
-      const elapsedLabel = elapsedMs != null ? ` sau ${Math.max(1, Math.round(Number(elapsedMs) / 1000))} giây` : ''
-      const modeLabel = processingMode ? ` (${processingMode})` : ''
-      setTrangThai(`Đã đọc được chỉ số ${detectedReading} cho phòng ${option.value}${modeLabel}${elapsedLabel}.`)
-      setMauTrangThai('thanh-cong')
-    } catch (error) {
-      setBulkImageResults((current) => ({
-        ...current,
-        [rowKey]: {
-          errorMessage: thongDiepLoi(error),
-        },
-      }))
-      setTrangThai(thongDiepLoi(error))
-      setMauTrangThai('that-bai')
-    } finally {
-      setDangDocAnhTungDong((current) => ({ ...current, [rowKey]: false }))
-    }
+    await guiRequest(`/api/MeterReadings/${meterReadingId}/image`, {
+      method: 'POST',
+      body: formData,
+    })
   }
 
   const luuMotDong = async (option) => {
@@ -3412,7 +3514,7 @@ function MeterReadingCreateButton({ onSuccess }) {
     resetMessages()
 
     try {
-      await guiRequest('/api/MeterReadings', {
+      const result = await guiRequest('/api/MeterReadings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3422,6 +3524,8 @@ function MeterReadingCreateButton({ onSuccess }) {
           currentReading: Number(readingValue),
         }),
       })
+      const meterReadingId = result.payload?.meterReadingId ?? result.payload?.MeterReadingId
+      await uploadAnhCongTo(meterReadingId, bulkImageFiles[rowKey])
 
       setTrangThai(`Đã lưu chỉ số điện cho phòng ${option.value}.`)
       setMauTrangThai('thanh-cong')
@@ -3440,6 +3544,7 @@ function MeterReadingCreateButton({ onSuccess }) {
         option,
         rowKey: `${option.roomId}-${option.contractId}`,
         readingValue: bulkReadings[`${option.roomId}-${option.contractId}`],
+        imageFile: bulkImageFiles[`${option.roomId}-${option.contractId}`],
       }))
       .filter((item) => item.readingValue !== '' && item.readingValue !== null && item.readingValue !== undefined)
 
@@ -3456,7 +3561,7 @@ function MeterReadingCreateButton({ onSuccess }) {
     let thatBai = 0
     for (const item of rowsToSave) {
       try {
-        await guiRequest('/api/MeterReadings', {
+        const result = await guiRequest('/api/MeterReadings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -3466,6 +3571,8 @@ function MeterReadingCreateButton({ onSuccess }) {
             currentReading: Number(item.readingValue),
           }),
         })
+        const meterReadingId = result.payload?.meterReadingId ?? result.payload?.MeterReadingId
+        await uploadAnhCongTo(meterReadingId, item.imageFile)
         thanhCong += 1
       } catch {
         thatBai += 1
@@ -3506,7 +3613,11 @@ function MeterReadingCreateButton({ onSuccess }) {
               <div className="invoice-edit-form meter-capture-form">
                 <label className="truong">
                   <span>Tháng ghi chỉ số</span>
-                  <input type="date" value={billingMonth} onChange={(event) => setBillingMonth(event.target.value)} />
+                  <input
+                    type="month"
+                    value={String(billingMonth || '').slice(0, 7)}
+                    onChange={(event) => setBillingMonth(chuanHoaGiaTriThang(event.target.value))}
+                  />
                 </label>
               </div>
 
@@ -3515,8 +3626,8 @@ function MeterReadingCreateButton({ onSuccess }) {
                   <thead>
                     <tr>
                       <th>Phòng</th>
-                      <th>Người thuê</th>
-                      <th>Ảnh chỉ số</th>
+                      <th>Chỉ số điện tháng trước</th>
+                      <th>Ảnh công tơ</th>
                       <th>Chỉ số điện ghi nhận</th>
                       <th>Lưu</th>
                     </tr>
@@ -3529,32 +3640,20 @@ function MeterReadingCreateButton({ onSuccess }) {
                     ) : roomOptions.length ? (
                       roomOptions.map((option) => {
                         const rowKey = `${option.roomId}-${option.contractId}`
-                        const tenantLabel = option.label.includes(' - ') ? option.label.split(' - ').slice(1).join(' - ') : 'Không có dữ liệu'
-                        const imageResult = bulkImageResults[rowKey]
-                        const detectedReading = imageResult?.detectedReading ?? imageResult?.DetectedReading
-                        const rawText = imageResult?.rawText ?? imageResult?.RawText
-                        const processingMode = imageResult?.processingMode ?? imageResult?.ProcessingMode
-                        const elapsedMs = imageResult?.elapsedMs ?? imageResult?.ElapsedMs
-                        const rowError = imageResult?.errorMessage ?? imageResult?.ErrorMessage
+                        const previousReading = chiSoThangTruocTheoPhong.get(Number(option.roomId))
                         const selectedFile = bulkImageFiles[rowKey]
                         return (
                           <tr key={rowKey}>
                             <td>{option.value}</td>
-                            <td>{tenantLabel || 'Không có dữ liệu'}</td>
+                            <td>
+                              {previousReading
+                                ? giaTriDep(previousReading.currentReading, 'currentReading')
+                                : 'Chưa có chỉ số trước đó'}
+                            </td>
                             <td>
                               <div className="meter-bulk-table__image-cell">
                                 <input type="file" accept="image/*" onChange={(event) => capNhatAnhDong(rowKey, event.target.files?.[0] || null)} />
                                 <small>{selectedFile ? selectedFile.name : 'Chưa chọn ảnh công tơ'}</small>
-                                <div className="meter-bulk-table__image-actions">
-                                  <button
-                                    type="button"
-                                    className="nut nut--phu meter-bulk-table__read"
-                                    onClick={() => docChiSoTuAnhTheoDong(option)}
-                                    disabled={!bulkImageFiles[rowKey] || !!dangDocAnhTungDong[rowKey] || dangLuuTatCa}
-                                  >
-                                    {dangDocAnhTungDong[rowKey] ? 'Đang đọc...' : 'Đọc ảnh'}
-                                  </button>
-                                </div>
                               </div>
                             </td>
                             <td>
@@ -3564,13 +3663,9 @@ function MeterReadingCreateButton({ onSuccess }) {
                                   min="0"
                                   value={bulkReadings[rowKey] ?? ''}
                                   onChange={(event) => capNhatChiSoDong(rowKey, event.target.value)}
-                                  placeholder="Nhập hoặc đọc từ ảnh"
+                                  placeholder="Nhập chỉ số điện"
                                 />
-                                <small>{detectedReading != null ? `AI đọc: ${detectedReading}` : 'Chưa có số từ ảnh'}</small>
-                                {rawText ? <small className="meter-bulk-table__ocr-raw">Raw text: {rawText}</small> : null}
-                                {processingMode ? <small className="meter-bulk-table__ocr-raw">Mode: {processingMode}</small> : null}
-                                {elapsedMs != null ? <small className="meter-bulk-table__ocr-raw">Thời gian: {Math.max(1, Math.round(Number(elapsedMs) / 1000))} giây</small> : null}
-                                {rowError ? <small className="meter-bulk-table__ocr-error">{rowError}</small> : null}
+                                <small>Nhập thủ công, ảnh chỉ dùng để lưu đối chiếu.</small>
                               </div>
                             </td>
                             <td>
@@ -3779,306 +3874,15 @@ function RoomsWorkspace({ spec }) {
   )
 }
 
-function MeterReadingMissingButton() {
-  const [dangMo, setDangMo] = useState(false)
-  const [billingMonth, setBillingMonth] = useState(taoThangMacDinh())
-  const [dangTaiMissing, setDangTaiMissing] = useState(false)
-  const [missingRooms, setMissingRooms] = useState([])
-  const [trangThai, setTrangThai] = useState('')
-  const [mauTrangThai, setMauTrangThai] = useState('')
-
-  useEffect(() => {
-    if (!dangMo) return undefined
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') setDangMo(false)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.body.style.overflow = previousOverflow
-      window.removeEventListener('keydown', onKeyDown)
-    }
-  }, [dangMo])
-
-  const taiPhongThieuChiSo = async () => {
-    setDangTaiMissing(true)
-    setTrangThai('')
-    setMauTrangThai('')
-    try {
-      const result = await guiRequest(`/api/MeterReadings/missing?month=${encodeURIComponent(billingMonth)}`, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      })
-      const payload = result.payload
-      const nextMissing = Array.isArray(payload)
-        ? payload
-        : Array.isArray(payload?.data)
-          ? payload.data
-          : Array.isArray(payload?.items)
-            ? payload.items
-            : []
-      setMissingRooms(nextMissing)
-      setTrangThai(`Đã kiểm tra phòng thiếu chỉ số cho ${dinhDangThang(billingMonth)}.`)
-      setMauTrangThai('thanh-cong')
-    } catch (error) {
-      setTrangThai(thongDiepLoi(error))
-      setMauTrangThai('that-bai')
-      setMissingRooms([])
-    } finally {
-      setDangTaiMissing(false)
-    }
-  }
-
-  return (
-    <>
-      <button type="button" className="nut nut--phu meter-toolbar-button meter-toolbar-button--missing" onClick={() => setDangMo(true)}>
-        Xem phòng thiếu chỉ số
-      </button>
-
-      {dangMo ? (
-        <div className="lop-phu-endpoint" onClick={() => setDangMo(false)}>
-          <div className="hop-endpoint-mo" onClick={(event) => event.stopPropagation()}>
-            <article className="the-endpoint the-endpoint--mo invoice-modal-card">
-              <div className="the-endpoint__dau">
-                <div>
-                  <span className="method-tag method-tag--get">GET</span>
-                  <h3>Phòng thiếu chỉ số</h3>
-                </div>
-                <button type="button" className="nut-dong-endpoint" onClick={() => setDangMo(false)}>
-                  ×
-                </button>
-              </div>
-
-              <div className="invoice-edit-form meter-capture-form">
-                <label className="truong">
-                  <span>Tháng kiểm tra</span>
-                  <input type="date" value={billingMonth} onChange={(event) => setBillingMonth(event.target.value)} />
-                </label>
-              </div>
-
-              {trangThai ? <div className={`thanh-trang-thai ${mauTrangThai}`}>{trangThai}</div> : null}
-
-              <div className="invoice-modal-actions">
-                <button type="button" className="nut" onClick={taiPhongThieuChiSo} disabled={dangTaiMissing}>
-                  {dangTaiMissing ? 'Đang kiểm tra...' : 'Kiểm tra'}
-                </button>
-              </div>
-
-              {missingRooms.length ? (
-                <div className="meter-missing-list">
-                  <div className="chip-wrap">
-                    {missingRooms.map((room, index) => (
-                      <span key={`${room.roomId ?? room.RoomId ?? index}`} className="chip">
-                        {room.roomCode ?? room.RoomCode ?? `Phòng #${room.roomId ?? room.RoomId ?? index}`}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </article>
-          </div>
-        </div>
-      ) : null}
-    </>
-  )
-}
-
-function MeterReadingOriginalEditButton() {
-  const [dangMo, setDangMo] = useState(false)
-  const [billingMonth, setBillingMonth] = useState(taoThangMacDinh())
-  const [roomCode, setRoomCode] = useState('')
-  const [currentReading, setCurrentReading] = useState('')
-  const [meterReadingsInMonth, setMeterReadingsInMonth] = useState([])
-  const [selectedMeterReadingId, setSelectedMeterReadingId] = useState('')
-  const [dangTaiDanhSach, setDangTaiDanhSach] = useState(false)
-  const [dangSua, setDangSua] = useState(false)
-  const [trangThai, setTrangThai] = useState('')
-  const [mauTrangThai, setMauTrangThai] = useState('')
-
-  useEffect(() => {
-    if (!dangMo) return undefined
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') setDangMo(false)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.body.style.overflow = previousOverflow
-      window.removeEventListener('keydown', onKeyDown)
-    }
-  }, [dangMo])
-
-  const taiDanhSachMocChiSo = async () => {
-    if (!roomCode.trim()) {
-      setTrangThai('Vui lòng nhập mã phòng trước khi tải các mốc chỉ số.')
-      setMauTrangThai('that-bai')
-      setMeterReadingsInMonth([])
-      setSelectedMeterReadingId('')
-      return
-    }
-
-    setDangTaiDanhSach(true)
-    setTrangThai('')
-    setMauTrangThai('')
-
-    try {
-      const result = await guiRequest(`/api/MeterReadings?month=${encodeURIComponent(billingMonth)}`, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      })
-
-      const payload = Array.isArray(result.payload)
-        ? result.payload
-        : Array.isArray(result.payload?.data)
-          ? result.payload.data
-          : []
-
-      const normalizedRoomCode = roomCode.trim().toLowerCase()
-      const matched = payload
-        .filter((item) => String(item.roomCode ?? item.RoomCode ?? '').trim().toLowerCase() === normalizedRoomCode)
-        .sort((a, b) => new Date(a.billingMonth ?? a.BillingMonth).getTime() - new Date(b.billingMonth ?? b.BillingMonth).getTime())
-
-      setMeterReadingsInMonth(matched)
-
-      if (matched.length) {
-        const latest = matched[matched.length - 1]
-        const meterReadingId = latest.meterReadingId ?? latest.MeterReadingId ?? ''
-        const nextCurrentReading = latest.currentReading ?? latest.CurrentReading ?? ''
-        setSelectedMeterReadingId(String(meterReadingId))
-        setCurrentReading(String(nextCurrentReading))
-        setTrangThai(`Đã tải ${matched.length} mốc chỉ số của phòng ${roomCode.trim()} trong ${dinhDangThang(billingMonth)}.`)
-        setMauTrangThai('thanh-cong')
-      } else {
-        setSelectedMeterReadingId('')
-        setCurrentReading('')
-        setTrangThai(`Không tìm thấy mốc chỉ số nào của phòng ${roomCode.trim()} trong ${dinhDangThang(billingMonth)}.`)
-        setMauTrangThai('that-bai')
-      }
-    } catch (error) {
-      setMeterReadingsInMonth([])
-      setSelectedMeterReadingId('')
-      setCurrentReading('')
-      setTrangThai(thongDiepLoi(error))
-      setMauTrangThai('that-bai')
-    } finally {
-      setDangTaiDanhSach(false)
-    }
-  }
-
-  const capNhatMocDuocChon = (value) => {
-    setSelectedMeterReadingId(value)
-    const selected = meterReadingsInMonth.find((item) => String(item.meterReadingId ?? item.MeterReadingId ?? '') === String(value))
-    if (selected) {
-      setCurrentReading(String(selected.currentReading ?? selected.CurrentReading ?? ''))
-    }
-  }
-
-  const suaChiSoGoc = async () => {
-    setDangSua(true)
-    setTrangThai('')
-    setMauTrangThai('')
-    try {
-      await guiRequest('/api/MeterReadings/current-reading', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          meterReadingId: selectedMeterReadingId ? Number(selectedMeterReadingId) : undefined,
-          roomCode,
-          billingMonth,
-          currentReading: Number(currentReading),
-        }),
-      })
-      setTrangThai('Đã cập nhật chỉ số điện gốc thành công.')
-      setMauTrangThai('thanh-cong')
-    } catch (error) {
-      setTrangThai(thongDiepLoi(error))
-      setMauTrangThai('that-bai')
-    } finally {
-      setDangSua(false)
-    }
-  }
-
-  return (
-    <>
-      <button type="button" className="nut nut--phu meter-toolbar-button meter-toolbar-button--edit" onClick={() => setDangMo(true)}>
-        Sửa chỉ số gốc
-      </button>
-
-      {dangMo ? (
-        <div className="lop-phu-endpoint" onClick={() => setDangMo(false)}>
-          <div className="hop-endpoint-mo" onClick={(event) => event.stopPropagation()}>
-            <article className="the-endpoint the-endpoint--mo invoice-modal-card">
-              <div className="the-endpoint__dau">
-                <div>
-                  <span className="method-tag method-tag--patch">PATCH</span>
-                  <h3>Sửa chỉ số gốc</h3>
-                </div>
-                <button type="button" className="nut-dong-endpoint" onClick={() => setDangMo(false)}>
-                  ×
-                </button>
-              </div>
-
-              <div className="invoice-edit-form meter-capture-form meter-original-edit-form">
-                <label className="truong">
-                  <span>Tháng cần sửa</span>
-                  <input type="date" value={billingMonth} onChange={(event) => setBillingMonth(event.target.value)} />
-                </label>
-                <label className="truong">
-                  <span>Mã phòng</span>
-                  <input type="text" value={roomCode} onChange={(event) => setRoomCode(event.target.value)} placeholder="Ví dụ: A01" />
-                </label>
-                <div className="invoice-modal-actions meter-original-edit__load">
-                  <button type="button" className="nut nut--phu" onClick={taiDanhSachMocChiSo} disabled={dangTaiDanhSach || !roomCode.trim()}>
-                    {dangTaiDanhSach ? 'Đang tải mốc chỉ số...' : 'Tải các mốc chỉ số'}
-                  </button>
-                </div>
-                <label className="truong">
-                  <span>Mốc chỉ số cần sửa</span>
-                  <select value={selectedMeterReadingId} onChange={(event) => capNhatMocDuocChon(event.target.value)} disabled={!meterReadingsInMonth.length}>
-                    <option value="">{meterReadingsInMonth.length ? 'Chọn một mốc chỉ số' : 'Chưa có mốc chỉ số trong tháng'}</option>
-                    {meterReadingsInMonth.map((item) => {
-                      const meterReadingId = item.meterReadingId ?? item.MeterReadingId
-                      const readingDate = item.billingMonth ?? item.BillingMonth
-                      const previousReading = item.previousReading ?? item.PreviousReading
-                      const currentReadingValue = item.currentReading ?? item.CurrentReading
-                      const contractId = item.contractId ?? item.ContractId
-                      return (
-                        <option key={meterReadingId} value={meterReadingId}>
-                          {`${giaTriDep(readingDate, 'billingMonth')} | HĐ #${contractId} | ${previousReading} -> ${currentReadingValue}`}
-                        </option>
-                      )
-                    })}
-                  </select>
-                </label>
-                <label className="truong">
-                  <span>Chỉ số điện mới</span>
-                  <input type="number" min="0" value={currentReading} onChange={(event) => setCurrentReading(event.target.value)} placeholder="Ví dụ: 1530" />
-                </label>
-              </div>
-
-              {trangThai ? <div className={`thanh-trang-thai ${mauTrangThai}`}>{trangThai}</div> : null}
-
-              <div className="invoice-modal-actions">
-                <button type="button" className="nut" onClick={suaChiSoGoc} disabled={dangSua || !roomCode || !selectedMeterReadingId || currentReading === ''}>
-                  {dangSua ? 'Đang cập nhật...' : 'Cập nhật'}
-                </button>
-              </div>
-            </article>
-          </div>
-        </div>
-      ) : null}
-    </>
-  )
-}
-
 function MeterReadingWorkspace() {
   const [meterReadings, setMeterReadings] = useState([])
   const [dangTai, setDangTai] = useState(true)
   const [loi, setLoi] = useState('')
+  const [dangSuaId, setDangSuaId] = useState(null)
   const [dangXoaId, setDangXoaId] = useState(null)
-  const [xacNhanXoa, setXacNhanXoa] = useState(null)
+  const [chiSoDangSua, setChiSoDangSua] = useState(null)
+  const [chiSoDangXoa, setChiSoDangXoa] = useState(null)
+  const [chiSoMoi, setChiSoMoi] = useState('')
   const [phongFilter, setPhongFilter] = useState('')
   const [thangNamFilter, setThangNamFilter] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
@@ -4134,12 +3938,63 @@ function MeterReadingWorkspace() {
     })
   }, [meterReadings, phongFilter, thangNamFilter])
 
-  const tongBanGhi = danhSachLoc.length
-  const tongSoDien = danhSachLoc.reduce((tong, item) => tong + laySoTieuThuChiSo(item), 0)
-  const tongTienDien = danhSachLoc.reduce((tong, item) => tong + layTienChiSo(item), 0)
-  const chiSoMoiCaoNhat = danhSachLoc.reduce((max, item) => Math.max(max, laySoDienChiSo(item)), 0)
+  const moSuaChiSo = (item) => {
+    setChiSoDangSua(item)
+    setChiSoMoi(String(item.currentReading ?? item.CurrentReading ?? ''))
+    setLoi('')
+  }
 
-  const thucHienXoaChiSo = async (meterReadingId) => {
+  const dongSuaChiSo = () => {
+    if (dangSuaId) return
+    setChiSoDangSua(null)
+    setChiSoMoi('')
+  }
+
+  const moXoaChiSo = (item) => {
+    setChiSoDangXoa(item)
+    setLoi('')
+  }
+
+  const dongXoaChiSo = () => {
+    if (dangXoaId) return
+    setChiSoDangXoa(null)
+  }
+
+  const thucHienSuaChiSo = async () => {
+    if (!chiSoDangSua) return
+
+    const meterReadingId = chiSoDangSua.meterReadingId ?? chiSoDangSua.MeterReadingId
+    const roomCode = chiSoDangSua.roomCode ?? chiSoDangSua.RoomCode
+    const billingMonth = chiSoDangSua.billingMonth ?? chiSoDangSua.BillingMonth
+
+    setDangSuaId(meterReadingId)
+    setLoi('')
+
+    try {
+      await guiRequest('/api/MeterReadings/current-reading', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meterReadingId: Number(meterReadingId),
+          roomCode,
+          billingMonth,
+          currentReading: Number(chiSoMoi),
+        }),
+      })
+      setChiSoDangSua(null)
+      setChiSoMoi('')
+      setReloadKey((value) => value + 1)
+    } catch (error) {
+      setLoi(thongDiepLoi(error))
+    } finally {
+      setDangSuaId(null)
+    }
+  }
+
+  const thucHienXoaChiSo = async () => {
+    if (!chiSoDangXoa) return
+
+    const meterReadingId = chiSoDangXoa.meterReadingId ?? chiSoDangXoa.MeterReadingId
     setDangXoaId(meterReadingId)
     setLoi('')
 
@@ -4148,7 +4003,7 @@ function MeterReadingWorkspace() {
         method: 'DELETE',
         headers: { Accept: 'application/json' },
       })
-      setXacNhanXoa(null)
+      setChiSoDangXoa(null)
       setReloadKey((value) => value + 1)
     } catch (error) {
       setLoi(thongDiepLoi(error))
@@ -4157,80 +4012,49 @@ function MeterReadingWorkspace() {
     }
   }
 
-  const xoaChiSo = (meterReadingId, roomCode) => {
-    setXacNhanXoa({
-      meterReadingId,
-      roomCode: roomCode || 'này',
-    })
-  }
-
   return (
     <div className="invoice-workspace meter-workspace">
       <section className="invoice-hero khung">
         <div className="invoice-hero__main">
-          <div className="invoice-toolbar">
-            <label className="invoice-search">
-              <span>Phòng</span>
-              <input type="text" value={phongFilter} onChange={(event) => setPhongFilter(event.target.value)} placeholder="Nhập mã phòng" />
-            </label>
-            <label className="invoice-search invoice-search--month">
-              <span>Tháng - năm</span>
-              <input type="month" value={thangNamFilter} onChange={(event) => setThangNamFilter(event.target.value)} />
-            </label>
-            <button
-              type="button"
-              className="nut nut--phu meter-toolbar-inline-button"
-              onClick={() => setReloadKey((value) => value + 1)}
-              disabled={dangTai}
-            >
-              {dangTai ? 'Đang tải...' : 'Làm mới danh sách'}
-            </button>
-          </div>
-
           <div className="meter-toolbar-actions">
             <div className="meter-toolbar-group">
               <MeterReadingCreateButton onSuccess={() => setReloadKey((value) => value + 1)} />
-              <MeterReadingMissingButton />
-              <MeterReadingOriginalEditButton />
             </div>
           </div>
         </div>
       </section>
 
-      <section className="invoice-stats invoice-stats--five">
-        <article className="invoice-stat-card">
-          <span>Tổng bản ghi</span>
-          <strong>{tongBanGhi}</strong>
-        </article>
-        <article className="invoice-stat-card">
-          <span>Tổng số điện tiêu thụ</span>
-          <strong>{giaTriDep(tongSoDien, 'consumedUnits')}</strong>
-        </article>
-        <article className="invoice-stat-card">
-          <span>Tổng tiền điện</span>
-          <strong className="invoice-amount">{dinhDangTien(tongTienDien).replace(/\s*VND$/, '')}</strong>
-        </article>
-        <article className="invoice-stat-card">
-          <span>Chỉ số mới cao nhất</span>
-          <strong>{giaTriDep(chiSoMoiCaoNhat, 'currentReading')}</strong>
-        </article>
-        <article className="invoice-stat-card">
-          <span>Đang hiển thị</span>
-          <strong>{`${danhSachLoc.length}/${meterReadings.length}`}</strong>
-        </article>
-      </section>
-
       <section className="khung">
         <div className="xem-truoc__dau">
           <strong>Danh sách chỉ số điện</strong>
-          <span>{`Hiển thị ${danhSachLoc.length}/${meterReadings.length} bản ghi`}</span>
+        </div>
+        <div className="meter-list-filters">
+          <label className="invoice-search">
+            <span>Phòng</span>
+            <input type="text" value={phongFilter} onChange={(event) => setPhongFilter(event.target.value)} placeholder="Nhập mã phòng" />
+          </label>
+          <MonthYearFilter label="Tháng - năm" value={thangNamFilter} onChange={setThangNamFilter} />
+          <button
+            type="button"
+            className="nut nut--phu meter-toolbar-inline-button"
+            onClick={() => setReloadKey((value) => value + 1)}
+            disabled={dangTai}
+          >
+            {dangTai ? 'Đang tải...' : 'Làm mới danh sách'}
+          </button>
         </div>
         {loi ? <div className="thong-bao-loi">{loi}</div> : null}
         {dangTai ? (
           <div className="khung-du-lieu khung-du-lieu--trong">Đang tải danh sách chỉ số điện...</div>
         ) : danhSachLoc.length ? (
           <div className="invoice-list-wrap">
-            <XemDanhSachChiSoDien data={danhSachLoc} onDelete={xoaChiSo} deletingId={dangXoaId} />
+            <XemDanhSachChiSoDien
+              data={danhSachLoc}
+              onEdit={moSuaChiSo}
+              editingId={dangSuaId}
+              onDelete={moXoaChiSo}
+              deletingId={dangXoaId}
+            />
           </div>
         ) : (
           <div className="khung-du-lieu khung-du-lieu--trong">
@@ -4239,28 +4063,77 @@ function MeterReadingWorkspace() {
         )}
       </section>
 
-      {xacNhanXoa ? (
-        <div className="lop-phu-endpoint" onClick={() => !dangXoaId && setXacNhanXoa(null)}>
+      {chiSoDangSua ? (
+        <div className="lop-phu-endpoint" onClick={dongSuaChiSo}>
+          <div className="hop-endpoint-mo" onClick={(event) => event.stopPropagation()}>
+            <article className="the-endpoint the-endpoint--mo invoice-modal-card">
+              <div className="the-endpoint__dau">
+                <div>
+                  <span className="method-tag method-tag--patch">PATCH</span>
+                  <h3>Sửa chỉ số</h3>
+                </div>
+                <button type="button" className="nut-dong-endpoint" onClick={dongSuaChiSo} disabled={!!dangSuaId}>
+                  ×
+                </button>
+              </div>
+
+              <div className="invoice-edit-form meter-capture-form meter-original-edit-form">
+                <label className="truong">
+                  <span>Phòng</span>
+                  <input type="text" value={chiSoDangSua.roomCode ?? chiSoDangSua.RoomCode ?? ''} readOnly />
+                </label>
+                <label className="truong">
+                  <span>Tháng cần sửa</span>
+                  <input type="text" value={giaTriDep(chiSoDangSua.billingMonth ?? chiSoDangSua.BillingMonth, 'billingMonth')} readOnly />
+                </label>
+                <label className="truong">
+                  <span>Chỉ số tháng trước</span>
+                  <input type="text" value={giaTriDep(chiSoDangSua.previousReading ?? chiSoDangSua.PreviousReading, 'previousReading')} readOnly />
+                </label>
+                <label className="truong">
+                  <span>Chỉ số điện mới</span>
+                  <input type="number" min="0" value={chiSoMoi} onChange={(event) => setChiSoMoi(event.target.value)} placeholder="Ví dụ: 1530" />
+                </label>
+              </div>
+
+              <div className="invoice-modal-actions">
+                <button type="button" className="nut nut--phu" onClick={dongSuaChiSo} disabled={!!dangSuaId}>
+                  Hủy
+                </button>
+                <button type="button" className="nut" onClick={thucHienSuaChiSo} disabled={!!dangSuaId || chiSoMoi === ''}>
+                  {dangSuaId ? 'Đang cập nhật...' : 'Cập nhật'}
+                </button>
+              </div>
+            </article>
+          </div>
+        </div>
+      ) : null}
+
+      {chiSoDangXoa ? (
+        <div className="lop-phu-endpoint" onClick={dongXoaChiSo}>
           <div className="hop-endpoint-mo" onClick={(event) => event.stopPropagation()}>
             <article className="the-endpoint the-endpoint--mo invoice-modal-card">
               <div className="the-endpoint__dau">
                 <div>
                   <span className="method-tag method-tag--delete">DELETE</span>
-                  <h3>Xóa bản ghi chỉ số điện</h3>
+                  <h3>Xóa chỉ số</h3>
                 </div>
-                <button type="button" className="nut-dong-endpoint" onClick={() => setXacNhanXoa(null)} disabled={!!dangXoaId}>
+                <button type="button" className="nut-dong-endpoint" onClick={dongXoaChiSo} disabled={!!dangXoaId}>
                   ×
                 </button>
               </div>
 
-              <p>Bạn có chắc muốn xóa bản ghi chỉ số điện của phòng <strong>{xacNhanXoa.roomCode}</strong> không?</p>
+              <p>
+                Bạn có chắc muốn xóa chỉ số điện phòng <strong>{chiSoDangXoa.roomCode ?? chiSoDangXoa.RoomCode ?? 'này'}</strong> tháng{' '}
+                <strong>{giaTriDep(chiSoDangXoa.billingMonth ?? chiSoDangXoa.BillingMonth, 'billingMonth')}</strong> không?
+              </p>
 
               <div className="invoice-modal-actions">
-                <button type="button" className="nut nut--phu" onClick={() => setXacNhanXoa(null)} disabled={!!dangXoaId}>
+                <button type="button" className="nut nut--phu" onClick={dongXoaChiSo} disabled={!!dangXoaId}>
                   Hủy
                 </button>
-                <button type="button" className="nut" onClick={() => thucHienXoaChiSo(xacNhanXoa.meterReadingId)} disabled={!!dangXoaId}>
-                  {dangXoaId ? 'Đang xóa...' : 'Xác nhận xóa'}
+                <button type="button" className="nut" onClick={thucHienXoaChiSo} disabled={!!dangXoaId}>
+                  {dangXoaId ? 'Đang xóa...' : 'Xóa chỉ số'}
                 </button>
               </div>
             </article>
@@ -4403,8 +4276,6 @@ function PaymentWorkspace() {
                 <option value="paid">Đã thanh toán</option>
                 <option value="pending">Chờ xử lý</option>
                 <option value="processed">Đã xử lý</option>
-                <option value="reconciled">Đã đối soát</option>
-                <option value="matched">Đã khớp hóa đơn</option>
                 <option value="ignored">Bỏ qua</option>
                 <option value="failed">Thất bại</option>
               </select>
@@ -4412,9 +4283,6 @@ function PaymentWorkspace() {
             <button type="button" className="nut nut--phu payment-toolbar-refresh" onClick={() => setReloadKey((value) => value + 1)} disabled={dangTai}>
               {dangTai ? 'Đang tải...' : 'Làm mới danh sách'}
             </button>
-          </div>
-          <div className="invoice-toolbar__actions payment-toolbar__actions">
-            <PaymentReconcileButton transactions={danhSachLoc} onSuccess={() => setReloadKey((value) => value + 1)} />
           </div>
         </div>
       </section>
@@ -5038,10 +4906,7 @@ function TransactionWorkspace() {
                 placeholder="Mô tả, phòng, invoice..."
               />
             </label>
-            <label className="invoice-search invoice-search--month">
-              <span>Tháng - năm</span>
-              <input type="month" value={thangNamFilter} onChange={(event) => setThangNamFilter(event.target.value)} />
-            </label>
+            <MonthYearFilter label="Tháng - năm" value={thangNamFilter} onChange={setThangNamFilter} />
             <label className="invoice-search invoice-search--status">
               <span>Loại giao dịch</span>
               <select value={loaiFilter} onChange={(event) => setLoaiFilter(event.target.value)}>
@@ -5232,78 +5097,15 @@ function ReportTrendChart({ data }) {
 }
 
 function ReportsWorkspace() {
-  const [thangKetThuc, setThangKetThuc] = useState(taoThangMacDinh().slice(0, 7))
   const [thangBaoCao, setThangBaoCao] = useState(taoThangMacDinh().slice(0, 7))
-  const [dangTai, setDangTai] = useState(true)
   const [dangTaiBaoCaoThang, setDangTaiBaoCaoThang] = useState(true)
-  const [loi, setLoi] = useState('')
   const [loiBaoCaoThang, setLoiBaoCaoThang] = useState('')
-  const [reportData, setReportData] = useState([])
   const [baoCaoThang, setBaoCaoThang] = useState(null)
   const [chiTietBaoCao, setChiTietBaoCao] = useState(null)
   const [dangTaiChiTietBaoCao, setDangTaiChiTietBaoCao] = useState(false)
   const [loiChiTietBaoCao, setLoiChiTietBaoCao] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const realtimeReloadKey = useRealtimeReload(['reports', 'transactions', 'invoices', 'payments'])
-
-  useEffect(() => {
-    let active = true
-
-    async function taiBaoCao() {
-      setDangTai(true)
-      setLoi('')
-
-      try {
-        const months = taoDanhSachThangGanNhat(thangKetThuc, 6)
-        const results = await Promise.all(
-          months.map(async (monthKey) => {
-            const monthParam = `${monthKey}-01`
-            const [revenueRes, expenseRes, profitRes] = await Promise.all([
-              guiRequest(`/api/Reports/monthly-revenue?month=${encodeURIComponent(monthParam)}`, {
-                method: 'GET',
-                headers: { Accept: 'application/json' },
-              }),
-              guiRequest(`/api/Reports/monthly-expense?month=${encodeURIComponent(monthParam)}`, {
-                method: 'GET',
-                headers: { Accept: 'application/json' },
-              }),
-              guiRequest(`/api/Reports/monthly-profit-loss?month=${encodeURIComponent(monthParam)}`, {
-                method: 'GET',
-                headers: { Accept: 'application/json' },
-              }),
-            ])
-
-            const revenuePayload = revenueRes.payload || {}
-            const expensePayload = expenseRes.payload || {}
-            const profitPayload = profitRes.payload || {}
-
-            return {
-              monthKey,
-              paidInvoicesRevenue: layGiaTriSo(revenuePayload.paidInvoicesRevenue ?? revenuePayload.PaidInvoicesRevenue),
-              extraIncome: layGiaTriSo(revenuePayload.extraIncome ?? revenuePayload.ExtraIncome),
-              totalRevenue: layGiaTriSo(profitPayload.totalRevenue ?? profitPayload.TotalRevenue ?? revenuePayload.totalRevenue ?? revenuePayload.TotalRevenue),
-              totalExpense: layGiaTriSo(profitPayload.totalExpense ?? profitPayload.TotalExpense ?? expensePayload.totalExpense ?? expensePayload.TotalExpense),
-              profitLoss: layGiaTriSo(profitPayload.profitLoss ?? profitPayload.ProfitLoss),
-            }
-          }),
-        )
-
-        if (active) setReportData(results)
-      } catch (error) {
-        if (active) {
-          setLoi(thongDiepLoi(error))
-          setReportData([])
-        }
-      } finally {
-        if (active) setDangTai(false)
-      }
-    }
-
-    taiBaoCao()
-    return () => {
-      active = false
-    }
-  }, [thangKetThuc, reloadKey, realtimeReloadKey])
 
   useEffect(() => {
     let active = true
@@ -5375,11 +5177,6 @@ function ReportsWorkspace() {
       window.removeEventListener('keydown', onKeyDown)
     }
   }, [chiTietBaoCao])
-
-  const duLieuHienTai = reportData[reportData.length - 1] || null
-  const tongDoanhThu = reportData.reduce((tong, item) => tong + layGiaTriSo(item.totalRevenue), 0)
-  const tongChiPhi = reportData.reduce((tong, item) => tong + layGiaTriSo(item.totalExpense), 0)
-  const tongLoiNhuan = reportData.reduce((tong, item) => tong + layGiaTriSo(item.profitLoss), 0)
 
   const moChiTietBaoCao = async (loai) => {
     setDangTaiChiTietBaoCao(true)
@@ -5473,10 +5270,7 @@ function ReportsWorkspace() {
           <span>Chọn một tháng để xem doanh thu, doanh thu phát sinh, chi phí phát sinh và lợi nhuận</span>
         </div>
         <div className="invoice-toolbar reports-toolbar">
-          <label className="invoice-search invoice-search--month">
-            <span>Tháng xem báo cáo</span>
-            <input type="month" value={thangBaoCao} onChange={(event) => setThangBaoCao(event.target.value)} />
-          </label>
+          <MonthYearFilter label="Tháng xem báo cáo" value={thangBaoCao} onChange={setThangBaoCao} allowEmpty={false} />
         </div>
         {loiBaoCaoThang ? <div className="thong-bao-loi">{loiBaoCaoThang}</div> : null}
         {dangTaiBaoCaoThang ? (
@@ -5573,48 +5367,6 @@ function ReportsWorkspace() {
           </div>
         ) : (
           <div className="khung-du-lieu khung-du-lieu--trong">Chưa có dữ liệu báo cáo cho tháng đã chọn.</div>
-        )}
-      </section>
-
-      <section className="khung">
-        <div className="xem-truoc__dau">
-          <strong>Biểu đồ doanh thu, chi phí, lợi nhuận</strong>
-          <span>{reportData.length ? `Từ ${dinhDangNhanThangNgan(reportData[0].monthKey)} đến ${dinhDangNhanThangNgan(reportData[reportData.length - 1].monthKey)}` : 'Chưa có dữ liệu'}</span>
-        </div>
-        <div className="invoice-toolbar reports-toolbar">
-          <label className="invoice-search invoice-search--month">
-            <span>Tháng kết thúc chuỗi</span>
-            <input type="month" value={thangKetThuc} onChange={(event) => setThangKetThuc(event.target.value)} />
-          </label>
-          <button type="button" className="nut nut--phu" onClick={() => setReloadKey((value) => value + 1)} disabled={dangTai}>
-            {dangTai ? 'Đang tải...' : 'Làm mới báo cáo'}
-          </button>
-        </div>
-        {loi ? <div className="thong-bao-loi">{loi}</div> : null}
-        {dangTai ? (
-          <div className="khung-du-lieu khung-du-lieu--trong">Đang tải dữ liệu báo cáo...</div>
-        ) : reportData.length ? (
-          <div className="report-layout">
-            <section className="invoice-stats">
-              <article className="invoice-stat-card">
-                <span>Tổng doanh thu 6 tháng</span>
-                <strong className="invoice-amount invoice-amount--paid">{dinhDangTien(tongDoanhThu).replace(/\s*VND$/, '')}</strong>
-              </article>
-              <article className="invoice-stat-card">
-                <span>Tổng chi phí 6 tháng</span>
-                <strong className="invoice-amount invoice-amount--unpaid">{dinhDangTien(tongChiPhi).replace(/\s*VND$/, '')}</strong>
-              </article>
-              <article className="invoice-stat-card">
-                <span>Tổng lợi nhuận 6 tháng</span>
-                <strong className={`invoice-amount ${tongLoiNhuan >= 0 ? 'invoice-amount--paid' : 'invoice-amount--unpaid'}`}>
-                  {dinhDangTien(tongLoiNhuan).replace(/\s*VND$/, '')}
-                </strong>
-              </article>
-            </section>
-            <ReportTrendChart data={reportData} />
-          </div>
-        ) : (
-          <div className="khung-du-lieu khung-du-lieu--trong">Chưa có dữ liệu báo cáo để hiển thị.</div>
         )}
       </section>
 
@@ -5760,15 +5512,12 @@ function InvoiceWorkspaceModern({ spec }) {
       <section className="invoice-hero khung">
         <div className="invoice-hero__main">
           <p className="nhan">Hóa đơn</p>
-          <div className="invoice-toolbar">
+          <div className="invoice-toolbar invoice-toolbar--invoices">
             <label className="invoice-search">
               <span>Phòng</span>
               <input type="text" value={phongFilter} onChange={(event) => setPhongFilter(event.target.value)} placeholder="Nhập mã phòng" />
             </label>
-            <label className="invoice-search invoice-search--month">
-              <span>Tháng - năm</span>
-              <input type="month" value={thangNamFilter} onChange={(event) => setThangNamFilter(event.target.value)} />
-            </label>
+            <MonthYearFilter label="Tháng - năm" value={thangNamFilter} onChange={setThangNamFilter} />
             <label className="invoice-search invoice-search--status">
               <span>Trạng thái hóa đơn</span>
               <select value={trangThaiFilter} onChange={(event) => setTrangThaiFilter(event.target.value)}>
@@ -5981,8 +5730,8 @@ function NotesWorkspace() {
       })
       .filter((item) => item.hasWorkflowNote || item.isPartialPayment || item.hasDebtCarryOver)
       .sort((left, right) => {
-        const leftDate = new Date(left.raw.updatedAt ?? left.raw.UpdatedAt ?? left.raw.createdAt ?? left.raw.CreatedAt ?? 0).getTime()
-        const rightDate = new Date(right.raw.updatedAt ?? right.raw.UpdatedAt ?? right.raw.createdAt ?? right.raw.CreatedAt ?? 0).getTime()
+        const leftDate = layMocThoiGian(left.raw.updatedAt ?? left.raw.UpdatedAt ?? left.raw.createdAt ?? left.raw.CreatedAt)
+        const rightDate = layMocThoiGian(right.raw.updatedAt ?? right.raw.UpdatedAt ?? right.raw.createdAt ?? right.raw.CreatedAt)
         return rightDate - leftDate
       })
   }, [invoices])
@@ -6232,11 +5981,11 @@ function datTenEndpoint(moduleKey, method, path) {
       'get /api/meterreadings': 'Lấy danh sách chỉ số điện nước',
       'post /api/meterreadings': 'Tạo bản ghi chỉ số điện nước',
       'post /api/meterreadings/preview': 'Xem trước chỉ số điện nước',
+      'post /api/meterreadings/{id:int}/image': 'Lưu ảnh công tơ điện',
+      'post /api/meterreadings/{id}/image': 'Lưu ảnh công tơ điện',
       'patch /api/meterreadings/current-reading': 'Sửa chỉ số điện gốc theo phòng',
       'delete /api/meterreadings/by-ended-contract/{contractid:int}': 'Xóa tất cả bản ghi chỉ số điện của hợp đồng đã chấm dứt',
       'delete /api/meterreadings/by-ended-contract/{contractid}': 'Xóa tất cả bản ghi chỉ số điện của hợp đồng đã chấm dứt',
-      'post /api/meterreadings/read-from-image': 'Đọc chỉ số từ hình ảnh',
-      'get /api/meterreadings/missing': 'Lấy danh sách phòng thiếu chỉ số',
     },
     invoices: {
       'get /api/invoices': 'Lấy danh sách hóa đơn',
@@ -6322,7 +6071,7 @@ async function guiRequest(url, options) {
   } catch (error) {
     if (timeoutId) window.clearTimeout(timeoutId)
     if (error?.name === 'AbortError') {
-      throw new Error('Yêu cầu đã bị dừng sau 60 giây. Hãy thử lại với ảnh rõ hơn.')
+      throw new Error('Yêu cầu đã bị dừng sau 60 giây. Hãy thử lại sau.')
     }
     throw error
   }
@@ -6404,7 +6153,7 @@ function useRealtimeReload(moduleKeys = []) {
 }
 
 function useTrangHienTai() {
-  const docHash = () => window.location.hash.replace(/^#\/?/, '') || 'tong-quan'
+  const docHash = () => window.location.hash.replace(/^#\/?/, '') || 'reports'
   const [trang, setTrang] = useState(docHash)
 
   useEffect(() => {
@@ -6418,8 +6167,9 @@ function useTrangHienTai() {
 
 function TrangTongQuan() {
   const realtimeReloadKey = useRealtimeReload(['payments', 'reports'])
-  const [nam, setNam] = useState(String(taoNamHienTai()))
-  const [ky, setKy] = useState(taoKySauThangHienTai)
+  const khoangThangMacDinh = taoKhoangThangMacDinh()
+  const [fromMonth, setFromMonth] = useState(khoangThangMacDinh.fromMonth)
+  const [toMonth, setToMonth] = useState(khoangThangMacDinh.toMonth)
   const [duLieu, setDuLieu] = useState(null)
   const [dangTai, setDangTai] = useState(true)
   const [loi, setLoi] = useState('')
@@ -6464,7 +6214,18 @@ function TrangTongQuan() {
       try {
         setDangTai(true)
         setLoi('')
-        const response = await fetch(`/api/Reports/sales-ledger?year=${encodeURIComponent(nam)}&period=${encodeURIComponent(ky)}`, {
+        const normalizedFromMonth = chuanHoaGiaTriThang(fromMonth)
+        const normalizedToMonth = chuanHoaGiaTriThang(toMonth)
+
+        if (!normalizedFromMonth || !normalizedToMonth) {
+          throw new Error('Vui lòng chọn đầy đủ tháng bắt đầu và tháng kết thúc.')
+        }
+
+        if (normalizedFromMonth > normalizedToMonth) {
+          throw new Error('Tháng bắt đầu không được lớn hơn tháng kết thúc.')
+        }
+
+        const response = await fetch(`/api/Reports/sales-ledger?fromMonth=${encodeURIComponent(normalizedFromMonth)}&toMonth=${encodeURIComponent(normalizedToMonth)}`, {
           headers: {
             Accept: 'application/json',
           },
@@ -6495,19 +6256,33 @@ function TrangTongQuan() {
     return () => {
       conHieuLuc = false
     }
-  }, [nam, ky, realtimeReloadKey])
+  }, [fromMonth, toMonth, realtimeReloadKey])
 
   const rows = Array.isArray(duLieu?.rows) ? duLieu.rows : []
   const tongTien = Number(duLieu?.totalAmount ?? 0)
   const soDongTrong = Math.max(0, 8 - rows.length)
-  const kyKeKhai = dinhDangKyKeKhaiSauThang(nam, ky)
+  const kyKeKhai = dinhDangKyKeKhaiSauThang(fromMonth, toMonth)
+  const fromMonthParts = tachGiaTriThang(fromMonth)
+  const toMonthParts = tachGiaTriThang(toMonth)
+  const danhSachNamKeKhai = taoDanhSachNamKeKhai(fromMonth, toMonth)
 
   async function onInPdf() {
     try {
       setDangIn(true)
+      const normalizedFromMonth = chuanHoaGiaTriThang(fromMonth)
+      const normalizedToMonth = chuanHoaGiaTriThang(toMonth)
+
+      if (!normalizedFromMonth || !normalizedToMonth) {
+        throw new Error('Vui lòng chọn đầy đủ tháng bắt đầu và tháng kết thúc.')
+      }
+
+      if (normalizedFromMonth > normalizedToMonth) {
+        throw new Error('Tháng bắt đầu không được lớn hơn tháng kết thúc.')
+      }
+
       await taiSoDoanhThuPdf({
-        year: Number(nam),
-        period: Number(ky),
+        fromMonth: normalizedFromMonth,
+        toMonth: normalizedToMonth,
         ...thongTinMau,
       })
     } catch (error) {
@@ -6529,17 +6304,60 @@ function TrangTongQuan() {
       <section className="khung sales-ledger-toolbar-card">
         <div className="sales-ledger-toolbar">
           <div className="sales-ledger-toolbar__actions">
+            <div className="sales-ledger-filter-copy">
+              <strong>Bộ lọc kê khai</strong>
+              <span>Chọn khoảng tháng muốn xem và in sổ doanh thu.</span>
+            </div>
             <div className="sales-ledger-filter-grid">
               <label className="truong">
-                <span>Năm kê khai</span>
-                <input type="number" min="2000" max="3000" value={nam} onChange={(event) => setNam(event.target.value)} />
+                <span>Từ tháng</span>
+                <div className="sales-ledger-month-picker">
+                  <select
+                    value={fromMonthParts.month}
+                    onChange={(event) => setFromMonth((current) => capNhatGiaTriThang(current, { month: event.target.value }))}
+                  >
+                    {DANH_SACH_THANG_KE_KHAI.map((item) => (
+                      <option key={`from-${item.value}`} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={fromMonthParts.year}
+                    onChange={(event) => setFromMonth((current) => capNhatGiaTriThang(current, { year: event.target.value }))}
+                  >
+                    {danhSachNamKeKhai.map((year) => (
+                      <option key={`from-year-${year}`} value={year}>
+                        Năm {year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </label>
               <label className="truong">
-                <span>Kỳ 6 tháng</span>
-                <select value={ky} onChange={(event) => setKy(event.target.value)}>
-                  <option value="1">Kỳ 1: Tháng 01-06</option>
-                  <option value="2">Kỳ 2: Tháng 07-12</option>
-                </select>
+                <span>Đến tháng</span>
+                <div className="sales-ledger-month-picker">
+                  <select
+                    value={toMonthParts.month}
+                    onChange={(event) => setToMonth((current) => capNhatGiaTriThang(current, { month: event.target.value }))}
+                  >
+                    {DANH_SACH_THANG_KE_KHAI.map((item) => (
+                      <option key={`to-${item.value}`} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={toMonthParts.year}
+                    onChange={(event) => setToMonth((current) => capNhatGiaTriThang(current, { year: event.target.value }))}
+                  >
+                    {danhSachNamKeKhai.map((year) => (
+                      <option key={`to-year-${year}`} value={year}>
+                        Năm {year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </label>
             </div>
 
@@ -7576,10 +7394,10 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                         </select>
                       ) : (
                         <input
-                          type={laFieldTien(param.name) ? 'text' : kieuInput(param.schema, spec)}
-                          value={pathValues[param.name] ?? ''}
+                          type={laFieldTien(param.name) ? 'text' : kieuInput(param.schema, spec, param.name)}
+                          value={giaTriInput(param.schema, spec, param.name, pathValues[param.name])}
                           onChange={(event) => capNhatField(setPathValues, param.name, event.target.value)}
-                          placeholder={param.name}
+                          placeholder={placeholderInput(param.schema, spec, param.name, param.name)}
                         />
                       )}
                       <small>{typeLabel(resolveSchema(param.schema, spec))}</small>
@@ -7633,7 +7451,6 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                       >
                         <option value="">Tất cả trạng thái</option>
                         <option value="paid">Đã thanh toán</option>
-                        <option value="unpaid">Chưa thanh toán</option>
                       </select>
                     ) : laLocPhongTheoHopDongActive ? (
                       <select
@@ -7656,10 +7473,10 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                       </select>
                     ) : (
                       <input
-                        type={laFieldTien(param.name) ? 'text' : kieuInput(param.schema, spec)}
-                        value={queryValues[param.name] ?? ''}
+                        type={laFieldTien(param.name) ? 'text' : kieuInput(param.schema, spec, param.name)}
+                        value={giaTriInput(param.schema, spec, param.name, queryValues[param.name])}
                         onChange={(event) => capNhatField(setQueryValues, param.name, event.target.value)}
-                        placeholder={tenDep(param.name)}
+                        placeholder={placeholderInput(param.schema, spec, param.name, tenDep(param.name))}
                       />
                     )}
                     <small>{typeLabel(resolveSchema(param.schema, spec))}</small>
@@ -7794,10 +7611,10 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                           </select>
                         ) : (
                           <input
-                            type={laFieldTien(name) ? 'text' : kieuInput(schema, spec)}
-                            value={formValues[name] ?? ''}
+                            type={laFieldTien(name) ? 'text' : kieuInput(schema, spec, name)}
+                            value={giaTriInput(schema, spec, name, formValues[name])}
                             onChange={(event) => capNhatField(setFormValues, name, event.target.value)}
-                            placeholder={nhanTruong(moduleKey, path, name)}
+                            placeholder={placeholderInput(schema, spec, name, nhanTruong(moduleKey, path, name))}
                           />
                         )}
                         <small>{typeLabel(resolved)}</small>
@@ -7860,10 +7677,10 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                           </select>
                         ) : (
                           <input
-                            type={laFieldTien(name) ? 'text' : kieuInput(schema, spec)}
-                            value={bodyValues[name] ?? ''}
+                            type={laFieldTien(name) ? 'text' : kieuInput(schema, spec, name)}
+                            value={giaTriInput(schema, spec, name, bodyValues[name])}
                             onChange={(event) => capNhatField(setBodyValues, name, event.target.value)}
-                            placeholder={nhanTruong(moduleKey, path, name)}
+                            placeholder={placeholderInput(schema, spec, name, nhanTruong(moduleKey, path, name))}
                           />
                         )}
                         <small>{typeLabel(resolved)}</small>
@@ -7907,10 +7724,10 @@ function EndpointCard({ path, method, operation, spec, moduleKey }) {
                       <label key={name} className="truong">
                         <span>{name}</span>
                         <input
-                          type={laFieldTien(name) ? 'text' : kieuInput(schema, spec)}
-                          value={formValues[name] ?? ''}
+                          type={laFieldTien(name) ? 'text' : kieuInput(schema, spec, name)}
+                          value={giaTriInput(schema, spec, name, formValues[name])}
                           onChange={(event) => capNhatField(setFormValues, name, event.target.value)}
-                          placeholder={resolved.format === 'date' ? 'YYYY-MM-DD' : name}
+                          placeholder={placeholderInput(schema, spec, name, name)}
                         />
                         <small>{typeLabel(resolved)}</small>
                       </label>
@@ -8164,6 +7981,22 @@ function App() {
   const [dangTai, setDangTai] = useState(true)
   const [loi, setLoi] = useState('')
   const [menuDiDongMo, setMenuDiDongMo] = useState(false)
+
+  useEffect(() => {
+    document.documentElement.dataset.build = BUILD_ID
+  }, [])
+
+  useEffect(() => {
+    const chanCuonDoiGiaTriInputSo = (event) => {
+      const target = event.target
+      if (target instanceof HTMLInputElement && target.type === 'number' && document.activeElement === target) {
+        target.blur()
+      }
+    }
+
+    document.addEventListener('wheel', chanCuonDoiGiaTriInputSo, { capture: true })
+    return () => document.removeEventListener('wheel', chanCuonDoiGiaTriInputSo, { capture: true })
+  }, [])
 
   useEffect(() => {
     let conHieuLuc = true

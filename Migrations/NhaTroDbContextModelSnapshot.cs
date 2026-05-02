@@ -391,6 +391,11 @@ namespace NhaTro.Migrations
                         .HasColumnType("int")
                         .HasColumnName("current_reading");
 
+                    b.Property<string>("MeterImagePath")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("meter_image_path");
+
                     b.Property<int>("PreviousReading")
                         .HasColumnType("int")
                         .HasColumnName("previous_reading");
