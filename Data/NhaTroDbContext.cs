@@ -1,12 +1,18 @@
 using Microsoft.EntityFrameworkCore;
 using NhaTro.Models;
+using NhaTro.Interfaces.Services;
 namespace NhaTro.Data
 {
     public class NhaTroDbContext : DbContext
     {
-        public NhaTroDbContext(DbContextOptions<NhaTroDbContext> options) : base(options)
+        private readonly ICurrentUserService _currentUserService;
+
+        public NhaTroDbContext(DbContextOptions<NhaTroDbContext> options, ICurrentUserService currentUserService) : base(options)
         {
+            _currentUserService = currentUserService;
         }
+
+        public DbSet<AppUser> Users { get; set; }
 
         public DbSet<Room> Rooms { get; set; }
         public DbSet<Tenant> Tenants { get; set; }
@@ -33,6 +39,83 @@ namespace NhaTro.Data
             ConfigurePaymentTransaction(modelBuilder);
             ConfigureEmailNotification(modelBuilder);
             ConfigureSystemSetting(modelBuilder);
+            ConfigureMultiTenancy(modelBuilder);
+        }
+
+        public override int SaveChanges()
+        {
+            SetAppUserIdForAddedEntities();
+            return base.SaveChanges();
+        }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            SetAppUserIdForAddedEntities();
+            return base.SaveChangesAsync(cancellationToken);
+        }
+
+        private void SetAppUserIdForAddedEntities()
+        {
+            var currentUserId = _currentUserService.UserId;
+            if (currentUserId > 0)
+            {
+                foreach (var entry in ChangeTracker.Entries().Where(e => e.State == EntityState.Added))
+                {
+                    var property = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "AppUserId");
+                    if (property != null && (int)(property.CurrentValue ?? 0) == 0)
+                    {
+                        property.CurrentValue = currentUserId;
+                    }
+                }
+            }
+        }
+
+        private void ConfigureMultiTenancy(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<AppUser>(entity =>
+            {
+                entity.ToTable("users");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.Email).HasColumnName("email").HasMaxLength(255).IsRequired();
+                entity.Property(e => e.PasswordHash).HasColumnName("password_hash").HasMaxLength(255).IsRequired();
+                entity.Property(e => e.IsActive).HasColumnName("is_active");
+                entity.Property(e => e.OtpCode).HasColumnName("otp_code").HasMaxLength(6);
+                entity.Property(e => e.OtpExpiryTime).HasColumnName("otp_expiry_time");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.HasIndex(e => e.Email).IsUnique();
+            });
+
+            // Configure Global Query Filters and FKs
+            modelBuilder.Entity<Room>().HasQueryFilter(e => e.AppUserId == _currentUserService.UserId);
+            modelBuilder.Entity<Room>().HasOne(e => e.AppUser).WithMany(u => u.Rooms).HasForeignKey(e => e.AppUserId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Tenant>().HasQueryFilter(e => e.AppUserId == _currentUserService.UserId);
+            modelBuilder.Entity<Tenant>().HasOne(e => e.AppUser).WithMany(u => u.Tenants).HasForeignKey(e => e.AppUserId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Contract>().HasQueryFilter(e => e.AppUserId == _currentUserService.UserId);
+            modelBuilder.Entity<Contract>().HasOne(e => e.AppUser).WithMany(u => u.Contracts).HasForeignKey(e => e.AppUserId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<MeterReading>().HasQueryFilter(e => e.AppUserId == _currentUserService.UserId);
+            modelBuilder.Entity<MeterReading>().HasOne(e => e.AppUser).WithMany(u => u.MeterReadings).HasForeignKey(e => e.AppUserId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Invoice>().HasQueryFilter(e => e.AppUserId == _currentUserService.UserId);
+            modelBuilder.Entity<Invoice>().HasOne(e => e.AppUser).WithMany(u => u.Invoices).HasForeignKey(e => e.AppUserId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<DepositSettlement>().HasQueryFilter(e => e.AppUserId == _currentUserService.UserId);
+            modelBuilder.Entity<DepositSettlement>().HasOne(e => e.AppUser).WithMany(u => u.DepositSettlements).HasForeignKey(e => e.AppUserId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Transaction>().HasQueryFilter(e => e.AppUserId == _currentUserService.UserId);
+            modelBuilder.Entity<Transaction>().HasOne(e => e.AppUser).WithMany(u => u.Transactions).HasForeignKey(e => e.AppUserId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<PaymentTransaction>().HasQueryFilter(e => e.AppUserId == _currentUserService.UserId);
+            modelBuilder.Entity<PaymentTransaction>().HasOne(e => e.AppUser).WithMany(u => u.PaymentTransactions).HasForeignKey(e => e.AppUserId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<EmailNotification>().HasQueryFilter(e => e.AppUserId == _currentUserService.UserId);
+            modelBuilder.Entity<EmailNotification>().HasOne(e => e.AppUser).WithMany(u => u.EmailNotifications).HasForeignKey(e => e.AppUserId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<SystemSetting>().HasQueryFilter(e => e.AppUserId == _currentUserService.UserId);
+            modelBuilder.Entity<SystemSetting>().HasOne(e => e.AppUser).WithMany(u => u.SystemSettings).HasForeignKey(e => e.AppUserId).OnDelete(DeleteBehavior.Restrict);
         }
 
         private static void ConfigureRoom(ModelBuilder modelBuilder)
@@ -152,6 +235,16 @@ namespace NhaTro.Data
                     .HasMaxLength(20)
                     .IsRequired();
 
+                entity.Property(e => e.IsArchived)
+                    .HasColumnName("is_archived");
+
+                entity.Property(e => e.ArchivedAt)
+                    .HasColumnName("archived_at");
+
+                entity.Property(e => e.ArchiveReason)
+                    .HasColumnName("archive_reason")
+                    .HasMaxLength(500);
+
                 entity.Property(e => e.CreatedAt)
                     .HasColumnName("created_at");
 
@@ -173,7 +266,7 @@ namespace NhaTro.Data
 
                 entity.ToTable(t =>
                 {
-                    t.HasCheckConstraint("CK_contracts_status", "status IN ('active', 'ended')");
+                    t.HasCheckConstraint("CK_contracts_status", "status IN ('active', 'ended', 'cancelled')");
                     t.HasCheckConstraint("CK_contracts_deposit_amount", "deposit_amount >= 0");
                     t.HasCheckConstraint("CK_contracts_occupant_count", "occupant_count > 0");
                     t.HasCheckConstraint("CK_contracts_actual_room_price", "actual_room_price > 0");

@@ -27,7 +27,14 @@ namespace NhaTro.Models
 
         [Required]
         [MaxLength(20)]
-        public string Status { get; set; } = "active"; // active | ended
+        public string Status { get; set; } = "active"; // active | ended | cancelled
+
+        public bool IsArchived { get; set; }
+
+        public DateTime? ArchivedAt { get; set; }
+
+        [MaxLength(500)]
+        public string? ArchiveReason { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -40,5 +47,8 @@ namespace NhaTro.Models
         public ICollection<MeterReading> MeterReadings { get; set; } = new List<MeterReading>();
         public ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
         public DepositSettlement? DepositSettlement { get; set; }
+        public int AppUserId { get; set; }
+        public AppUser? AppUser { get; set; }
+
     }
 }

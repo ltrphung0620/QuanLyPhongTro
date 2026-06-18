@@ -43,7 +43,6 @@ QuanLyPhongTro/
 ├── react-ui/
 ├── Program.cs
 ├── appsettings.json
-├── appsettings.Production.json
 ├── NhaTro.csproj
 └── NhaTro.sln
 ```
@@ -158,12 +157,6 @@ npm install
 npm run dev
 ```
 
-### 4. Build frontend
-
-```bash
-npm run build
-```
-
 ---
 
 ## Notes
@@ -171,7 +164,6 @@ npm run build
 - Backend sử dụng SQL Server nên cần cài SQL Server hoặc SQL Server Express trước khi chạy.
 - Dự án có hỗ trợ tạo PDF hóa đơn.
 - Trong backend có đăng ký service xử lý chỉ số điện nước từ ảnh, nên có thể đang hướng tới chức năng OCR cho nhập liệu nhanh.
-- Thư mục `publish/` có thể dùng cho bản build/deploy.
 - Thư mục `react-ui/README.md` hiện vẫn là README mặc định của Vite, nên có thể cập nhật thêm nếu muốn đồng bộ tài liệu.
 
 ---
@@ -199,7 +191,6 @@ npm run dev
 - Dashboard trực quan hơn
 - Upload ảnh hóa đơn / công tơ
 - Tích hợp thanh toán online
-- Dockerize toàn bộ hệ thống
 
 ---
 

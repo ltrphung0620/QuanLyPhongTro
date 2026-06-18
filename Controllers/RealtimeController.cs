@@ -1,8 +1,10 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NhaTro.Interfaces.Services;
 
 namespace NhaTro.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     public class RealtimeController : ControllerBase

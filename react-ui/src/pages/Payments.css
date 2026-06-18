@@ -1,0 +1,156 @@
+.payments-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.payments-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.payments-header .subtitle {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.payments-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Empty State */
+.payments-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 80px 20px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.payments-empty-state h3 {
+  font-size: 1.15rem;
+  font-weight: 750;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.payments-empty-state p {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+/* Ledger Item layout */
+.ledger-item-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dir-icon-bg {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dir-icon-bg.income {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.dir-icon-bg.expense {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+/* Category badge */
+.cat-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.cat-badge.operating {
+  background: rgba(145, 118, 110, 0.1);
+  color: var(--text-primary);
+}
+
+.cat-badge.other {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.font-bold {
+  font-weight: 750 !important;
+}
+
+.desc-cell-txt {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  max-width: 200px;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Bank custom columns */
+.bank-provider-cell {
+  display: flex;
+  flex-direction: column;
+}
+
+.bank-provider-cell .subtext {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.bank-content-txt {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  max-width: 250px;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Reconcile badges */
+.reconcile-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.reconcile-status-badge.success {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.reconcile-status-badge.pending {
+  background: var(--warning-light);
+  color: var(--warning);
+}

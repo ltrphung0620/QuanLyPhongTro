@@ -1,0 +1,269 @@
+.contracts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.contracts-header .subtitle {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.contracts-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+/* Empty State */
+.contracts-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 80px 20px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.contracts-empty-state h3 {
+  font-size: 1.15rem;
+  font-weight: 750;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.contracts-empty-state p {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+/* Custom Cells */
+.contract-room-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.05rem;
+  color: var(--text-primary);
+}
+
+.cell-icon-accent {
+  color: var(--accent);
+}
+
+.contract-tenant-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.occupant-pill {
+  padding: 2px 8px;
+  background: var(--border-color);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+
+.contract-date-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.contract-action-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btn-xs {
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+}
+
+/* Warning box */
+.warning-notice-box {
+  display: flex;
+  gap: 16px;
+  background: var(--danger-light);
+  border: 1px solid rgba(166, 93, 87, 0.15);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+}
+
+.warning-notice-box h4 {
+  font-size: 0.95rem;
+  font-weight: 750;
+  color: var(--danger);
+  margin-bottom: 4px;
+}
+
+.warning-notice-box p {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Checkout Wizard Modal size */
+.checkout-modal-size {
+  max-width: 600px;
+}
+
+.checkout-tenant-summary-box {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.checkout-tenant-summary-box strong {
+  color: var(--text-primary);
+}
+
+/* Wizard Steps indicator */
+.checkout-wizard-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 28px;
+}
+
+.step-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 1;
+}
+
+.step-indicator span {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  border: 2px solid var(--border-color);
+  color: var(--text-muted);
+  font-weight: 750;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.88rem;
+  transition: var(--transition-fast);
+}
+
+.step-indicator label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.step-indicator.active span {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.step-indicator.active label {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.step-indicator.completed span {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+
+.step-indicator.completed label {
+  color: var(--success);
+}
+
+.step-line {
+  flex: 1;
+  height: 2px;
+  background: var(--border-color);
+  margin-top: -20px; /* Offset label spacing */
+}
+
+.step-line.active {
+  background: var(--success);
+}
+
+.form-help {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+  font-style: italic;
+}
+
+/* Preview billing sheet */
+.checkout-preview-sheet {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.sheet-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+}
+
+.sheet-row.header-row {
+  background: var(--accent-light);
+  font-weight: 750;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sheet-row.highlight-subtotal {
+  background: rgba(246, 236, 227, 0.2);
+  font-weight: 750;
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border-color);
+}
+
+.sheet-row.final-reconcile-row {
+  background: rgba(145, 118, 110, 0.05);
+  padding: 16px 18px;
+  border-bottom: none;
+}
+
+.reconcile-label {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.reconcile-value {
+  font-size: 1.15rem;
+  font-weight: 850;
+}

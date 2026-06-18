@@ -33,5 +33,8 @@ namespace NhaTro.Models
 
         public Room? RelatedRoom { get; set; }
         public Invoice? RelatedInvoice { get; set; }
+        public int AppUserId { get; set; }
+        public AppUser? AppUser { get; set; }
+
     }
 }

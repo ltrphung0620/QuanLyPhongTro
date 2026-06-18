@@ -6,11 +6,29 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace NhaTro.Migrations
 {
     /// <inheritdoc />
-    public partial class Init : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.CreateTable(
+                name: "users",
+                columns: table => new
+                {
+                    id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    email = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    password_hash = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    is_active = table.Column<bool>(type: "bit", nullable: false),
+                    otp_code = table.Column<string>(type: "nvarchar(6)", maxLength: 6, nullable: true),
+                    otp_expiry_time = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    created_at = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_users", x => x.id);
+                });
+
             migrationBuilder.CreateTable(
                 name: "email_notifications",
                 columns: table => new
@@ -23,11 +41,18 @@ namespace NhaTro.Migrations
                     payload_json = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
                     sent_at = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    created_at = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    created_at = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    AppUserId = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_email_notifications", x => x.email_notification_id);
+                    table.ForeignKey(
+                        name: "FK_email_notifications_users_AppUserId",
+                        column: x => x.AppUserId,
+                        principalTable: "users",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -40,12 +65,19 @@ namespace NhaTro.Migrations
                     listed_price = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     created_at = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    updated_at = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    updated_at = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    AppUserId = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_rooms", x => x.room_id);
                     table.CheckConstraint("CK_rooms_status", "status IN ('vacant', 'occupied')");
+                    table.ForeignKey(
+                        name: "FK_rooms_users_AppUserId",
+                        column: x => x.AppUserId,
+                        principalTable: "users",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -55,11 +87,18 @@ namespace NhaTro.Migrations
                     setting_key = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     setting_value = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
                     description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    updated_at = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    updated_at = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    AppUserId = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_system_settings", x => x.setting_key);
+                    table.ForeignKey(
+                        name: "FK_system_settings_users_AppUserId",
+                        column: x => x.AppUserId,
+                        principalTable: "users",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -72,11 +111,18 @@ namespace NhaTro.Migrations
                     phone = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
                     cccd = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     created_at = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    updated_at = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    updated_at = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    AppUserId = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_tenants", x => x.tenant_id);
+                    table.ForeignKey(
+                        name: "FK_tenants_users_AppUserId",
+                        column: x => x.AppUserId,
+                        principalTable: "users",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -95,7 +141,8 @@ namespace NhaTro.Migrations
                     actual_room_price = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     created_at = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    updated_at = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    updated_at = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    AppUserId = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -116,6 +163,12 @@ namespace NhaTro.Migrations
                         principalTable: "tenants",
                         principalColumn: "tenant_id",
                         onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_contracts_users_AppUserId",
+                        column: x => x.AppUserId,
+                        principalTable: "users",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -124,13 +177,15 @@ namespace NhaTro.Migrations
                 {
                     deposit_settlement_id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    contract_id = table.Column<int>(type: "int", nullable: false),
+                    contract_id = table.Column<int>(type: "int", nullable: true),
                     deposit_amount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     final_invoice_amount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     deducted_amount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     refunded_amount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     settled_at = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    note = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                    note = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    contract_snapshot_json = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    AppUserId = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -142,6 +197,12 @@ namespace NhaTro.Migrations
                         column: x => x.contract_id,
                         principalTable: "contracts",
                         principalColumn: "contract_id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_deposit_settlements_users_AppUserId",
+                        column: x => x.AppUserId,
+                        principalTable: "users",
+                        principalColumn: "id",
                         onDelete: ReferentialAction.Restrict);
                 });
 
@@ -152,7 +213,7 @@ namespace NhaTro.Migrations
                     invoice_id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     room_id = table.Column<int>(type: "int", nullable: false),
-                    contract_id = table.Column<int>(type: "int", nullable: false),
+                    contract_id = table.Column<int>(type: "int", nullable: true),
                     invoice_type = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     billing_month = table.Column<DateOnly>(type: "date", nullable: true),
                     from_date = table.Column<DateOnly>(type: "date", nullable: true),
@@ -161,6 +222,7 @@ namespace NhaTro.Migrations
                     electricity_fee = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     water_fee = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     trash_fee = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    extra_fee = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     discount_amount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     debt_amount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     total_amount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
@@ -171,9 +233,12 @@ namespace NhaTro.Migrations
                     payment_method = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     payment_reference = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     replaced_by_invoice_id = table.Column<int>(type: "int", nullable: true),
+                    extra_fee_note = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     note = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    contract_snapshot_json = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     created_at = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    updated_at = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    updated_at = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    AppUserId = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -185,7 +250,7 @@ namespace NhaTro.Migrations
                         column: x => x.contract_id,
                         principalTable: "contracts",
                         principalColumn: "contract_id",
-                        onDelete: ReferentialAction.Restrict);
+                        onDelete: ReferentialAction.SetNull);
                     table.ForeignKey(
                         name: "FK_invoices_invoices_replaced_by_invoice_id",
                         column: x => x.replaced_by_invoice_id,
@@ -198,6 +263,12 @@ namespace NhaTro.Migrations
                         principalTable: "rooms",
                         principalColumn: "room_id",
                         onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_invoices_users_AppUserId",
+                        column: x => x.AppUserId,
+                        principalTable: "users",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -207,14 +278,17 @@ namespace NhaTro.Migrations
                     meter_reading_id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     room_id = table.Column<int>(type: "int", nullable: false),
-                    contract_id = table.Column<int>(type: "int", nullable: false),
+                    contract_id = table.Column<int>(type: "int", nullable: true),
                     billing_month = table.Column<DateOnly>(type: "date", nullable: false),
                     previous_reading = table.Column<int>(type: "int", nullable: false),
                     current_reading = table.Column<int>(type: "int", nullable: false),
                     consumed_units = table.Column<int>(type: "int", nullable: false),
                     unit_price = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     amount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
-                    created_at = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    created_at = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    meter_image_path = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    contract_snapshot_json = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    AppUserId = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -226,12 +300,18 @@ namespace NhaTro.Migrations
                         column: x => x.contract_id,
                         principalTable: "contracts",
                         principalColumn: "contract_id",
-                        onDelete: ReferentialAction.Restrict);
+                        onDelete: ReferentialAction.SetNull);
                     table.ForeignKey(
                         name: "FK_meter_readings_rooms_room_id",
                         column: x => x.room_id,
                         principalTable: "rooms",
                         principalColumn: "room_id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_meter_readings_users_AppUserId",
+                        column: x => x.AppUserId,
+                        principalTable: "users",
+                        principalColumn: "id",
                         onDelete: ReferentialAction.Restrict);
                 });
 
@@ -254,7 +334,8 @@ namespace NhaTro.Migrations
                     matched_invoice_id = table.Column<int>(type: "int", nullable: true),
                     process_status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
                     processed_at = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    created_at = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    created_at = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    AppUserId = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -266,6 +347,12 @@ namespace NhaTro.Migrations
                         principalTable: "invoices",
                         principalColumn: "invoice_id",
                         onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_payment_transactions_users_AppUserId",
+                        column: x => x.AppUserId,
+                        principalTable: "users",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -280,8 +367,10 @@ namespace NhaTro.Migrations
                     amount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     transaction_date = table.Column<DateOnly>(type: "date", nullable: false),
                     description = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    related_room_id = table.Column<int>(type: "int", nullable: true),
                     related_invoice_id = table.Column<int>(type: "int", nullable: true),
-                    created_at = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    created_at = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    AppUserId = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -295,7 +384,24 @@ namespace NhaTro.Migrations
                         principalTable: "invoices",
                         principalColumn: "invoice_id",
                         onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_transactions_rooms_related_room_id",
+                        column: x => x.related_room_id,
+                        principalTable: "rooms",
+                        principalColumn: "room_id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_transactions_users_AppUserId",
+                        column: x => x.AppUserId,
+                        principalTable: "users",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                 });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_contracts_AppUserId",
+                table: "contracts",
+                column: "AppUserId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_contracts_room_id_status",
@@ -308,10 +414,26 @@ namespace NhaTro.Migrations
                 column: "tenant_id");
 
             migrationBuilder.CreateIndex(
+                name: "IX_deposit_settlements_AppUserId",
+                table: "deposit_settlements",
+                column: "AppUserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_deposit_settlements_contract_id",
                 table: "deposit_settlements",
                 column: "contract_id",
-                unique: true);
+                unique: true,
+                filter: "[contract_id] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_email_notifications_AppUserId",
+                table: "email_notifications",
+                column: "AppUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_invoices_AppUserId",
+                table: "invoices",
+                column: "AppUserId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_invoices_contract_id",
@@ -336,6 +458,11 @@ namespace NhaTro.Migrations
                 columns: new[] { "room_id", "billing_month", "invoice_type" });
 
             migrationBuilder.CreateIndex(
+                name: "IX_meter_readings_AppUserId",
+                table: "meter_readings",
+                column: "AppUserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_meter_readings_contract_id",
                 table: "meter_readings",
                 column: "contract_id");
@@ -345,6 +472,11 @@ namespace NhaTro.Migrations
                 table: "meter_readings",
                 columns: new[] { "room_id", "billing_month" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_payment_transactions_AppUserId",
+                table: "payment_transactions",
+                column: "AppUserId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_payment_transactions_matched_invoice_id",
@@ -358,15 +490,46 @@ namespace NhaTro.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_rooms_AppUserId",
+                table: "rooms",
+                column: "AppUserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_rooms_room_code",
                 table: "rooms",
                 column: "room_code",
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_system_settings_AppUserId",
+                table: "system_settings",
+                column: "AppUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_tenants_AppUserId",
+                table: "tenants",
+                column: "AppUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_transactions_AppUserId",
+                table: "transactions",
+                column: "AppUserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_transactions_related_invoice_id",
                 table: "transactions",
                 column: "related_invoice_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_transactions_related_room_id",
+                table: "transactions",
+                column: "related_room_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_users_email",
+                table: "users",
+                column: "email",
+                unique: true);
         }
 
         /// <inheritdoc />
@@ -401,6 +564,9 @@ namespace NhaTro.Migrations
 
             migrationBuilder.DropTable(
                 name: "tenants");
+
+            migrationBuilder.DropTable(
+                name: "users");
         }
     }
 }
