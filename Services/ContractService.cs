@@ -23,7 +23,8 @@ namespace NhaTro.Services
         private static readonly HashSet<string> AllowedStatuses = new()
         {
             "active",
-            "ended"
+            "ended",
+            "cancelled"
         };
 
         public ContractService(
@@ -44,14 +45,14 @@ namespace NhaTro.Services
             _transactionRepository = transactionRepository;
         }
 
-        public async Task<List<ContractDto>> GetAllAsync(string? status = null, int? roomId = null)
+        public async Task<List<ContractDto>> GetAllAsync(string? status = null, int? roomId = null, bool includeArchived = false)
         {
             if (!string.IsNullOrWhiteSpace(status))
             {
                 ValidateStatus(status);
             }
 
-            var contracts = await _contractRepository.GetAllAsync(status, roomId);
+            var contracts = await _contractRepository.GetAllAsync(status, roomId, includeArchived);
             return contracts.Select(MapToDto).ToList();
         }
 
@@ -147,21 +148,59 @@ namespace NhaTro.Services
                 return false;
             }
 
-            if (!string.Equals(contract.Status?.Trim(), "ended", StringComparison.OrdinalIgnoreCase))
+            if (contract.IsArchived)
             {
-                throw new InvalidOperationException("Chỉ được xóa hợp đồng đã chấm dứt.");
-            }
-
-            try
-            {
-                _contractRepository.Delete(contract);
-                await _contractRepository.SaveChangesAsync();
                 return true;
             }
-            catch (DbUpdateException)
+
+            if (!HasStatus(contract, "ended") && !HasStatus(contract, "cancelled"))
             {
-                throw new InvalidOperationException("Hợp đồng đã có dữ liệu liên quan nên chưa thể xóa.");
+                throw new InvalidOperationException("Chỉ được lưu trữ hợp đồng đã kết thúc hoặc đã hủy. Nếu tạo nhầm hợp đồng đang hiệu lực, hãy hủy hợp đồng trước.");
             }
+
+            ArchiveContract(contract, "Lưu trữ hợp đồng khỏi danh sách chính.");
+            _contractRepository.Update(contract);
+            await _contractRepository.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<ContractDto?> CancelAsync(int contractId, CancelContractDto dto)
+        {
+            var contract = await _contractRepository.GetByIdAsync(contractId);
+            if (contract == null)
+            {
+                return null;
+            }
+
+            if (!HasStatus(contract, "active"))
+            {
+                throw new InvalidOperationException("Chỉ được hủy hợp đồng đang hiệu lực.");
+            }
+
+            if (await HasRelatedBusinessDataAsync(contract.ContractId))
+            {
+                throw new InvalidOperationException("Hợp đồng đã phát sinh hóa đơn, chỉ số điện hoặc quyết toán cọc nên không thể hủy. Hãy dùng chức năng kết thúc hợp đồng.");
+            }
+
+            contract.Status = "cancelled";
+            contract.ArchiveReason = string.IsNullOrWhiteSpace(dto.Reason)
+                ? "Hủy hợp đồng chưa phát sinh dữ liệu."
+                : dto.Reason.Trim();
+            contract.UpdatedAt = DateTime.UtcNow;
+            _contractRepository.Update(contract);
+
+            var room = await _roomRepository.GetByIdAsync(contract.RoomId);
+            if (room != null)
+            {
+                room.Status = "vacant";
+                room.UpdatedAt = DateTime.UtcNow;
+                _roomRepository.Update(room);
+            }
+
+            await _contractRepository.SaveChangesAsync();
+
+            var updatedContract = await _contractRepository.GetByIdAsync(contract.ContractId);
+            return MapToDto(updatedContract!);
         }
 
         public async Task<ContractEndPreviewDto> EndPreviewAsync(int contractId, ContractEndPreviewRequestDto dto)
@@ -384,8 +423,36 @@ namespace NhaTro.Services
 
             if (!AllowedStatuses.Contains(normalizedStatus))
             {
-                throw new ArgumentException("Status chỉ được là 'active' hoặc 'ended'.");
+                throw new ArgumentException("Status chỉ được là 'active', 'ended' hoặc 'cancelled'.");
             }
+        }
+
+        private async Task<bool> HasRelatedBusinessDataAsync(int contractId)
+        {
+            var invoices = await _invoiceRepository.GetByContractIdAsync(contractId);
+            if (invoices.Count > 0)
+            {
+                return true;
+            }
+
+            var meterReadings = await _meterReadingRepository.GetByContractIdAsync(contractId);
+            if (meterReadings.Count > 0)
+            {
+                return true;
+            }
+
+            var settlement = await _depositSettlementRepository.GetByContractIdAsync(contractId);
+            return settlement != null;
+        }
+
+        private static void ArchiveContract(Contract contract, string reason)
+        {
+            contract.IsArchived = true;
+            contract.ArchivedAt = DateTime.UtcNow;
+            contract.ArchiveReason = string.IsNullOrWhiteSpace(contract.ArchiveReason)
+                ? reason
+                : contract.ArchiveReason;
+            contract.UpdatedAt = DateTime.UtcNow;
         }
 
         private async Task<string> GenerateFinalPaymentCodeAsync(string? roomCode, DateOnly actualEndDate)
@@ -436,6 +503,9 @@ namespace NhaTro.Services
                 OccupantCount = contract.OccupantCount,
                 ActualRoomPrice = contract.ActualRoomPrice,
                 Status = contract.Status,
+                IsArchived = contract.IsArchived,
+                ArchivedAt = contract.ArchivedAt,
+                ArchiveReason = contract.ArchiveReason,
                 CreatedAt = contract.CreatedAt,
                 UpdatedAt = contract.UpdatedAt
             };
@@ -451,6 +521,11 @@ namespace NhaTro.Services
                 return null;
 
             return MapToDto(contract);
+        }
+
+        private static bool HasStatus(Contract contract, string expectedStatus)
+        {
+            return string.Equals(contract.Status?.Trim(), expectedStatus, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

@@ -1,0 +1,111 @@
+.tenants-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.tenants-header .subtitle {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.tenants-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.total-indicator {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.total-indicator strong {
+  color: var(--text-primary);
+  font-size: 1.05rem;
+}
+
+/* Empty State */
+.tenants-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 80px 20px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.tenants-empty-state h3 {
+  font-size: 1.15rem;
+  font-weight: 750;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.tenants-empty-state p {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+/* Tenant custom profile cell in table */
+.tenant-profile-cell {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.tenant-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 0 0 1px rgba(145, 118, 110, 0.1);
+}
+
+.tenant-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.tenant-name {
+  font-weight: 750;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.tenant-id-badge {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* Contact information cells */
+.contact-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.cell-icon {
+  color: var(--text-secondary);
+}
+
+.date-cell {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}

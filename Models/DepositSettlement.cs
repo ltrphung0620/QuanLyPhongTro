@@ -27,5 +27,8 @@ namespace NhaTro.Models
         public string? ContractSnapshotJson { get; set; }
 
         public Contract? Contract { get; set; }
+        public int AppUserId { get; set; }
+        public AppUser? AppUser { get; set; }
+
     }
 }

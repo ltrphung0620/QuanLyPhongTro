@@ -52,7 +52,7 @@ namespace NhaTro.Services
 
             if (dto.ContractId != contract.ContractId)
             {
-                throw new InvalidOperationException("Há»£p Ä‘á»“ng ghi chá»‰ sá»‘ khÃ´ng cÃ²n hiá»‡u lá»±c.");
+                throw new InvalidOperationException("Lỗi.");
             }
 
             var normalizedBillingMonth = NormalizeMonth(dto.BillingMonth);

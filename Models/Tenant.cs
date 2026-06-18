@@ -21,5 +21,8 @@ namespace NhaTro.Models
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
         public ICollection<Contract> Contracts { get; set; } = new List<Contract>();
+        public int AppUserId { get; set; }
+        public AppUser? AppUser { get; set; }
+
     }
 }

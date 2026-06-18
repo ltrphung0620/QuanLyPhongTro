@@ -34,5 +34,8 @@ namespace NhaTro.Models
         public Room? Room { get; set; }
 
         public Contract? Contract { get; set; }
+        public int AppUserId { get; set; }
+        public AppUser? AppUser { get; set; }
+
     }
 }

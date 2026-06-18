@@ -46,5 +46,8 @@ namespace NhaTro.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public Invoice? MatchedInvoice { get; set; }
+        public int AppUserId { get; set; }
+        public AppUser? AppUser { get; set; }
+
     }
 }

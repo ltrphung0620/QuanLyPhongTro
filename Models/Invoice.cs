@@ -84,5 +84,8 @@ namespace NhaTro.Models
         public ICollection<Invoice> ReplacingInvoices { get; set; } = new List<Invoice>();
         public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
         public ICollection<PaymentTransaction> PaymentTransactions { get; set; } = new List<PaymentTransaction>();
+        public int AppUserId { get; set; }
+        public AppUser? AppUser { get; set; }
+
     }
 }

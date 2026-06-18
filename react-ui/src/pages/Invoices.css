@@ -1,0 +1,103 @@
+.invoices-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.invoices-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.invoices-header .subtitle {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.invoices-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Empty State */
+.invoices-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 80px 20px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.invoices-empty-state h3 {
+  font-size: 1.15rem;
+  font-weight: 750;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.invoices-empty-state p {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+/* Detail mini cells */
+.details-cell-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.details-cell-mini .subtext {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.type-badge-mini {
+  display: inline-block;
+  padding: 2px 6px;
+  background: var(--danger-light);
+  color: var(--danger);
+  font-size: 0.68rem;
+  font-weight: 750;
+  border-radius: 4px;
+  text-transform: uppercase;
+  margin-left: 6px;
+  letter-spacing: 0.02em;
+}
+
+.payment-code-lbl {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Action button items */
+.invoice-actions-flex {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.btn-danger-icon:hover {
+  background: var(--danger) !important;
+  color: #fff !important;
+  border-color: var(--danger) !important;
+}

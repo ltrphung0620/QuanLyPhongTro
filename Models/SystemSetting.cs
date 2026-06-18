@@ -16,5 +16,8 @@ namespace NhaTro.Models
         public string? Description { get; set; }
 
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+        public int AppUserId { get; set; }
+        public AppUser? AppUser { get; set; }
+
     }
 }

@@ -3,7 +3,6 @@
 # =========================
 bin/
 obj/
-publish/
 
 # =========================
 # User / IDE files
@@ -36,8 +35,6 @@ secrets.json
 # Node / React (react-ui)
 # =========================
 react-ui/node_modules/
-react-ui/dist/
-react-ui/build/
 
 # Nếu package ở root thì mở dòng dưới
 node_modules/

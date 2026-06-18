@@ -14,12 +14,17 @@ namespace NhaTro.Repositories
             _context = context;
         }
 
-        public async Task<List<Contract>> GetAllAsync(string? status = null, int? roomId = null)
+        public async Task<List<Contract>> GetAllAsync(string? status = null, int? roomId = null, bool includeArchived = false)
         {
             var query = _context.Contracts
                 .Include(c => c.Room)
                 .Include(c => c.Tenant)
                 .AsQueryable();
+
+            if (!includeArchived)
+            {
+                query = query.Where(c => !c.IsArchived);
+            }
 
             if (!string.IsNullOrWhiteSpace(status))
             {
@@ -52,6 +57,7 @@ namespace NhaTro.Repositories
                 .Include(c => c.Tenant)
                 .FirstOrDefaultAsync(c =>
                     c.RoomId == roomId &&
+                    !c.IsArchived &&
                     c.Status != null &&
                     c.Status.Trim().ToLower() == "active");
         }
@@ -59,11 +65,6 @@ namespace NhaTro.Repositories
         public async Task AddAsync(Contract contract)
         {
             await _context.Contracts.AddAsync(contract);
-        }
-
-        public void Delete(Contract contract)
-        {
-            _context.Contracts.Remove(contract);
         }
 
         public void Update(Contract contract)
@@ -86,6 +87,7 @@ namespace NhaTro.Repositories
                     c.Room != null &&
                     c.Room.RoomCode != null &&
                     c.Room.RoomCode.Trim().ToLower() == normalized &&
+                    !c.IsArchived &&
                     c.Status != null &&
                     c.Status.Trim().ToLower() == "active");
         }

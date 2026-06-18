@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NhaTro.Dtos.Contracts;
 using NhaTro.Interfaces.Services;
 
 namespace NhaTro.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     public class ContractsController : ControllerBase
@@ -16,11 +18,11 @@ namespace NhaTro.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll([FromQuery] string? status = null, [FromQuery] int? roomId = null)
+        public async Task<IActionResult> GetAll([FromQuery] string? status = null, [FromQuery] int? roomId = null, [FromQuery] bool includeArchived = false)
         {
             try
             {
-                var contracts = await _contractService.GetAllAsync(status, roomId);
+                var contracts = await _contractService.GetAllAsync(status, roomId, includeArchived);
                 return Ok(contracts);
             }
             catch (ArgumentException ex)
@@ -92,6 +94,26 @@ namespace NhaTro.Controllers
                 }
 
                 return NoContent();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("{id:int}/cancel")]
+        public async Task<IActionResult> Cancel(int id, [FromBody] CancelContractDto dto)
+        {
+            try
+            {
+                var result = await _contractService.CancelAsync(id, dto);
+
+                if (result == null)
+                {
+                    return NotFound(new { message = "Không tìm thấy hợp đồng." });
+                }
+
+                return Ok(result);
             }
             catch (InvalidOperationException ex)
             {

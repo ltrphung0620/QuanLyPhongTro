@@ -1,0 +1,142 @@
+.meter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.meter-header .subtitle {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.meter-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Empty states */
+.meter-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 80px 20px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.meter-empty-state h3 {
+  font-size: 1.15rem;
+  font-weight: 750;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.meter-empty-state p {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+/* Grid Layout for missing readings */
+.meter-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.meter-room-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 120px;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition-normal);
+}
+
+.meter-room-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.meter-room-card .room-number {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  display: block;
+}
+
+.meter-room-card .tenant-name {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.meter-room-card .card-top {
+  margin-bottom: 16px;
+}
+
+.text-xs {
+  font-size: 0.75rem;
+}
+
+.text-danger-custom {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* Consumed kWh badge */
+.consumed-badge {
+  padding: 4px 8px;
+  background: rgba(145, 118, 110, 0.1);
+  color: var(--text-primary);
+  font-weight: 750;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+}
+
+/* Calculation preview inside modal */
+.reading-calc-preview {
+  margin-top: 20px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calc-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.calc-row strong {
+  color: var(--text-primary);
+}
+
+.calc-row.total-row {
+  border-top: 1px dashed var(--border-color);
+  padding-top: 8px;
+  margin-top: 4px;
+  font-weight: 800;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
