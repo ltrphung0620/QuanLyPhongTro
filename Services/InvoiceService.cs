@@ -440,11 +440,42 @@ namespace NhaTro.Services
             if (invoice.Status == "paid")
                 throw new InvalidOperationException("Khong the xoa hoa don da thanh toan.");
 
+            DetachInvoiceReferences(invoice);
+
             var deleted = await _invoiceRepo.DeleteAsync(invoiceId);
             if (deleted)
                 await _invoiceRepo.SaveChangesAsync();
 
             return deleted;
+        }
+
+        private static void DetachInvoiceReferences(Invoice invoice)
+        {
+            foreach (var replacingInvoice in invoice.ReplacingInvoices.ToList())
+            {
+                replacingInvoice.ReplacedByInvoiceId = null;
+                replacingInvoice.ReplacedByInvoice = null;
+                replacingInvoice.UpdatedAt = DateTime.UtcNow;
+            }
+
+            foreach (var transaction in invoice.Transactions.ToList())
+            {
+                transaction.RelatedInvoiceId = null;
+                transaction.RelatedInvoice = null;
+            }
+
+            foreach (var payment in invoice.PaymentTransactions.ToList())
+            {
+                payment.MatchedInvoiceId = null;
+                payment.MatchedInvoice = null;
+
+                if (string.Equals(payment.ProcessStatus, "matched", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(payment.ProcessStatus, "paid", StringComparison.OrdinalIgnoreCase))
+                {
+                    payment.ProcessStatus = "received";
+                    payment.ProcessedAt = null;
+                }
+            }
         }
 
         private static DateOnly NormalizeMonth(DateOnly date)

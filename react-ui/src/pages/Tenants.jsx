@@ -116,7 +116,7 @@ export default function Tenants() {
   const filteredTenants = tenants.filter(tenant => {
     const query = searchQuery.toLowerCase()
     return (
-      tenant.fullName.toLowerCase().includes(query) ||
+      (tenant.fullName || '').toLowerCase().includes(query) ||
       (tenant.phone && tenant.phone.includes(query)) ||
       (tenant.cccd && tenant.cccd.includes(query))
     )

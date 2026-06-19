@@ -18,6 +18,7 @@ obj/
 # Logs
 # =========================
 *.log
+App_Data/assistant-learning.json
 
 # =========================
 # OS files

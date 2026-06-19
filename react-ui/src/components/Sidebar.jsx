@@ -8,7 +8,9 @@ import {
   Zap, 
   Receipt, 
   History,
-  LogOut 
+  LogOut,
+  FileSpreadsheet,
+  Bot
 } from 'lucide-react'
 import './Sidebar.css'
 
@@ -28,19 +30,13 @@ export default function Sidebar({ isOpen }) {
     { path: '/meter-readings', label: 'Chỉ Số Điện Nước', icon: Zap },
     { path: '/invoices', label: 'Hóa Đơn', icon: Receipt },
     { path: '/payments', label: 'Lịch Sử Giao Dịch', icon: History },
+    { path: '/reports', label: 'Báo Cáo Sổ Quỹ', icon: FileSpreadsheet },
+    { path: '/assistant', label: 'Trợ Lý AI', icon: Bot },
   ]
 
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
-      <div className="sidebar-brand">
-        <div className="brand-logo">
-          <Home size={20} className="brand-logo-icon" />
-        </div>
-        <div className="brand-info">
-          <h2>NhaTro Premium</h2>
-          <span>Quản lý phòng trọ</span>
-        </div>
-      </div>
+      {/* Brand header area removed as requested */}
 
       <nav className="sidebar-nav">
         <ul>

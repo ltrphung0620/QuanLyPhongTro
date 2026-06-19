@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { 
   Receipt, 
   Plus, 
@@ -6,15 +6,12 @@ import {
   Trash2, 
   X, 
   Download, 
-  CheckSquare, 
   RefreshCw, 
   Loader2, 
   AlertCircle, 
-  CheckCircle2, 
-  Calendar,
   Layers,
-  Clock,
-  ArrowRight
+  Edit3,
+  Info
 } from 'lucide-react'
 import { 
   layHoaDonThang, 
@@ -24,11 +21,16 @@ import {
   huyThanhToanHoaDon, 
   xoaHoaDon, 
   downloadInvoicePdf,
-  layDanhSachHopDong
+  layDanhSachHopDong,
+  thayTheHoaDon,
+  suaHoaDon,
+  previewHoaDon
 } from '../api'
 import './Invoices.css'
+import { useNotification } from '../context/NotificationContext'
 
 export default function Invoices() {
+  const { toast, confirm } = useNotification()
   const [thang, setThang] = useState(() => {
     const today = new Date()
     const yyyy = today.getFullYear()
@@ -77,7 +79,18 @@ export default function Invoices() {
   const [payError, setPayError] = useState(null)
   const [paySubmitting, setPaySubmitting] = useState(false)
 
-  const taiDuLieu = async () => {
+  // Edit Invoice Modal State
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null) // invoice object
+  const [editForm, setEditForm] = useState({
+    discountAmount: '0',
+    debtAmount: '0',
+    note: ''
+  })
+  const [editError, setEditError] = useState(null)
+  const [editSubmitting, setEditSubmitting] = useState(false)
+
+  const taiDuLieu = useCallback(async () => {
     setLoading(true)
     setError(null)
     const formattedMonth = `${thang}-01`
@@ -94,11 +107,37 @@ export default function Invoices() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [thang])
 
   useEffect(() => {
-    taiDuLieu()
-  }, [thang])
+    const timer = setTimeout(() => taiDuLieu(), 0)
+    return () => clearTimeout(timer)
+  }, [taiDuLieu])
+
+  // SSE Real-time auto-reload: lắng nghe sự kiện từ server để tự động làm mới dữ liệu
+  useEffect(() => {
+    const handleRealtimeEvent = (event) => {
+      const payload = event.detail
+      if (
+        payload.eventName === 'invoice.created' ||
+        payload.eventName === 'invoice.bulk-created' ||
+        payload.eventName === 'invoice.marked-paid' ||
+        payload.eventName === 'invoice.marked-unpaid' ||
+        payload.eventName === 'invoice.replaced' ||
+        payload.eventName === 'invoice.updated' ||
+        payload.eventName === 'invoice.deleted' ||
+        payload.eventName === 'invoice.electricity-updated' ||
+        payload.eventName === 'payment.reconciled'
+      ) {
+        taiDuLieu()
+      }
+    }
+
+    window.addEventListener('realtime-event', handleRealtimeEvent)
+    return () => {
+      window.removeEventListener('realtime-event', handleRealtimeEvent)
+    }
+  }, [taiDuLieu])
 
   // Handle open create modal
   const handleOpenCreateModal = () => {
@@ -142,6 +181,81 @@ export default function Invoices() {
     }
   }
 
+  // Handle open edit invoice modal
+  const handleOpenEditModal = (invoice) => {
+    setEditTarget(invoice)
+    setEditForm({
+      discountAmount: String(invoice.discountAmount || 0),
+      debtAmount: String(invoice.debtAmount || 0),
+      note: invoice.note || ''
+    })
+    setEditError(null)
+    setEditModalOpen(true)
+  }
+
+  // Handle submit edit invoice
+  const handleEditSubmit = async (e) => {
+    e.preventDefault()
+    setEditError(null)
+    setEditSubmitting(true)
+
+    const dto = {
+      discountAmount: parseFloat(editForm.discountAmount) || 0,
+      debtAmount: parseFloat(editForm.debtAmount) || 0,
+      note: editForm.note
+    }
+
+    try {
+      await suaHoaDon(editTarget.invoiceId, dto)
+      setEditModalOpen(false)
+      taiDuLieu()
+    } catch (err) {
+      console.error(err)
+      setEditError(err.message || 'Không thể chỉnh sửa hóa đơn')
+    } finally {
+      setEditSubmitting(false)
+    }
+  }
+
+  // Handle replace/recalculate invoice - lấy preview mới nhất rồi ghi đè
+  const handleReplaceInvoice = async (invoiceId) => {
+    const isConfirmed = await confirm('Bạn có chắc chắn muốn tính toán lại (ghi đè) hóa đơn này dựa trên chỉ số điện nước mới nhất không?', 'Tính toán lại hóa đơn')
+    if (!isConfirmed) return
+    try {
+      // Tìm hóa đơn hiện tại trong state để lấy thông tin phòng và hợp đồng
+      const currentInvoice = invoices.find(inv => inv.invoiceId === invoiceId)
+      if (!currentInvoice) {
+        toast.error('Không tìm thấy hóa đơn trong danh sách hiện tại.')
+        return
+      }
+
+      // Gọi preview để Backend tính toán lại chính xác dựa trên chỉ số mới nhất
+      const preview = await previewHoaDon({
+        roomId: currentInvoice.roomId,
+        contractId: currentInvoice.contractId,
+        billingMonth: currentInvoice.billingMonth || `${thang}-01`,
+        discountAmount: currentInvoice.discountAmount || 0,
+        debtAmount: currentInvoice.debtAmount || 0
+      })
+
+      // Gửi payload đầy đủ sang API replace để tạo hóa đơn mới ghi đè chính xác
+      await thayTheHoaDon(invoiceId, {
+        roomFee: preview.roomFee,
+        electricityFee: preview.electricityFee,
+        waterFee: preview.waterFee,
+        trashFee: preview.trashFee,
+        discountAmount: preview.discountAmount,
+        debtAmount: preview.debtAmount,
+        note: currentInvoice.note || null
+      })
+      taiDuLieu()
+      toast.success('Đã tính toán lại hóa đơn thành công!')
+    } catch (err) {
+      console.error(err)
+      toast.error(err.message || 'Không thể tính toán lại hóa đơn')
+    }
+  }
+
   // Handle submit bulk create
   const handleBulkSubmit = async (e) => {
     e.preventDefault()
@@ -156,7 +270,7 @@ export default function Invoices() {
       })
       
       setBulkModalOpen(false)
-      alert(`Đã tạo lập đồng loạt ${results.length || 0} hóa đơn thành công.`)
+      toast.success(`Đã tạo lập đồng loạt ${results.length || 0} hóa đơn thành công.`)
       taiDuLieu()
     } catch (err) {
       console.error(err)
@@ -211,27 +325,31 @@ export default function Invoices() {
 
   // Handle mark unpaid
   const handleMarkUnpaid = async (id) => {
-    if (!window.confirm('Bạn có muốn khôi phục trạng thái Chưa thanh toán cho hóa đơn này?')) return
+    const isConfirmed = await confirm('Bạn có muốn khôi phục trạng thái Chưa thanh toán cho hóa đơn này?', 'Khôi phục hóa đơn')
+    if (!isConfirmed) return
     
     try {
       await huyThanhToanHoaDon(id)
       taiDuLieu()
+      toast.success('Đã khôi phục trạng thái Chưa thanh toán.')
     } catch (err) {
       console.error(err)
-      alert(err.message || 'Không thể khôi phục trạng thái hóa đơn')
+      toast.error(err.message || 'Không thể khôi phục trạng thái hóa đơn')
     }
   }
 
   // Handle delete invoice
   const handleDeleteInvoice = async (id) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa hóa đơn này vĩnh viễn? Dữ liệu ghi số điện tương ứng vẫn sẽ được giữ lại.')) return
+    const isConfirmed = await confirm('Bạn có chắc chắn muốn xóa hóa đơn này vĩnh viễn? Dữ liệu ghi số điện tương ứng vẫn sẽ được giữ lại.', 'Xác nhận xóa hóa đơn')
+    if (!isConfirmed) return
     
     try {
       await xoaHoaDon(id)
       taiDuLieu()
+      toast.success('Đã xóa hóa đơn thành công.')
     } catch (err) {
       console.error(err)
-      alert(err.message || 'Lỗi khi xóa hóa đơn')
+      toast.error(err.message || 'Lỗi khi xóa hóa đơn')
     }
   }
 
@@ -249,7 +367,7 @@ export default function Invoices() {
       document.body.removeChild(a)
     } catch (err) {
       console.error(err)
-      alert(err.message || 'Không thể tải PDF hóa đơn')
+      toast.error(err.message || 'Không thể tải PDF hóa đơn')
     }
   }
 
@@ -325,13 +443,13 @@ export default function Invoices() {
             className={`filter-tab ${selectedStatus === 'unpaid' ? 'active' : ''}`}
             onClick={() => setSelectedStatus('unpaid')}
           >
-            Chưa thu ({invoices.filter(i => i.status.toLowerCase() === 'unpaid').length})
+            Chưa thu ({invoices.filter(i => (i.status || '').toLowerCase() === 'unpaid').length})
           </button>
           <button 
             className={`filter-tab ${selectedStatus === 'paid' ? 'active' : ''}`}
             onClick={() => setSelectedStatus('paid')}
           >
-            Đã thu ({invoices.filter(i => i.status.toLowerCase() === 'paid').length})
+            Đã thu ({invoices.filter(i => (i.status || '').toLowerCase() === 'paid').length})
           </button>
         </div>
 
@@ -427,16 +545,32 @@ export default function Invoices() {
                             <Download size={15} />
                           </button>
 
-                          {inv.status.toLowerCase() === 'unpaid' && (
-                            <button 
-                              className="btn btn-success btn-xs"
-                              onClick={() => handleOpenPay(inv)}
-                            >
-                              Thu tiền
-                            </button>
+                          {(inv.status || '').toLowerCase() === 'unpaid' && (
+                            <>
+                              <button 
+                                className="btn btn-success btn-xs"
+                                onClick={() => handleOpenPay(inv)}
+                              >
+                                Thu tiền
+                              </button>
+                              <button 
+                                className="btn-card-edit"
+                                onClick={() => handleOpenEditModal(inv)}
+                                title="Chỉnh sửa hóa đơn"
+                              >
+                                <Edit3 size={15} />
+                              </button>
+                              <button 
+                                className="btn-card-edit"
+                                onClick={() => handleReplaceInvoice(inv.invoiceId)}
+                                title="Tính toán lại hóa đơn"
+                              >
+                                <RefreshCw size={14} />
+                              </button>
+                            </>
                           )}
 
-                          {inv.status.toLowerCase() === 'paid' && (
+                          {(inv.status || '').toLowerCase() === 'paid' && (
                             <button 
                               className="btn btn-secondary btn-xs"
                               onClick={() => handleMarkUnpaid(inv.invoiceId)}
@@ -509,6 +643,7 @@ export default function Invoices() {
                       className="form-control"
                       value={createForm.discountAmount}
                       onChange={(e) => setCreateForm({...createForm, discountAmount: e.target.value})}
+                      onWheel={(e) => e.target.blur()}
                     />
                   </div>
 
@@ -520,6 +655,7 @@ export default function Invoices() {
                       className="form-control"
                       value={createForm.debtAmount}
                       onChange={(e) => setCreateForm({...createForm, debtAmount: e.target.value})}
+                      onWheel={(e) => e.target.blur()}
                     />
                   </div>
                 </div>
@@ -584,6 +720,7 @@ export default function Invoices() {
                       className="form-control"
                       value={bulkForm.defaultDiscountAmount}
                       onChange={(e) => setBulkForm({...bulkForm, defaultDiscountAmount: e.target.value})}
+                      onWheel={(e) => e.target.blur()}
                     />
                   </div>
 
@@ -595,6 +732,7 @@ export default function Invoices() {
                       className="form-control"
                       value={bulkForm.defaultDebtAmount}
                       onChange={(e) => setBulkForm({...bulkForm, defaultDebtAmount: e.target.value})}
+                      onWheel={(e) => e.target.blur()}
                     />
                   </div>
                 </div>
@@ -650,6 +788,7 @@ export default function Invoices() {
                     required
                     value={payForm.amount}
                     onChange={(e) => setPayForm({...payForm, amount: e.target.value})}
+                    onWheel={(e) => e.target.blur()}
                   />
                   <span className="form-help">Mặc định là số tiền hóa đơn cần thu: {dinhDangTien(payTarget.totalAmount)}</span>
                 </div>
@@ -708,6 +847,89 @@ export default function Invoices() {
                   disabled={paySubmitting}
                 >
                   {paySubmitting ? 'Đang lưu giao dịch...' : 'Xác nhận thu tiền'}
+                </button>
+              </div>
+            </form>
+          </div>
+            </div>
+      )}
+
+      {/* Edit Invoice Modal */}
+      {editModalOpen && editTarget && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <span className="modal-title">Sửa Chi Tiết Hóa Đơn - Phòng {editTarget.roomCode}</span>
+              <button className="btn-close-modal" onClick={() => setEditModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleEditSubmit}>
+              <div className="modal-body">
+                {editError && (
+                  <div className="error-alert">
+                    <AlertCircle size={18} />
+                    <span>{editError}</span>
+                  </div>
+                )}
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="edit-discount">Số tiền giảm giá (đ)</label>
+                  <input 
+                    type="number" 
+                    id="edit-discount" 
+                    className="form-control"
+                    min="0"
+                    required
+                    value={editForm.discountAmount}
+                    onChange={(e) => setEditForm({...editForm, discountAmount: e.target.value})}
+                    onWheel={(e) => e.target.blur()}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="edit-debt">Số tiền nợ cũ cộng thêm (đ)</label>
+                  <input 
+                    type="number" 
+                    id="edit-debt" 
+                    className="form-control"
+                    min="0"
+                    required
+                    value={editForm.debtAmount}
+                    onChange={(e) => setEditForm({...editForm, debtAmount: e.target.value})}
+                    onWheel={(e) => e.target.blur()}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="edit-note">Ghi chú hóa đơn</label>
+                  <input 
+                    type="text" 
+                    id="edit-note" 
+                    className="form-control"
+                    placeholder="Ví dụ: Giảm giá ngày dịch vụ, chuyển nợ..."
+                    value={editForm.note}
+                    onChange={(e) => setEditForm({...editForm, note: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={() => setEditModalOpen(false)}
+                  disabled={editSubmitting}
+                >
+                  Hủy
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  disabled={editSubmitting}
+                >
+                  {editSubmitting ? 'Đang lưu...' : 'Lưu hóa đơn'}
                 </button>
               </div>
             </form>

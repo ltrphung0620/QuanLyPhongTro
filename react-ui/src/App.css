@@ -3,46 +3,46 @@
    =================================================================== */
 
 :root {
-  /* Colors from user's palette */
-  --bg-primary: #FFFFFF;      /* Pure White */
-  --bg-secondary: #FFFFFF;    /* Pure White */
-  --bg-tertiary: #FFFFFF;     /* Pure White */
-  --bg-card: #FFFFFF;         /* Pure White */
-  --bg-hover: #F6ECE3;        /* Beige - Soft hover */
+  /* Soothing Warm Editorial Beige Palette */
+  --bg-primary: #F5EFEB;      /* Warm textured off-white beige - primary page background */
+  --bg-secondary: #FCFAF8;    /* Soothing soft cream - sidebar background */
+  --bg-tertiary: #F5EFEB;     /* Warm beige - main layout background */
+  --bg-card: #FFFFFF;         /* Pure White - cards float beautifully on beige */
+  --bg-hover: #F0E6DD;        /* Soothing warm beige - hover states */
   
-  --text-primary: #2B2524;    /* Deep Charcoal Brown - Soft on the eyes */
-  --text-secondary: #91766E;  /* Warm Earthy Brown - Secondary text */
-  --text-muted: #B7A7A9;      /* Granite Grey - Muted labels */
+  --text-primary: #2B2524;    /* Deep Charcoal Brown - Soft contrast text */
+  --text-secondary: #6B5E5B;  /* Warm Earthy Muted Brown - secondary labels */
+  --text-muted: #9B8F8D;      /* Granite Grey-Brown - muted text */
   
-  --accent: #91766E;          /* Warm Earthy Brown - Accent buttons/highlights */
+  --accent: #91766E;          /* Warm Earthy Brown - primary action color */
   --accent-hover: #2B2524;    /* Deep Charcoal Brown */
-  --accent-light: #F6ECE3;    /* Beige */
-  --accent-glow: rgba(145, 118, 110, 0.12);
+  --accent-light: #F0E6DD;    /* Warm beige light */
+  --accent-glow: rgba(145, 118, 110, 0.08);
   
-  /* Sidebar Specific Colors (Light Minimalist Sidebar) */
-  --sidebar-bg: #FFFFFF;      /* White */
-  --sidebar-border: #F6ECE3;  /* Beige border */
+  /* Sidebar Specific Colors */
+  --sidebar-bg: #FCFAF8;      /* Cream */
+  --sidebar-border: #EAE0D5;  /* Soft sand border */
   --sidebar-text: #91766E;    /* Brown */
-  --sidebar-text-muted: #B7A7A9; /* Granite */
+  --sidebar-text-muted: #9B8F8D; /* Granite */
   
-  /* Status Colors (Harmonized with Granite & Earthy tones) */
+  /* Status Colors (Harmonized with warm theme) */
   --success: #3E6B5C;         /* Muted Forest Green */
-  --success-light: rgba(62, 107, 92, 0.08);
+  --success-light: rgba(62, 107, 92, 0.06);
   --success-hover: #2A483E;
   
   --warning: #C28D68;         /* Muted Terracotta Amber */
-  --warning-light: rgba(194, 141, 104, 0.08);
+  --warning-light: rgba(194, 141, 104, 0.06);
   
   --danger: #A65D57;          /* Muted Dusty Rose Red */
-  --danger-light: rgba(166, 93, 87, 0.08);
+  --danger-light: rgba(166, 93, 87, 0.06);
   --danger-hover: #804743;
   
   --info: #5B7C8D;            /* Steel Blue */
-  --info-light: rgba(91, 124, 141, 0.08);
-
-  --border-color: #F6ECE3;    /* Beige - very thin separator */
-  --border-focus: #91766E;    /* Brown */
-  --border-hover: #B7A7A9;    /* Granite */
+  --info-light: rgba(91, 124, 141, 0.06);
+ 
+  --border-color: #EAE0D5;    /* Soft Sand - separators */
+  --border-focus: #91766E;    /* Earthy brown focus */
+  --border-hover: #B7A7A9;    /* Granite hover */
 
   /* Fonts */
   --font-sans: "Be Vietnam Pro", "Segoe UI", -apple-system, sans-serif;
@@ -105,6 +105,16 @@ button, input, select, textarea {
   outline: none;
 }
 
+/* Hide up/down spinner arrows on number inputs globally */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
 button {
   cursor: pointer;
 }
@@ -147,7 +157,7 @@ ul {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  margin-left: 260px; /* Sidebar width */
+  margin-left: 80px; /* Collapsed sidebar width */
   background-color: var(--bg-tertiary);
   transition: var(--transition-normal);
 }
@@ -346,7 +356,7 @@ ul {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow-x: auto;
   box-shadow: var(--shadow-sm);
   margin-bottom: 24px;
 }
@@ -355,6 +365,7 @@ ul {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
+  min-width: 960px; /* Prevents column text and action buttons from wrapping on laptop resolutions */
 }
 
 .custom-table th {
@@ -671,8 +682,15 @@ ul {
   background: var(--accent);
 }
 
-.assistant-confirm {
+.assistant-confirm-row {
   margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.assistant-confirm {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -681,6 +699,16 @@ ul {
   color: #fff;
   background: var(--success);
   font-weight: 700;
+}
+
+.assistant-reject {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: #fff;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .assistant-suggestions,
@@ -754,6 +782,7 @@ ul {
 
 .assistant-input button:disabled,
 .assistant-confirm:disabled,
+.assistant-reject:disabled,
 .assistant-quick-row button:disabled,
 .assistant-suggestions button:disabled {
   opacity: 0.55;
@@ -769,4 +798,142 @@ ul {
   .assistant-panel {
     bottom: 68px;
   }
+}
+
+/* Toast Notification styling */
+.toast-notification {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background-color: var(--text-primary);
+  color: #fff;
+  padding: 14px 20px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xl);
+  z-index: 1000;
+  animation: slideInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.toast-icon {
+  color: #FFC72C;
+}
+
+@keyframes slideInUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Custom Notification Toast and Modal styles */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 10000;
+  max-width: 420px;
+  width: calc(100% - 48px);
+}
+
+.toast-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-xl);
+  animation: slideInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.toast-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+}
+
+.toast-success::before {
+  background-color: var(--success);
+}
+.toast-success .toast-icon-wrapper {
+  color: var(--success);
+}
+
+.toast-error::before {
+  background-color: var(--danger);
+}
+.toast-error .toast-icon-wrapper {
+  color: var(--danger);
+}
+
+.toast-warning::before {
+  background-color: var(--warning);
+}
+.toast-warning .toast-icon-wrapper {
+  color: var(--warning);
+}
+
+.toast-info::before {
+  background-color: var(--accent);
+}
+.toast-info .toast-icon-wrapper {
+  color: var(--accent);
+}
+
+.toast-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.toast-message {
+  font-size: 0.9rem;
+  font-weight: 550;
+  color: var(--text-primary);
+  line-height: 1.4;
+  flex-grow: 1;
+  padding-right: 12px;
+}
+
+.toast-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: var(--transition-normal);
+  flex-shrink: 0;
+}
+
+.toast-close-btn:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.custom-notification-overlay {
+  z-index: 10001 !important;
+}
+
+.custom-notification-modal {
+  max-width: 450px !important;
 }

@@ -28,8 +28,10 @@ import {
   layHoaDonChuaThu
 } from '../api'
 import './Payments.css'
+import { useNotification } from '../context/NotificationContext'
 
 export default function Payments() {
+  const { toast, confirm } = useNotification()
   const [thang, setThang] = useState(() => {
     const today = new Date()
     const yyyy = today.getFullYear()
@@ -100,6 +102,27 @@ export default function Payments() {
 
   useEffect(() => {
     taiDuLieu()
+  }, [thang])
+
+  useEffect(() => {
+    const handleRealtimeEvent = (event) => {
+      const payload = event.detail
+      if (
+        payload.eventName === 'payment.webhook-received' ||
+        payload.eventName === 'payment.reconciled' ||
+        payload.eventName === 'payment.deleted' ||
+        payload.eventName === 'transaction.created' ||
+        payload.eventName === 'transaction.updated' ||
+        payload.eventName === 'transaction.deleted'
+      ) {
+        taiDuLieu()
+      }
+    }
+
+    window.addEventListener('realtime-event', handleRealtimeEvent)
+    return () => {
+      window.removeEventListener('realtime-event', handleRealtimeEvent)
+    }
   }, [thang])
 
   // Open Add Ledger Modal
@@ -181,13 +204,15 @@ export default function Payments() {
 
   // Delete manual transaction
   const handleDeleteLedger = async (id) => {
-    if (!window.confirm('Bạn có chắc muốn xóa giao dịch thu chi này?')) return
+    const isConfirmed = await confirm('Bạn có chắc muốn xóa giao dịch thu chi này?', 'Xác nhận xóa giao dịch')
+    if (!isConfirmed) return
     try {
       await xoaGiaoDichPhatSinh(id)
       taiDuLieu()
+      toast.success('Đã xóa giao dịch thành công.')
     } catch (err) {
       console.error(err)
-      alert(err.message || 'Không thể xóa giao dịch')
+      toast.error(err.message || 'Không thể xóa giao dịch')
     }
   }
 
@@ -226,13 +251,15 @@ export default function Payments() {
 
   // Delete Bank transfer log
   const handleDeleteBankTx = async (id) => {
-    if (!window.confirm('Bạn có chắc muốn xóa vĩnh viễn log chuyển khoản ngân hàng này?')) return
+    const isConfirmed = await confirm('Bạn có chắc muốn xóa vĩnh viễn log chuyển khoản ngân hàng này?', 'Xác nhận xóa log chuyển khoản')
+    if (!isConfirmed) return
     try {
       await xoaThanhToan(id)
       taiDuLieu()
+      toast.success('Đã xóa giao dịch chuyển khoản thành công.')
     } catch (err) {
       console.error(err)
-      alert(err.message || 'Không thể xóa giao dịch chuyển khoản')
+      toast.error(err.message || 'Không thể xóa giao dịch chuyển khoản')
     }
   }
 
