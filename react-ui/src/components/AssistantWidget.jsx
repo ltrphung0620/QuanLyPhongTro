@@ -41,6 +41,7 @@ export default function AssistantWidget() {
           commandId: response.commandId,
           type: response.type,
           preview: response.preview,
+          pendingCommand: response.pendingCommand,
           suggestions: response.suggestions || []
         })
       ])
@@ -95,10 +96,15 @@ export default function AssistantWidget() {
               <article key={message.id} className={`assistant-message assistant-message--${message.role}`}>
                 <p>{message.text}</p>
                 {message.type === 'confirmation_required' && message.commandId && (
-                  <button type="button" className="assistant-confirm" onClick={() => xacNhanLenh(message.commandId)} disabled={loading}>
+                  <div className="assistant-confirm-row">
+                    <button type="button" className="assistant-confirm" onClick={() => xacNhanLenh(message.commandId)} disabled={loading}>
                     <Check size={16} />
                     Xác nhận thực hiện
-                  </button>
+                    </button>
+                    <button type="button" className="assistant-reject" onClick={() => guiTinNhan('khong dung')} disabled={loading}>
+                      KhÃ´ng Ä‘Ãºng
+                    </button>
+                  </div>
                 )}
                 {message.suggestions?.length > 0 && (
                   <div className="assistant-suggestions">

@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using NhaTro.Dtos.MeterReadings;
+using NhaTro.Dtos.Assistant;
 
 namespace NhaTro.Services
 {
@@ -7,15 +7,14 @@ namespace NhaTro.Services
     {
         private readonly ConcurrentDictionary<string, PendingAssistantCommand> _commands = new();
 
-        public string AddMeterReadingCommand(int userId, CreateMeterReadingDto payload)
+        public string AddCommand(int userId, AssistantCommandDto command)
         {
             var commandId = Guid.NewGuid().ToString("N");
             _commands[commandId] = new PendingAssistantCommand
             {
                 CommandId = commandId,
                 UserId = userId,
-                Intent = "meter_reading.create",
-                MeterReadingPayload = payload,
+                Command = command,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -49,8 +48,7 @@ namespace NhaTro.Services
     {
         public string CommandId { get; set; } = string.Empty;
         public int UserId { get; set; }
-        public string Intent { get; set; } = string.Empty;
-        public CreateMeterReadingDto? MeterReadingPayload { get; set; }
+        public AssistantCommandDto Command { get; set; } = new();
         public DateTime CreatedAt { get; set; }
     }
 }

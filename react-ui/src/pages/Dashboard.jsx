@@ -47,63 +47,75 @@ export default function Dashboard() {
   
   const [danhSachPhong, setDanhSachPhong] = useState([])
 
-  useEffect(() => {
-    async function taiDuLieu() {
-      setLoading(true)
-      setError(null)
-      try {
-        const [baoCao, DSPhong] = await Promise.all([
-          layBaoCaoThang(thang),
-          layDanhSachPhong()
-        ])
+  const taiDuLieu = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [baoCao, DSPhong] = await Promise.all([
+        layBaoCaoThang(thang),
+        layDanhSachPhong()
+      ])
+      
+      setDanhSachPhong(DSPhong)
+      
+      // Calculate room occupancy
+      const tongPhong = DSPhong.length
+      const phongDaThue = DSPhong.filter(p => p.status === 'Occupied' || p.isOccupied === true).length
+      const tileLapDay = tongPhong > 0 ? Math.round((phongDaThue / tongPhong) * 100) : 0
+      
+      // Process payment status items
+      const dsHoaDon = baoCao.trangThaiThanhToan || []
+      const tongSoHoaDon = dsHoaDon.length
+      const hoaDonDaThanhToan = dsHoaDon.filter(h => (h.status || '').toLowerCase() === 'paid').length
+      const hoaDonChuaThanhToan = tongSoHoaDon - hoaDonDaThanhToan
+      
+      const tongTienDaThu = dsHoaDon
+        .filter(h => (h.status || '').toLowerCase() === 'paid')
+        .reduce((sum, h) => sum + h.totalAmount, 0)
         
-        setDanhSachPhong(DSPhong)
+      const tongTienChuaThu = dsHoaDon
+        .filter(h => (h.status || '').toLowerCase() !== 'paid')
+        .reduce((sum, h) => sum + h.totalAmount, 0)
         
-        // Calculate room occupancy
-        const tongPhong = DSPhong.length
-        const phongDaThue = DSPhong.filter(p => p.status === 'Occupied' || p.isOccupied === true).length
-        const tileLapDay = tongPhong > 0 ? Math.round((phongDaThue / tongPhong) * 100) : 0
-        
-        // Process payment status items
-        const dsHoaDon = baoCao.trangThaiThanhToan || []
-        const tongSoHoaDon = dsHoaDon.length
-        const hoaDonDaThanhToan = dsHoaDon.filter(h => (h.status || '').toLowerCase() === 'paid').length
-        const hoaDonChuaThanhToan = tongSoHoaDon - hoaDonDaThanhToan
-        
-        const tongTienDaThu = dsHoaDon
-          .filter(h => (h.status || '').toLowerCase() === 'paid')
-          .reduce((sum, h) => sum + h.totalAmount, 0)
-          
-        const tongTienChuaThu = dsHoaDon
-          .filter(h => (h.status || '').toLowerCase() !== 'paid')
-          .reduce((sum, h) => sum + h.totalAmount, 0)
-          
-        const danhSachChuaThu = dsHoaDon.filter(h => (h.status || '').toLowerCase() !== 'paid')
+      const danhSachChuaThu = dsHoaDon.filter(h => (h.status || '').toLowerCase() !== 'paid')
 
-        setStats({
-          doanhThu: baoCao.doanhThu?.totalRevenue || 0,
-          paidInvoicesRevenue: baoCao.doanhThu?.paidInvoicesRevenue || 0,
-          extraIncome: baoCao.doanhThu?.extraIncome || 0,
-          chiPhi: baoCao.chiPhi?.totalExpense || 0,
-          loiNhuan: baoCao.loiNhuan?.profitLoss || 0,
-          tongPhong,
-          phongDaThue,
-          tileLapDay,
-          hoaDonDaThanhToan,
-          hoaDonChuaThanhToan,
-          tongSoHoaDon,
-          tongTienDaThu,
-          tongTienChuaThu,
-          danhSachChuaThu
-        })
-      } catch (err) {
-        console.error(err)
-        setError(err.message || 'Không thể tải báo cáo cho tháng này')
-      } finally {
-        setLoading(false)
-      }
+      setStats({
+        doanhThu: baoCao.doanhThu?.totalRevenue || 0,
+        paidInvoicesRevenue: baoCao.doanhThu?.paidInvoicesRevenue || 0,
+        extraIncome: baoCao.doanhThu?.extraIncome || 0,
+        chiPhi: baoCao.chiPhi?.totalExpense || 0,
+        loiNhuan: baoCao.loiNhuan?.profitLoss || 0,
+        tongPhong,
+        phongDaThue,
+        tileLapDay,
+        hoaDonDaThanhToan,
+        hoaDonChuaThanhToan,
+        tongSoHoaDon,
+        tongTienDaThu,
+        tongTienChuaThu,
+        danhSachChuaThu
+      })
+    } catch (err) {
+      console.error(err)
+      setError(err.message || 'Không thể tải báo cáo cho tháng này')
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     taiDuLieu()
+  }, [thang])
+
+  useEffect(() => {
+    const handleRealtimeEvent = (event) => {
+      // Auto refresh dashboard on system updates
+      taiDuLieu()
+    }
+    window.addEventListener('realtime-event', handleRealtimeEvent)
+    return () => {
+      window.removeEventListener('realtime-event', handleRealtimeEvent)
+    }
   }, [thang])
 
   const dinhDangTien = (so) => {

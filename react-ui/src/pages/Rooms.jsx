@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { 
   Home, 
   Plus, 
@@ -181,7 +182,7 @@ export default function Rooms() {
   // Filtered rooms
   const filteredRooms = rooms.filter(room => {
     const matchesStatus = selectedStatus === 'all' || room.status === selectedStatus
-    const matchesSearch = room.roomCode.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesSearch = (room.roomCode || '').toLowerCase().includes(searchQuery.toLowerCase())
     return matchesStatus && matchesSearch
   })
 

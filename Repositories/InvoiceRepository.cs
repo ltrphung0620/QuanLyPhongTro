@@ -42,6 +42,9 @@ namespace NhaTro.Repositories
         {
             return await _context.Invoices
                 .Include(x => x.Room)
+                .Include(x => x.ReplacingInvoices)
+                .Include(x => x.Transactions)
+                .Include(x => x.PaymentTransactions)
                 .FirstOrDefaultAsync(x => x.InvoiceId == invoiceId);
         }
 

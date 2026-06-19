@@ -9,7 +9,10 @@ import {
   Loader2, 
   Calendar,
   Layers,
-  FileText
+  FileText,
+  Edit3,
+  Camera,
+  Eye
 } from 'lucide-react'
 import { 
   layChiSoThang, 
@@ -17,11 +20,15 @@ import {
   nhapChiSoDienNuoc, 
   previewChiSoDienNuoc, 
   xoaChiSoDienNuoc,
-  layDanhSachHopDong
+  layDanhSachHopDong,
+  capNhatChiSoOriginal,
+  uploadAnhChiSoOriginal
 } from '../api'
 import './MeterReadings.css'
+import { useNotification } from '../context/NotificationContext'
 
 export default function MeterReadings() {
+  const { toast, confirm } = useNotification()
   const [thang, setThang] = useState(() => {
     const today = new Date()
     const yyyy = today.getFullYear()
@@ -48,6 +55,20 @@ export default function MeterReadings() {
   const [currentReadingInput, setCurrentReadingInput] = useState('')
   const [modalError, setModalError] = useState(null)
   const [modalSubmitting, setModalSubmitting] = useState(false)
+
+  // Edit Reading Modal State
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null) // reading object
+  const [editReadingInput, setEditReadingInput] = useState('')
+  const [editError, setEditError] = useState(null)
+  const [editSubmitting, setEditSubmitting] = useState(false)
+
+  // Image Preview Modal State
+  const [previewImageOpen, setPreviewImageOpen] = useState(false)
+  const [previewImageUrl, setPreviewImageUrl] = useState('')
+  
+  // Image Upload State
+  const [uploadingReadingId, setUploadingReadingId] = useState(null)
 
   const taiDuLieu = async () => {
     setLoading(true)
@@ -134,34 +155,93 @@ export default function MeterReadings() {
       return
     }
 
+    
+    const dto = {
+      roomId: modalTarget.roomId,
+      contractId: contract.contractId,
+      billingMonth: `${thang}-01`,
+      currentReading: currentVal
+    }
+
     try {
-      await nhapChiSoDienNuoc({
-        roomId: modalTarget.roomId,
-        contractId: contract.contractId,
-        billingMonth: `${thang}-01`,
-        currentReading: currentVal
-      })
-      
+      await nhapChiSoDienNuoc(dto)
       setModalOpen(false)
       taiDuLieu()
     } catch (err) {
       console.error(err)
-      setModalError(err.message || 'Lỗi khi nhập chỉ số điện')
+      setModalError(err.message || 'Lỗi khi lưu số điện')
     } finally {
       setModalSubmitting(false)
     }
   }
 
+  // Handle open edit reading modal
+  const handleOpenEditModal = (reading) => {
+    setEditTarget(reading)
+    setEditReadingInput(String(reading.currentReading))
+    setEditError(null)
+    setEditModalOpen(true)
+  }
+
+  // Handle submit edit reading
+  const handleEditSubmit = async (e) => {
+    e.preventDefault()
+    setEditError(null)
+    setEditSubmitting(true)
+    
+    const newReading = parseInt(editReadingInput)
+    if (isNaN(newReading) || newReading < editTarget.previousReading) {
+      setEditError(`Chỉ số mới phải lớn hơn hoặc bằng chỉ số cũ (${editTarget.previousReading})`)
+      setEditSubmitting(false)
+      return
+    }
+    
+    const dto = {
+      meterReadingId: editTarget.meterReadingId,
+      roomCode: editTarget.roomCode,
+      billingMonth: editTarget.billingMonth,
+      currentReading: newReading
+    }
+    
+    try {
+      await capNhatChiSoOriginal(dto)
+      setEditModalOpen(false)
+      taiDuLieu()
+    } catch (err) {
+      console.error(err)
+      setEditError(err.message || 'Lỗi khi sửa chỉ số điện')
+    } finally {
+      setEditSubmitting(false)
+    }
+  }
+
+  // Handle upload image
+  const handleUploadImage = async (readingId, file) => {
+    if (!file) return
+    setUploadingReadingId(readingId)
+    try {
+      await uploadAnhChiSoOriginal(readingId, file)
+      taiDuLieu()
+      toast.success('Đã tải ảnh chỉ số lên thành công!')
+    } catch (err) {
+      toast.error(err.message || 'Không thể tải ảnh lên')
+    } finally {
+      setUploadingReadingId(null)
+    }
+  }
+
   // Handle delete reading
   const handleDeleteReading = async (id) => {
-    if (!window.confirm('Bạn có chắc muốn xóa chỉ số điện đã ghi này? Việc này có thể ảnh hưởng đến hóa đơn chưa thu.')) return
+    const isConfirmed = await confirm('Bạn có chắc muốn xóa chỉ số điện đã ghi này? Việc này có thể ảnh hưởng đến hóa đơn chưa thu.', 'Xác nhận xóa chỉ số')
+    if (!isConfirmed) return
     
     try {
       await xoaChiSoDienNuoc(id)
       taiDuLieu()
+      toast.success('Đã xóa chỉ số thành công.')
     } catch (err) {
       console.error(err)
-      alert(err.message || 'Lỗi khi xóa chỉ số')
+      toast.error(err.message || 'Lỗi khi xóa chỉ số')
     }
   }
 
@@ -171,11 +251,11 @@ export default function MeterReadings() {
 
   // Filter lists based on search query
   const filteredMissing = missingRooms.filter(r => 
-    r.roomCode.toLowerCase().includes(searchQuery.toLowerCase())
+    (r.roomCode || '').toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   const filteredRecorded = recordedReadings.filter(r => 
-    r.roomCode.toLowerCase().includes(searchQuery.toLowerCase())
+    (r.roomCode || '').toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   const inputReading = parseInt(currentReadingInput) || 0
@@ -303,6 +383,7 @@ export default function MeterReadings() {
                       <th>Tiêu thụ (kWh)</th>
                       <th>Đơn giá</th>
                       <th>Thành tiền</th>
+                      <th>Ảnh công tơ</th>
                       <th>Ngày ghi</th>
                       <th style={{ textAlign: 'right' }}>Thao tác</th>
                     </tr>
@@ -319,18 +400,61 @@ export default function MeterReadings() {
                         <td>{dinhDangTien(r.unitPrice)}</td>
                         <td><strong>{dinhDangTien(r.amount)}</strong></td>
                         <td>
+                          <div className="meter-image-cell" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {r.meterImagePath ? (
+                              <button 
+                                type="button"
+                                className="btn-view-image" 
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.85rem', padding: 0 }}
+                                onClick={() => {
+                                  setPreviewImageUrl(`http://localhost:5103/${r.meterImagePath}`)
+                                  setPreviewImageOpen(true)
+                                }}
+                              >
+                                <Eye size={14} /> Xem ảnh
+                              </button>
+                            ) : null}
+                            <label className="btn-upload-image-label" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', color: 'var(--text-muted)', gap: '4px' }} title="Tải ảnh lên">
+                              {uploadingReadingId === r.meterReadingId ? (
+                                <Loader2 className="spinner" size={14} />
+                              ) : (
+                                <>
+                                  <Camera size={14} />
+                                  <span style={{ fontSize: '0.78rem' }}>{r.meterImagePath ? 'Thay ảnh' : 'Tải ảnh'}</span>
+                                </>
+                              )}
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                style={{ display: 'none' }}
+                                onChange={(e) => handleUploadImage(r.meterReadingId, e.target.files[0])}
+                                disabled={uploadingReadingId !== null}
+                              />
+                            </label>
+                          </div>
+                        </td>
+                        <td>
                           <span className="date-cell">
                             {new Date(r.createdAt).toLocaleDateString('vi-VN')}
                           </span>
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <button 
-                            className="btn btn-danger btn-xs"
-                            onClick={() => handleDeleteReading(r.meterReadingId)}
-                            title="Xóa chỉ số"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                            <button 
+                              className="btn btn-secondary btn-xs"
+                              onClick={() => handleOpenEditModal(r)}
+                              title="Sửa chỉ số"
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                            <button 
+                              className="btn btn-danger btn-xs"
+                              onClick={() => handleDeleteReading(r.meterReadingId)}
+                              title="Xóa chỉ số"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -437,6 +561,114 @@ export default function MeterReadings() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Edit Reading Modal */}
+      {editModalOpen && editTarget && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <span className="modal-title">Sửa Chỉ Số Điện Phòng {editTarget.roomCode}</span>
+              <button className="btn-close-modal" onClick={() => setEditModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleEditSubmit}>
+              <div className="modal-body">
+                {editError && (
+                  <div className="error-alert">
+                    <AlertCircle size={18} />
+                    <span>{editError}</span>
+                  </div>
+                )}
+
+                <div className="checkout-tenant-summary-box" style={{ gridTemplateColumns: '1fr', gap: '4px' }}>
+                  <p>Kỳ hóa đơn: <strong>Tháng {thang}</strong></p>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Chỉ số điện cũ (Previous Reading)</label>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    disabled 
+                    value={editTarget.previousReading} 
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="edit-new-reading">Chỉ số điện mới hiện tại *</label>
+                  <input 
+                    type="number" 
+                    id="edit-new-reading" 
+                    className="form-control"
+                    required
+                    autoFocus
+                    min={editTarget.previousReading}
+                    value={editReadingInput}
+                    onChange={(e) => setEditReadingInput(e.target.value)}
+                  />
+                </div>
+
+                {editReadingInput !== '' && parseInt(editReadingInput) >= editTarget.previousReading && (
+                  <div className="reading-calc-preview">
+                    <div className="calc-row">
+                      <span>Sản lượng tiêu thụ mới:</span>
+                      <strong>{parseInt(editReadingInput) - editTarget.previousReading} kWh</strong>
+                    </div>
+                    <div className="calc-row">
+                      <span>Đơn giá:</span>
+                      <span>{dinhDangTien(editTarget.unitPrice)}/kWh</span>
+                    </div>
+                    <div className="calc-row total-row">
+                      <span>Thành tiền mới:</span>
+                      <span>{dinhDangTien((parseInt(editReadingInput) - editTarget.previousReading) * editTarget.unitPrice)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-footer">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={() => setEditModalOpen(false)}
+                  disabled={editSubmitting}
+                >
+                  Hủy
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  disabled={editSubmitting}
+                >
+                  {editSubmitting ? 'Đang lưu...' : 'Lưu chỉ số điện'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Image Preview Modal */}
+      {previewImageOpen && (
+        <div className="modal-overlay" onClick={() => setPreviewImageOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px', width: '90%' }}>
+            <div className="modal-header">
+              <span className="modal-title">Ảnh chụp công tơ điện</span>
+              <button className="btn-close-modal" onClick={() => setPreviewImageOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ textAlign: 'center', padding: '16px' }}>
+              <img 
+                src={previewImageUrl} 
+                alt="Công tơ điện" 
+                style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: '8px', objectFit: 'contain' }} 
+              />
+            </div>
           </div>
         </div>
       )}

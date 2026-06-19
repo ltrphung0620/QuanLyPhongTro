@@ -285,6 +285,43 @@ export function xoaGiaoDichPhatSinh(id) {
   return goiApi(`/Transactions/${id}`, {}, { method: 'DELETE' })
 }
 
+export function capNhatChiSoOriginal(dto) {
+  return goiApi('/MeterReadings/current-reading', {}, { method: 'PATCH', body: JSON.stringify(dto) })
+}
+
+export async function uploadAnhChiSoOriginal(id, file) {
+  const token = localStorage.getItem('token')
+  const formData = new FormData()
+  formData.append('image', file)
+  
+  const response = await fetch(`${gocApi}/MeterReadings/${id}/image`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: formData
+  })
+  
+  if (!response.ok) {
+    let message = 'Không thể tải ảnh công tơ điện'
+    try {
+      const error = await response.json()
+      message = error.message || message
+    } catch {}
+    throw new Error(message)
+  }
+  
+  return response.json()
+}
+
+export function thayTheHoaDon(id, dto) {
+  return goiApi(`/Invoices/${id}/replace`, {}, { method: 'POST', body: JSON.stringify(dto) })
+}
+
+export function suaHoaDon(id, dto) {
+  return goiApi(`/Invoices/${id}`, {}, { method: 'PUT', body: JSON.stringify(dto) })
+}
+
 // ===================================================================
 // REPORTS APIs
 // ===================================================================
@@ -302,4 +339,23 @@ export async function layBaoCaoThang(thang) {
     loiNhuan,
     trangThaiThanhToan,
   }
+}
+
+export function laySalesLedger(fromMonth, toMonth) {
+  return goiApi('/Reports/sales-ledger', { fromMonth, toMonth })
+}
+
+export async function downloadSalesLedgerPdf(fromMonth, toMonth, reportTitle = 'Báo cáo Sổ quỹ thu chi') {
+  const token = localStorage.getItem('token')
+  const response = await fetch(`${gocApi}/Reports/sales-ledger/pdf`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/pdf',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ fromMonth, toMonth, reportTitle })
+  })
+  if (!response.ok) throw new Error('Không thể tải PDF báo cáo sổ quỹ')
+  return response.blob()
 }

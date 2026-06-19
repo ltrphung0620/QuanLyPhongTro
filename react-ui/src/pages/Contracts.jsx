@@ -15,11 +15,13 @@ import {
   ChevronRight,
   TrendingDown,
   Info,
-  Clock
+  Clock,
+  Edit3
 } from 'lucide-react'
 import { 
   layDanhSachHopDong, 
   taoHopDong, 
+  suaHopDong,
   xoaHopDong, 
   huyHopDong, 
   layBaoCaoKetThucHopDong, 
@@ -28,8 +30,10 @@ import {
   layDanhSachNguoiThue
 } from '../api'
 import './Contracts.css'
+import { useNotification } from '../context/NotificationContext'
 
 export default function Contracts() {
+  const { toast, confirm } = useNotification()
   const [contracts, setContracts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -75,6 +79,22 @@ export default function Contracts() {
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [checkoutNote, setCheckoutNote] = useState('')
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false)
+
+  // Edit Contract Modal
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [editTargetId, setEditTargetId] = useState(null)
+  const [editForm, setEditForm] = useState({
+    roomId: '',
+    tenantId: '',
+    startDate: '',
+    expectedEndDate: '',
+    depositAmount: '0',
+    occupantCount: '1',
+    actualRoomPrice: '',
+    status: 'Active'
+  })
+  const [editError, setEditError] = useState(null)
+  const [editSubmitting, setEditSubmitting] = useState(false)
 
   const taiDuLieu = async () => {
     setLoading(true)
@@ -176,6 +196,56 @@ export default function Contracts() {
     }
   }
 
+  // Handle open edit contract modal
+  const handleOpenEdit = (contract) => {
+    setEditTargetId(contract.contractId)
+    setEditForm({
+      roomId: contract.roomId || '',
+      tenantId: contract.tenantId || '',
+      startDate: contract.startDate ? contract.startDate.substring(0, 10) : '',
+      expectedEndDate: contract.expectedEndDate ? contract.expectedEndDate.substring(0, 10) : '',
+      depositAmount: String(contract.depositAmount || 0),
+      occupantCount: String(contract.occupantCount || 1),
+      actualRoomPrice: String(contract.actualRoomPrice || 0),
+      status: contract.status || 'Active'
+    })
+    setEditError(null)
+    setEditModalOpen(true)
+  }
+
+  // Handle submit edit contract
+  const handleEditSubmit = async (e) => {
+    e.preventDefault()
+    setEditError(null)
+    setEditSubmitting(true)
+
+    const dto = {
+      startDate: editForm.startDate ? `${editForm.startDate}T00:00:00Z` : null,
+      expectedEndDate: editForm.expectedEndDate ? `${editForm.expectedEndDate}T00:00:00Z` : null,
+      depositAmount: parseFloat(editForm.depositAmount) || 0,
+      occupantCount: parseInt(editForm.occupantCount) || 1,
+      actualRoomPrice: parseFloat(editForm.actualRoomPrice) || 0,
+      status: editForm.status
+    }
+
+    if (isNaN(dto.actualRoomPrice) || dto.actualRoomPrice <= 0) {
+      setEditError('Giá thuê thực tế phải lớn hơn 0')
+      setEditSubmitting(false)
+      return
+    }
+
+    try {
+      await suaHopDong(editTargetId, dto)
+      setEditModalOpen(false)
+      taiDuLieu()
+    } catch (err) {
+      console.error(err)
+      setEditError(err.message || 'Lỗi khi chỉnh sửa hợp đồng')
+    } finally {
+      setEditSubmitting(false)
+    }
+  }
+
   // Handle open cancel modal
   const handleOpenCancel = (id) => {
     setCancelTargetId(id)
@@ -271,14 +341,16 @@ export default function Contracts() {
 
   // Handle delete archived contract
   const handleDeleteContract = async (id) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa vĩnh viễn dữ liệu hợp đồng này?')) return
+    const isConfirmed = await confirm('Bạn có chắc chắn muốn xóa vĩnh viễn dữ liệu hợp đồng này?', 'Xác nhận xóa hợp đồng')
+    if (!isConfirmed) return
     
     try {
       await xoaHopDong(id)
       taiDuLieu()
+      toast.success('Đã xóa dữ liệu hợp đồng thành công')
     } catch (err) {
       console.error(err)
-      alert(err.message || 'Không thể xóa hợp đồng')
+      toast.error(err.message || 'Không thể xóa hợp đồng')
     }
   }
 
@@ -288,7 +360,7 @@ export default function Contracts() {
 
   const layTrangThaiHopDong = (status) => {
     switch ((status || '').toLowerCase()) {
-      case 'active': return 'Đang chạy'
+      case 'active': return 'Còn hạn'
       case 'ended': return 'Đã thanh lý'
       case 'cancelled': return 'Đã hủy bỏ'
       default: return status || ''
@@ -398,7 +470,6 @@ export default function Contracts() {
                         <div className="contract-tenant-cell">
                           <User size={14} className="cell-icon" />
                           <span>{c.tenantName}</span>
-                          <span className="occupant-pill">{c.occupantCount} khách</span>
                         </div>
                       </td>
                       <td>
@@ -434,7 +505,15 @@ export default function Contracts() {
                                 onClick={() => handleOpenCheckout(c)}
                                 title="Thanh lý & Chốt điện nước"
                               >
-                                Thanh lý (Check-out)
+                                Kết thúc hợp đồng
+                              </button>
+                              <button 
+                                className="btn btn-secondary btn-xs"
+                                onClick={() => handleOpenEdit(c)}
+                                title="Sửa thông tin hợp đồng"
+                                style={{ display: 'inline-flex', alignItems: 'center' }}
+                              >
+                                <Edit3 size={13} style={{ marginRight: '4px' }} /> Sửa
                               </button>
                               <button 
                                 className="btn btn-secondary btn-xs"
@@ -889,6 +968,131 @@ export default function Contracts() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Contract Modal */}
+      {editModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <span className="modal-title">Chỉnh Sửa Hợp Đồng</span>
+              <button className="btn-close-modal" onClick={() => setEditModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleEditSubmit}>
+              <div className="modal-body">
+                {editError && (
+                  <div className="error-alert">
+                    <AlertCircle size={18} />
+                    <span>{editError}</span>
+                  </div>
+                )}
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-start-date">Ngày bắt đầu *</label>
+                    <input 
+                      type="date" 
+                      id="edit-start-date" 
+                      className="form-control"
+                      required
+                      value={editForm.startDate}
+                      onChange={(e) => setEditForm({...editForm, startDate: e.target.value})}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-end-date">Ngày kết thúc dự kiến</label>
+                    <input 
+                      type="date" 
+                      id="edit-end-date" 
+                      className="form-control"
+                      value={editForm.expectedEndDate}
+                      onChange={(e) => setEditForm({...editForm, expectedEndDate: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-room-price">Giá thuê thực tế (đ/tháng) *</label>
+                    <input 
+                      type="number" 
+                      id="edit-room-price" 
+                      className="form-control"
+                      required
+                      min="0"
+                      value={editForm.actualRoomPrice}
+                      onChange={(e) => setEditForm({...editForm, actualRoomPrice: e.target.value})}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-deposit">Tiền đặt cọc (đ)</label>
+                    <input 
+                      type="number" 
+                      id="edit-deposit" 
+                      className="form-control"
+                      min="0"
+                      value={editForm.depositAmount}
+                      onChange={(e) => setEditForm({...editForm, depositAmount: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-occupants">Số lượng người ở *</label>
+                    <input 
+                      type="number" 
+                      id="edit-occupants" 
+                      className="form-control"
+                      required
+                      min="1"
+                      value={editForm.occupantCount}
+                      onChange={(e) => setEditForm({...editForm, occupantCount: e.target.value})}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-status">Trạng thái *</label>
+                    <select 
+                      id="edit-status" 
+                      className="form-control"
+                      required
+                      value={editForm.status}
+                      onChange={(e) => setEditForm({...editForm, status: e.target.value})}
+                    >
+                      <option value="Active">Đang chạy (Còn hạn)</option>
+                      <option value="Ended">Kết thúc hợp đồng</option>
+                      <option value="Cancelled">Hủy bỏ</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={() => setEditModalOpen(false)}
+                  disabled={editSubmitting}
+                >
+                  Hủy
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  disabled={editSubmitting}
+                >
+                  {editSubmitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
