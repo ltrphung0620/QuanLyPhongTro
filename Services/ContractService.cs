@@ -64,6 +64,8 @@ namespace NhaTro.Services
 
         public async Task<ContractDto> CreateAsync(CreateContractDto dto)
         {
+            ValidateContractDates(dto.StartDate, dto.ExpectedEndDate);
+
             var room = await _roomRepository.GetByIdAsync(dto.RoomId);
             if (room == null)
             {
@@ -87,6 +89,12 @@ namespace NhaTro.Services
                 throw new InvalidOperationException("Phòng đã có hợp đồng đang hiệu lực.");
             }
 
+            var depositPaidAmount = dto.DepositPaidAmount ?? dto.DepositAmount;
+            if (depositPaidAmount > dto.DepositAmount)
+            {
+                throw new InvalidOperationException("Tiền cọc đã nhận không được lớn hơn tiền cọc phải thu.");
+            }
+
             var contract = new Contract
             {
                 RoomId = dto.RoomId,
@@ -94,6 +102,7 @@ namespace NhaTro.Services
                 StartDate = dto.StartDate,
                 ExpectedEndDate = dto.ExpectedEndDate,
                 DepositAmount = dto.DepositAmount,
+                DepositPaidAmount = depositPaidAmount,
                 OccupantCount = dto.OccupantCount,
                 ActualRoomPrice = dto.ActualRoomPrice,
                 Status = "active",
@@ -126,9 +135,29 @@ namespace NhaTro.Services
                 throw new InvalidOperationException("Chỉ được cập nhật hợp đồng đang hiệu lực.");
             }
 
+            ValidateContractDates(dto.StartDate, dto.ExpectedEndDate);
+            if (dto.StartDate != contract.StartDate && await HasRelatedBusinessDataAsync(contract.ContractId))
+            {
+                throw new InvalidOperationException("Không thể đổi ngày bắt đầu vì hợp đồng đã phát sinh chỉ số, hóa đơn hoặc quyết toán.");
+            }
+
+            var depositChanged = dto.DepositAmount != contract.DepositAmount
+                || (dto.DepositPaidAmount.HasValue && dto.DepositPaidAmount.Value != contract.DepositPaidAmount);
+            if (depositChanged && (await _invoiceRepository.GetByContractIdAsync(contract.ContractId)).Count > 0)
+            {
+                throw new InvalidOperationException("Không thể đổi tiền cọc vì hợp đồng đã phát sinh hóa đơn. Hãy điều chỉnh công nợ trên hóa đơn nếu cần.");
+            }
+
             contract.StartDate = dto.StartDate;
             contract.ExpectedEndDate = dto.ExpectedEndDate;
+            var depositPaidAmount = dto.DepositPaidAmount ?? contract.DepositPaidAmount;
+            if (depositPaidAmount > dto.DepositAmount)
+            {
+                throw new InvalidOperationException("Tiền cọc đã nhận không được lớn hơn tiền cọc phải thu.");
+            }
+
             contract.DepositAmount = dto.DepositAmount;
+            contract.DepositPaidAmount = depositPaidAmount;
             contract.OccupantCount = dto.OccupantCount;
             contract.ActualRoomPrice = dto.ActualRoomPrice;
             contract.UpdatedAt = DateTime.UtcNow;
@@ -221,18 +250,21 @@ namespace NhaTro.Services
                 throw new InvalidOperationException("Ngày kết thúc không hợp lệ.");
             }
 
-            int numberOfDays = dto.ActualEndDate.Day;
+            var monthStart = new DateOnly(dto.ActualEndDate.Year, dto.ActualEndDate.Month, 1);
+            var fromDate = contract.StartDate > monthStart ? contract.StartDate : monthStart;
+            int numberOfDays = dto.ActualEndDate.DayNumber - fromDate.DayNumber + 1;
             if (numberOfDays <= 0)
             {
                 throw new InvalidOperationException("Số ngày ở không hợp lệ.");
             }
 
-            var roomFee = Math.Round((contract.ActualRoomPrice / 30m) * numberOfDays, 2);
+            var daysInMonth = DateTime.DaysInMonth(dto.ActualEndDate.Year, dto.ActualEndDate.Month);
+            var roomFee = Math.Round((contract.ActualRoomPrice / daysInMonth) * numberOfDays, 2);
 
             decimal electricityFee = 0;
             if (dto.CurrentReading.HasValue)
             {
-                var latestReading = await _meterReadingRepository.GetLatestByRoomAsync(contract.RoomId);
+                var latestReading = await _meterReadingRepository.GetLatestBeforeDateAsync(contract.RoomId, dto.ActualEndDate);
                 var previousReading = latestReading?.CurrentReading ?? 0;
 
                 if (dto.CurrentReading.Value < previousReading)
@@ -244,13 +276,14 @@ namespace NhaTro.Services
                 electricityFee = consumed * ELECTRIC_PRICE;
             }
 
-            var waterFee = Math.Round((WATER_PER_PERSON / 30m) * numberOfDays * contract.OccupantCount, 2);
+            var waterFee = Math.Round((WATER_PER_PERSON / daysInMonth) * numberOfDays * contract.OccupantCount, 2);
             var trashFee = TRASH_FEE;
 
             var finalInvoiceAmount = roomFee + electricityFee + waterFee + trashFee;
 
-            var deductedAmount = Math.Min(contract.DepositAmount, finalInvoiceAmount);
-            var refundedAmount = contract.DepositAmount - deductedAmount;
+            var receivedDepositAmount = await GetReceivedDepositAmountAsync(contract);
+            var deductedAmount = Math.Min(receivedDepositAmount, finalInvoiceAmount);
+            var refundedAmount = receivedDepositAmount - deductedAmount;
             var remainingAmount = finalInvoiceAmount - deductedAmount;
 
             return new ContractEndPreviewDto
@@ -261,6 +294,7 @@ namespace NhaTro.Services
                 TenantId = contract.TenantId,
                 TenantName = contract.Tenant?.FullName ?? string.Empty,
                 StartDate = contract.StartDate,
+                FromDate = fromDate,
                 ActualEndDate = dto.ActualEndDate,
                 NumberOfDays = numberOfDays,
                 RoomFee = roomFee,
@@ -268,7 +302,7 @@ namespace NhaTro.Services
                 WaterFee = waterFee,
                 TrashFee = trashFee,
                 FinalInvoiceAmount = finalInvoiceAmount,
-                DepositAmount = contract.DepositAmount,
+                DepositAmount = receivedDepositAmount,
                 DeductedAmount = deductedAmount,
                 RefundedAmount = refundedAmount,
                 RemainingAmount = remainingAmount
@@ -349,7 +383,7 @@ namespace NhaTro.Services
                     ContractId = contract.ContractId,
                     InvoiceType = "final",
                     BillingMonth = new DateOnly(dto.ActualEndDate.Year, dto.ActualEndDate.Month, 1),
-                    FromDate = new DateOnly(dto.ActualEndDate.Year, dto.ActualEndDate.Month, 1),
+                    FromDate = preview.FromDate,
                     ToDate = dto.ActualEndDate,
                     RoomFee = preview.RoomFee,
                     ElectricityFee = preview.ElectricityFee,
@@ -371,7 +405,7 @@ namespace NhaTro.Services
             var settlement = new DepositSettlement
             {
                 ContractId = contract.ContractId,
-                DepositAmount = contract.DepositAmount,
+                DepositAmount = preview.DepositAmount,
                 FinalInvoiceAmount = preview.FinalInvoiceAmount,
                 DeductedAmount = preview.DeductedAmount,
                 RefundedAmount = preview.RefundedAmount,
@@ -387,10 +421,11 @@ namespace NhaTro.Services
                 {
                     TransactionDirection = "expense",
                     Category = "other",
-                    ItemName = $"Hoàn cọc hợp đồng #{contract.ContractId}",
+                    ItemName = $"Hoàn cọc hợp đồng phòng {contract.Room?.RoomCode}",
                     Amount = preview.RefundedAmount,
                     TransactionDate = dto.ActualEndDate,
                     Description = $"Hoàn lại tiền cọc cho khách thuê khi kết thúc hợp đồng. Tổng phí cuối: {preview.FinalInvoiceAmount:N0}, cọc: {preview.DepositAmount:N0}.",
+                    RelatedRoomId = contract.RoomId,
                     RelatedInvoice = finalInvoice,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -424,6 +459,14 @@ namespace NhaTro.Services
             if (!AllowedStatuses.Contains(normalizedStatus))
             {
                 throw new ArgumentException("Status chỉ được là 'active', 'ended' hoặc 'cancelled'.");
+            }
+        }
+
+        private static void ValidateContractDates(DateOnly startDate, DateOnly? expectedEndDate)
+        {
+            if (expectedEndDate.HasValue && expectedEndDate.Value < startDate)
+            {
+                throw new InvalidOperationException("Ngày kết thúc dự kiến không được trước ngày bắt đầu hợp đồng.");
             }
         }
 
@@ -500,6 +543,7 @@ namespace NhaTro.Services
                 ExpectedEndDate = contract.ExpectedEndDate,
                 ActualEndDate = contract.ActualEndDate,
                 DepositAmount = contract.DepositAmount,
+                DepositPaidAmount = contract.DepositPaidAmount,
                 OccupantCount = contract.OccupantCount,
                 ActualRoomPrice = contract.ActualRoomPrice,
                 Status = contract.Status,
@@ -509,6 +553,16 @@ namespace NhaTro.Services
                 CreatedAt = contract.CreatedAt,
                 UpdatedAt = contract.UpdatedAt
             };
+        }
+
+        private async Task<decimal> GetReceivedDepositAmountAsync(Contract contract)
+        {
+            var invoices = await _invoiceRepository.GetByContractIdAsync(contract.ContractId);
+            var collectedFromInvoices = invoices
+                .Where(x => x.ReplacedByInvoiceId == null && x.PaidAmount.GetValueOrDefault() > 0)
+                .Sum(x => Math.Min(x.DepositDebtAmount, x.PaidAmount.GetValueOrDefault()));
+
+            return Math.Min(contract.DepositAmount, contract.DepositPaidAmount + collectedFromInvoices);
         }
         public async Task<ContractDto?> GetActiveByRoomCodeAsync(string roomCode)
         {

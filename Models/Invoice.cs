@@ -43,6 +43,9 @@ namespace NhaTro.Models
         public decimal DebtAmount { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
+        public decimal DepositDebtAmount { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
         public decimal TotalAmount { get; set; }
 
         [Required]

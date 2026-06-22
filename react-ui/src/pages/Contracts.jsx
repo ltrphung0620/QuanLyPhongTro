@@ -53,6 +53,7 @@ export default function Contracts() {
     startDate: '',
     expectedEndDate: '',
     depositAmount: '0',
+    depositPaidAmount: '0',
     occupantCount: '1',
     actualRoomPrice: ''
   })
@@ -89,6 +90,7 @@ export default function Contracts() {
     startDate: '',
     expectedEndDate: '',
     depositAmount: '0',
+    depositPaidAmount: '0',
     occupantCount: '1',
     actualRoomPrice: '',
     status: 'Active'
@@ -126,7 +128,9 @@ export default function Contracts() {
     setCreateForm(prev => ({
       ...prev,
       roomId: roomId,
-      actualRoomPrice: room ? room.listedPrice.toString() : ''
+      actualRoomPrice: room ? room.listedPrice.toString() : '',
+      depositAmount: room ? room.listedPrice.toString() : '0',
+      depositPaidAmount: room ? room.listedPrice.toString() : '0'
     }))
   }
 
@@ -143,6 +147,7 @@ export default function Contracts() {
       startDate: `${yyyy}-${mm}-${dd}`,
       expectedEndDate: '',
       depositAmount: '0',
+      depositPaidAmount: '0',
       occupantCount: '1',
       actualRoomPrice: ''
     })
@@ -162,6 +167,7 @@ export default function Contracts() {
       startDate: createForm.startDate,
       expectedEndDate: createForm.expectedEndDate || null,
       depositAmount: parseFloat(createForm.depositAmount),
+      depositPaidAmount: parseFloat(createForm.depositPaidAmount),
       occupantCount: parseInt(createForm.occupantCount),
       actualRoomPrice: parseFloat(createForm.actualRoomPrice)
     }
@@ -174,6 +180,12 @@ export default function Contracts() {
 
     if (isNaN(values.depositAmount) || values.depositAmount < 0) {
       setCreateError('Tiền cọc không hợp lệ')
+      setCreateSubmitting(false)
+      return
+    }
+
+    if (isNaN(values.depositPaidAmount) || values.depositPaidAmount < 0 || values.depositPaidAmount > values.depositAmount) {
+      setCreateError('Tiền cọc đã nhận phải từ 0 đến số tiền cọc phải thu')
       setCreateSubmitting(false)
       return
     }
@@ -205,6 +217,7 @@ export default function Contracts() {
       startDate: contract.startDate ? contract.startDate.substring(0, 10) : '',
       expectedEndDate: contract.expectedEndDate ? contract.expectedEndDate.substring(0, 10) : '',
       depositAmount: String(contract.depositAmount || 0),
+      depositPaidAmount: String(contract.depositPaidAmount || 0),
       occupantCount: String(contract.occupantCount || 1),
       actualRoomPrice: String(contract.actualRoomPrice || 0),
       status: contract.status || 'Active'
@@ -223,6 +236,7 @@ export default function Contracts() {
       startDate: editForm.startDate ? `${editForm.startDate}T00:00:00Z` : null,
       expectedEndDate: editForm.expectedEndDate ? `${editForm.expectedEndDate}T00:00:00Z` : null,
       depositAmount: parseFloat(editForm.depositAmount) || 0,
+      depositPaidAmount: parseFloat(editForm.depositPaidAmount) || 0,
       occupantCount: parseInt(editForm.occupantCount) || 1,
       actualRoomPrice: parseFloat(editForm.actualRoomPrice) || 0,
       status: editForm.status
@@ -230,6 +244,12 @@ export default function Contracts() {
 
     if (isNaN(dto.actualRoomPrice) || dto.actualRoomPrice <= 0) {
       setEditError('Giá thuê thực tế phải lớn hơn 0')
+      setEditSubmitting(false)
+      return
+    }
+
+    if (dto.depositPaidAmount < 0 || dto.depositPaidAmount > dto.depositAmount) {
+      setEditError('Tiền cọc đã nhận phải từ 0 đến số tiền cọc phải thu')
       setEditSubmitting(false)
       return
     }
@@ -476,7 +496,10 @@ export default function Contracts() {
                         <strong>{dinhDangTien(c.actualRoomPrice)}</strong>
                       </td>
                       <td>
-                        <span>{dinhDangTien(c.depositAmount)}</span>
+                        <div className="details-cell-mini">
+                          <span>{dinhDangTien(c.depositPaidAmount)} / {dinhDangTien(c.depositAmount)}</span>
+                          {c.depositDebtAmount > 0 && <span className="text-danger">Còn nợ: {dinhDangTien(c.depositDebtAmount)}</span>}
+                        </div>
                       </td>
                       <td>
                         <div className="contract-date-cell">
@@ -649,6 +672,25 @@ export default function Contracts() {
                       onChange={(e) => setCreateForm({...createForm, depositAmount: e.target.value})}
                     />
                   </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="create-deposit-paid">Tiền cọc đã nhận (VND)</label>
+                  <input
+                    type="number"
+                    id="create-deposit-paid"
+                    className="form-control"
+                    required
+                    min="0"
+                    max={createForm.depositAmount || undefined}
+                    value={createForm.depositPaidAmount}
+                    onChange={(e) => setCreateForm({...createForm, depositPaidAmount: e.target.value})}
+                  />
+                  {Number(createForm.depositAmount) > Number(createForm.depositPaidAmount) && (
+                    <span className="form-help text-danger">
+                      Nợ tiền cọc sẽ đưa vào hóa đơn tiếp theo: {dinhDangTien(Number(createForm.depositAmount) - Number(createForm.depositPaidAmount))}
+                    </span>
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -913,15 +955,15 @@ export default function Contracts() {
                       </div>
 
                       <div className="sheet-row final-reconcile-row">
-                        {checkoutPreview.remainingAmount >= 0 ? (
+                        {checkoutPreview.depositAmount > checkoutPreview.deductedAmount ? (
                           <>
-                            <span className="reconcile-label">Khách thuê cần thanh toán thêm:</span>
-                            <span className="reconcile-value text-danger">{dinhDangTien(checkoutPreview.remainingAmount)}</span>
+                            <span className="reconcile-label">Số tiền cần trả lại khách:</span>
+                            <span className="reconcile-value text-success">{dinhDangTien(checkoutPreview.refundedAmount)}</span>
                           </>
                         ) : (
                           <>
-                            <span className="reconcile-label">Chủ nhà hoàn trả lại cọc thừa cho khách:</span>
-                            <span className="reconcile-value text-success">{dinhDangTien(Math.abs(checkoutPreview.remainingAmount))}</span>
+                            <span className="reconcile-label">Khách thuê cần thanh toán thêm:</span>
+                            <span className="reconcile-value text-danger">{dinhDangTien(checkoutPreview.remainingAmount)}</span>
                           </>
                         )}
                       </div>
@@ -1042,6 +1084,19 @@ export default function Contracts() {
                       onChange={(e) => setEditForm({...editForm, depositAmount: e.target.value})}
                     />
                   </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="edit-deposit-paid">Tiền cọc đã nhận (đ)</label>
+                  <input
+                    type="number"
+                    id="edit-deposit-paid"
+                    className="form-control"
+                    min="0"
+                    max={editForm.depositAmount || undefined}
+                    value={editForm.depositPaidAmount}
+                    onChange={(e) => setEditForm({...editForm, depositPaidAmount: e.target.value})}
+                  />
                 </div>
 
                 <div className="form-row">

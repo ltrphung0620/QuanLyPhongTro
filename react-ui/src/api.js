@@ -77,11 +77,15 @@ export function verifyOtp(email, otpCode) {
 // ASSISTANT APIs
 // ===================================================================
 export function guiTinNhanAssistant(message) {
-  return goiApi('/Assistant/message', {}, { method: 'POST', body: JSON.stringify({ message }) })
+  return goiApi('/Assistant/agent', {}, { method: 'POST', body: JSON.stringify({ message }) })
 }
 
-export function thucThiLenhAssistant(commandId) {
-  return goiApi(`/Assistant/execute/${commandId}`, {}, { method: 'POST' })
+export function thucThiLenhAssistant(commandId, strongConfirm = false) {
+  return goiApi(`/Assistant/execute/${commandId}`, { strongConfirm }, { method: 'POST' })
+}
+
+export function resetAssistantSession() {
+  return goiApi('/Assistant/reset', {}, { method: 'POST' })
 }
 
 // ===================================================================
@@ -182,6 +186,10 @@ export function layChiSoConThieu(thang) {
 
 export function nhapChiSoDienNuoc(dto) {
   return goiApi('/MeterReadings', {}, { method: 'POST', body: JSON.stringify(dto) })
+}
+
+export function nhapChiSoDienNuocBulk(dto) {
+  return goiApi('/MeterReadings/bulk', {}, { method: 'POST', body: JSON.stringify(dto) })
 }
 
 export function previewChiSoDienNuoc(dto) {

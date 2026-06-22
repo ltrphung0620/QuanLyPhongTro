@@ -36,7 +36,7 @@ namespace NhaTro.Services
             return payment == null ? null : MapToDto(payment);
         }
 
-        public async Task<PaymentTransactionDto> HandleSepayWebhookAsync(SepayWebhookDto dto)
+        public async Task<PaymentTransactionDto> HandleSepayWebhookAsync(SepayWebhookDto dto, int? queryUserId = null)
         {
             var providerTransactionId = dto.Id?.ToString();
             if (string.IsNullOrWhiteSpace(providerTransactionId))
@@ -54,7 +54,27 @@ namespace NhaTro.Services
                 transactionDate = parsedDate;
             }
 
-            var resolvedPaymentCode = await ResolvePaymentCodeAsync(dto);
+            var resolvedPaymentCode = await ResolvePaymentCodeAsync(dto, queryUserId);
+
+            Invoice? matchedInvoice = null;
+            if (!string.IsNullOrWhiteSpace(resolvedPaymentCode))
+            {
+                matchedInvoice = await _invoiceRepo.GetByPaymentCodeIgnoreQueryFiltersAsync(resolvedPaymentCode);
+            }
+
+            int appUserId = 0;
+            if (matchedInvoice != null)
+            {
+                appUserId = matchedInvoice.AppUserId;
+            }
+            else if (queryUserId.HasValue)
+            {
+                appUserId = queryUserId.Value;
+            }
+            else
+            {
+                throw new InvalidOperationException("Không thể xác định tài khoản landlord sở hữu giao dịch này. Vui lòng cấu hình webhook kèm tham số ?userId=...");
+            }
 
             var payment = new PaymentTransaction
             {
@@ -69,6 +89,7 @@ namespace NhaTro.Services
                 Content = dto.Content,
                 RawPayloadJson = JsonSerializer.Serialize(dto),
                 ProcessStatus = "received",
+                AppUserId = appUserId,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -95,7 +116,7 @@ namespace NhaTro.Services
                 return MapToDto(payment);
             }
 
-            var invoice = await _invoiceRepo.GetByPaymentCodeAsync(payment.PaymentCode);
+            var invoice = matchedInvoice ?? await _invoiceRepo.GetByPaymentCodeIgnoreQueryFiltersAsync(payment.PaymentCode);
             if (invoice == null)
             {
                 payment.ProcessStatus = "failed";
@@ -213,7 +234,7 @@ namespace NhaTro.Services
                 return MapToDto(payment);
             }
 
-            var invoice = await _invoiceRepo.GetByPaymentCodeAsync(payment.PaymentCode);
+            var invoice = await _invoiceRepo.GetByPaymentCodeIgnoreQueryFiltersAsync(payment.PaymentCode);
             if (invoice == null)
             {
                 return MapToDto(payment);
@@ -255,7 +276,7 @@ namespace NhaTro.Services
             return decimal.Round(amount, 0, MidpointRounding.AwayFromZero);
         }
 
-        private async Task<string?> ResolvePaymentCodeAsync(SepayWebhookDto dto)
+        private async Task<string?> ResolvePaymentCodeAsync(SepayWebhookDto dto, int? queryUserId = null)
         {
             if (!string.IsNullOrWhiteSpace(dto.Code))
                 return dto.Code.Trim();
@@ -273,7 +294,17 @@ namespace NhaTro.Services
             if (candidates.Count == 0)
                 return null;
 
-            var unpaidInvoices = await _invoiceService.GetUnpaidAsync();
+            List<Invoice> unpaidInvoices;
+            if (queryUserId.HasValue)
+            {
+                var allUnpaid = await _invoiceRepo.GetUnpaidIgnoreQueryFiltersAsync();
+                unpaidInvoices = allUnpaid.Where(x => x.AppUserId == queryUserId.Value).ToList();
+            }
+            else
+            {
+                unpaidInvoices = await _invoiceRepo.GetUnpaidIgnoreQueryFiltersAsync();
+            }
+
             var paymentCodes = unpaidInvoices
                 .Select(invoice => invoice.PaymentCode?.Trim())
                 .Where(code => !string.IsNullOrWhiteSpace(code))

@@ -56,13 +56,16 @@ namespace NhaTro.Services
             }
 
             var normalizedBillingMonth = NormalizeMonth(dto.BillingMonth);
+            EnsureContractCoversMonth(contract, normalizedBillingMonth);
             var existing = await _meterRepo.GetByContractAndMonthAsync(contract.ContractId, normalizedBillingMonth);
             if (existing != null)
             {
                 throw new InvalidOperationException("Đã nhập điện cho tháng này.");
             }
 
-            var last = await _meterRepo.GetLatestByRoomAsync(dto.RoomId);
+            var last = await _meterRepo.GetLatestBeforeDateAsync(
+                dto.RoomId,
+                ResolveMonthlyReadingDate(normalizedBillingMonth));
             var previous = last?.CurrentReading ?? 0;
 
             if (dto.CurrentReading < previous)
@@ -150,13 +153,16 @@ namespace NhaTro.Services
             }
 
             var normalizedBillingMonth = NormalizeMonth(dto.BillingMonth);
+            EnsureContractCoversMonth(contract, normalizedBillingMonth);
             var existing = await _meterRepo.GetByContractAndMonthAsync(contract.ContractId, normalizedBillingMonth);
             if (existing != null)
             {
                 throw new InvalidOperationException("Đã có dữ liệu tháng này.");
             }
 
-            var last = await _meterRepo.GetLatestByRoomAsync(dto.RoomId);
+            var last = await _meterRepo.GetLatestBeforeDateAsync(
+                dto.RoomId,
+                ResolveMonthlyReadingDate(normalizedBillingMonth));
             var previous = last?.CurrentReading ?? 0;
 
             if (dto.CurrentReading < previous)
@@ -346,16 +352,27 @@ namespace NhaTro.Services
                 .Select(r => r.ContractId!.Value)
                 .ToHashSet();
 
-            var missing = activeContracts
+            var missingContracts = activeContracts
+                .Where(c => ContractCoversMonth(c, NormalizeMonth(month)))
                 .Where(c => !contractIdsWithReading.Contains(c.ContractId))
-                .Select(c => new MissingMeterDto
-                {
-                    RoomId = c.RoomId,
-                    RoomCode = c.Room?.RoomCode ?? string.Empty
-                })
                 .ToList();
 
-            return missing;
+            var results = new List<MissingMeterDto>();
+            foreach (var c in missingContracts)
+            {
+                var last = await _meterRepo.GetLatestBeforeDateAsync(
+                    c.RoomId,
+                    ResolveMonthlyReadingDate(NormalizeMonth(month)));
+                results.Add(new MissingMeterDto
+                {
+                    RoomId = c.RoomId,
+                    RoomCode = c.Room?.RoomCode ?? string.Empty,
+                    ContractId = c.ContractId,
+                    PreviousReading = last?.CurrentReading ?? 0
+                });
+            }
+
+            return results;
         }
 
         private static DateOnly NormalizeMonth(DateOnly value)
@@ -375,6 +392,23 @@ namespace NhaTro.Services
             return left.Year == right.Year && left.Month == right.Month;
         }
 
+        private static bool ContractCoversMonth(Contract contract, DateOnly billingMonth)
+        {
+            var monthStart = NormalizeMonth(billingMonth);
+            var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+            return contract.StartDate <= monthEnd
+                && (!contract.ActualEndDate.HasValue || contract.ActualEndDate.Value >= monthStart);
+        }
+
+        private static void EnsureContractCoversMonth(Contract contract, DateOnly billingMonth)
+        {
+            if (!ContractCoversMonth(contract, billingMonth))
+            {
+                throw new InvalidOperationException(
+                    $"Hợp đồng không có hiệu lực trong tháng {billingMonth:MM/yyyy}.");
+            }
+        }
+
         private async Task SyncInvoiceElectricityAsync(int contractId, DateOnly billingMonth, decimal electricityAmount)
         {
             var invoice = await _invoiceRepo.GetByContractAndMonthAsync(contractId, billingMonth);
@@ -386,7 +420,9 @@ namespace NhaTro.Services
                 + invoice.ElectricityFee
                 + invoice.WaterFee
                 + invoice.TrashFee
+                + invoice.ExtraFee
                 + invoice.DebtAmount
+                + invoice.DepositDebtAmount
                 - invoice.DiscountAmount;
 
             if (invoice.TotalAmount < 0)
@@ -446,6 +482,73 @@ namespace NhaTro.Services
             }
 
             File.Delete(fullPath);
+        }
+
+        public async Task<List<MeterReadingDto>> CreateBulkAsync(CreateMeterReadingBulkDto dto)
+        {
+            if (dto.Readings == null || !dto.Readings.Any())
+            {
+                return new List<MeterReadingDto>();
+            }
+
+            var normalizedBillingMonth = NormalizeMonth(dto.BillingMonth);
+            var results = new List<MeterReading>();
+
+            foreach (var item in dto.Readings)
+            {
+                var contract = await _contractRepo.GetActiveByRoomIdAsync(item.RoomId);
+                if (contract == null)
+                {
+                    throw new InvalidOperationException($"Hợp đồng không hợp lệ cho phòng ID {item.RoomId}.");
+                }
+
+                if (item.ContractId != contract.ContractId)
+                {
+                    throw new InvalidOperationException($"Lỗi hợp đồng không khớp cho phòng {contract.Room?.RoomCode ?? item.RoomId.ToString()}.");
+                }
+
+                EnsureContractCoversMonth(contract, normalizedBillingMonth);
+
+                var existing = await _meterRepo.GetByContractAndMonthAsync(contract.ContractId, normalizedBillingMonth);
+                if (existing != null)
+                {
+                    throw new InvalidOperationException($"Phòng {contract.Room?.RoomCode ?? item.RoomId.ToString()} đã có chỉ số điện cho tháng này.");
+                }
+
+                var last = await _meterRepo.GetLatestBeforeDateAsync(
+                    item.RoomId,
+                    ResolveMonthlyReadingDate(normalizedBillingMonth));
+                var previous = last?.CurrentReading ?? 0;
+
+                if (item.CurrentReading < previous)
+                {
+                    throw new InvalidOperationException($"Số điện mới cho phòng {contract.Room?.RoomCode ?? item.RoomId.ToString()} không hợp lệ (phải >= {previous}).");
+                }
+
+                var consumed = item.CurrentReading - previous;
+                var amount = consumed * ELECTRIC_PRICE;
+
+                var meter = new MeterReading
+                {
+                    RoomId = contract.RoomId,
+                    ContractId = contract.ContractId,
+                    BillingMonth = ResolveMonthlyReadingDate(normalizedBillingMonth),
+                    PreviousReading = previous,
+                    CurrentReading = item.CurrentReading,
+                    ConsumedUnits = consumed,
+                    UnitPrice = ELECTRIC_PRICE,
+                    Amount = amount,
+                    CreatedAt = DateTime.UtcNow,
+                    Room = contract.Room
+                };
+
+                await _meterRepo.AddAsync(meter);
+                results.Add(meter);
+            }
+
+            await _meterRepo.SaveChangesAsync();
+
+            return results.Select(MapToDto).ToList();
         }
     }
 }

@@ -134,5 +134,19 @@ namespace NhaTro.Controllers
             var result = await _service.GetMissingAsync(month);
             return Ok(result);
         }
+
+        [HttpPost("bulk")]
+        public async Task<IActionResult> CreateBulk([FromBody] CreateMeterReadingBulkDto dto)
+        {
+            try
+            {
+                var result = await _service.CreateBulkAsync(dto);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
     }
 }

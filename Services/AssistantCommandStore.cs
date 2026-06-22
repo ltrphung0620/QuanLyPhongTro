@@ -42,6 +42,37 @@ namespace NhaTro.Services
 
             return _commands.TryRemove(commandId, out command);
         }
+
+        public bool TryGet(string commandId, int userId, out PendingAssistantCommand? command)
+        {
+            command = null;
+            if (!_commands.TryGetValue(commandId, out var existing))
+            {
+                return false;
+            }
+
+            if (existing.UserId != userId)
+            {
+                return false;
+            }
+
+            if (DateTime.UtcNow - existing.CreatedAt > TimeSpan.FromMinutes(10))
+            {
+                _commands.TryRemove(commandId, out _);
+                return false;
+            }
+
+            command = existing;
+            return true;
+        }
+
+        public void ClearForUser(int userId)
+        {
+            foreach (var item in _commands.Where(x => x.Value.UserId == userId).ToList())
+            {
+                _commands.TryRemove(item.Key, out _);
+            }
+        }
     }
 
     public class PendingAssistantCommand

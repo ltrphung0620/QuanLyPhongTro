@@ -14,7 +14,9 @@ namespace NhaTro.Services
             bool isCorrectionMode = false,
             bool isValueLearningMode = false,
             string? learningField = null,
-            string? learningRawValue = null)
+            string? learningRawValue = null,
+            string? originalMessage = null,
+            bool isReviewOnly = false)
         {
             _items[userId] = new PendingAssistantConversation
             {
@@ -22,8 +24,10 @@ namespace NhaTro.Services
                 Command = command,
                 IsCorrectionMode = isCorrectionMode,
                 IsValueLearningMode = isValueLearningMode,
+                IsReviewOnly = isReviewOnly,
                 LearningField = learningField,
                 LearningRawValue = learningRawValue,
+                OriginalMessage = originalMessage,
                 UpdatedAt = DateTime.UtcNow
             };
         }
@@ -58,8 +62,10 @@ namespace NhaTro.Services
         public AssistantCommandDto Command { get; set; } = new();
         public bool IsCorrectionMode { get; set; }
         public bool IsValueLearningMode { get; set; }
+        public bool IsReviewOnly { get; set; }
         public string? LearningField { get; set; }
         public string? LearningRawValue { get; set; }
+        public string? OriginalMessage { get; set; }
         public DateTime UpdatedAt { get; set; }
     }
 }

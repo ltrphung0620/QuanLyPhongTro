@@ -17,7 +17,7 @@ namespace NhaTro.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.15")
+                .HasAnnotation("ProductVersion", "9.0.17")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -107,6 +107,11 @@ namespace NhaTro.Migrations
                         .HasColumnType("decimal(18,2)")
                         .HasColumnName("deposit_amount");
 
+                    b.Property<decimal>("DepositPaidAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("deposit_paid_amount");
+
                     b.Property<DateOnly?>("ExpectedEndDate")
                         .HasColumnType("date")
                         .HasColumnName("expected_end_date");
@@ -148,13 +153,19 @@ namespace NhaTro.Migrations
                     b.HasIndex("TenantId");
 
                     b.HasIndex("RoomId", "Status")
-                        .HasDatabaseName("IX_contracts_room_id_status");
+                        .IsUnique()
+                        .HasDatabaseName("IX_contracts_room_id_status")
+                        .HasFilter("[status] = 'active' AND [is_archived] = 0");
 
                     b.ToTable("contracts", null, t =>
                         {
                             t.HasCheckConstraint("CK_contracts_actual_room_price", "actual_room_price > 0");
 
                             t.HasCheckConstraint("CK_contracts_deposit_amount", "deposit_amount >= 0");
+
+                            t.HasCheckConstraint("CK_contracts_deposit_paid_amount", "deposit_paid_amount >= 0 AND deposit_paid_amount <= deposit_amount");
+
+                            t.HasCheckConstraint("CK_contracts_expected_end_date", "expected_end_date IS NULL OR expected_end_date >= start_date");
 
                             t.HasCheckConstraint("CK_contracts_occupant_count", "occupant_count > 0");
 
@@ -310,6 +321,11 @@ namespace NhaTro.Migrations
                         .HasColumnType("decimal(18,2)")
                         .HasColumnName("debt_amount");
 
+                    b.Property<decimal>("DepositDebtAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("deposit_debt_amount");
+
                     b.Property<decimal>("DiscountAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)")
@@ -422,7 +438,9 @@ namespace NhaTro.Migrations
                     b.HasIndex("ReplacedByInvoiceId");
 
                     b.HasIndex("RoomId", "BillingMonth", "InvoiceType")
-                        .HasDatabaseName("IX_invoices_room_month_type");
+                        .IsUnique()
+                        .HasDatabaseName("IX_invoices_room_month_type")
+                        .HasFilter("[replaced_by_invoice_id] IS NULL");
 
                     b.ToTable("invoices", null, t =>
                         {

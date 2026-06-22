@@ -6,7 +6,7 @@ namespace NhaTro.Interfaces.Services
     {
         Task<List<PaymentTransactionDto>> GetAllAsync(string? processStatus = null);
         Task<PaymentTransactionDto?> GetByIdAsync(int paymentTransactionId);
-        Task<PaymentTransactionDto> HandleSepayWebhookAsync(SepayWebhookDto dto);
+        Task<PaymentTransactionDto> HandleSepayWebhookAsync(SepayWebhookDto dto, int? queryUserId = null);
         Task<PaymentTransactionDto?> ReconcileAsync(int paymentTransactionId, ReconcilePaymentDto dto);
         Task<bool> DeleteAsync(int paymentTransactionId);
     }

@@ -57,6 +57,13 @@ const PrivateRoute = ({ children }) => {
   return isValid ? children : <Navigate to="/login" />
 }
 
+// Prevent mouse wheel from changing values in input[type=number]
+document.addEventListener('wheel', function (e) {
+  if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'number') {
+    document.activeElement.blur()
+  }
+})
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <NotificationProvider>

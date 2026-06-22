@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Bot, Send, Loader2, Check, MessageSquare, Sparkles, HelpCircle, ArrowRight, Zap, Info, Calendar } from 'lucide-react'
-import { guiTinNhanAssistant, thucThiLenhAssistant } from '../api'
+import { Bot, Send, Loader2, Check, MessageSquare, Sparkles, HelpCircle, ArrowRight, Zap, Info, Calendar, Download, RotateCw } from 'lucide-react'
+import { downloadInvoicePdf, guiTinNhanAssistant, resetAssistantSession, thucThiLenhAssistant } from '../api'
 import { useNotification } from '../context/NotificationContext'
+import AssistantProgress, { layNoiDungTraLoi } from '../components/AssistantProgress'
 import './Assistant.css'
 
 const GOI_Y_CHI_TIET = [
@@ -25,6 +26,8 @@ export default function Assistant() {
   const { toast } = useNotification()
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [sessionReady, setSessionReady] = useState(false)
+  const [strongConfirmed, setStrongConfirmed] = useState(false)
   const [messages, setMessages] = useState([
     taoTinNhan('assistant', 'Chào bạn! Mình là Trợ lý AI. Mình có thể giúp bạn cập nhật chỉ số điện nước, kiểm tra phòng trống hoặc truy vấn nhanh hóa đơn trọ. Bạn cần hỗ trợ việc gì hôm nay?')
   ])
@@ -40,24 +43,42 @@ export default function Assistant() {
     scrollToBottom()
   }, [messages, loading])
 
-  const guiTinNhan = async (text = input) => {
+  useEffect(() => {
+    let active = true
+    resetAssistantSession()
+      .catch(() => null)
+      .finally(() => {
+        if (active) setSessionReady(true)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const guiTinNhan = async (text = input, displayText = null) => {
     const trimmed = text.trim()
-    if (!trimmed || loading) return
+    if (!trimmed || loading || !sessionReady) return
 
     setInput('')
-    setMessages((items) => [...items, taoTinNhan('user', trimmed)])
+    setMessages((items) => [...items, taoTinNhan('user', displayText || trimmed)])
     setLoading(true)
 
     try {
       const response = await guiTinNhanAssistant(trimmed)
       setMessages((items) => [
         ...items,
-        taoTinNhan('assistant', response.message || 'Mình đã xử lý yêu cầu.', {
+        taoTinNhan('assistant', layNoiDungTraLoi(response), {
           commandId: response.commandId,
+          command: response.command,
           type: response.type,
           preview: response.preview,
+          result: response.result,
           pendingCommand: response.pendingCommand,
-          suggestions: response.suggestions || []
+          agentPlan: response.agentPlan,
+          agentExecution: response.agentExecution,
+          suggestions: response.suggestions || [],
+          actionSuggestions: response.actionSuggestions || [],
+          requiresStrongConfirmation: response.requiresStrongConfirmation
         })
       ])
     } catch (error) {
@@ -68,12 +89,12 @@ export default function Assistant() {
     }
   }
 
-  const xacNhanLenh = async (commandId) => {
+  const xacNhanLenh = async (commandId, requiresStrong) => {
     if (!commandId || loading) return
     setLoading(true)
 
     try {
-      const response = await thucThiLenhAssistant(commandId)
+      const response = await thucThiLenhAssistant(commandId, requiresStrong)
       toast.success(response.message || 'Thực hiện lệnh thành công!')
       setMessages((items) => [
         ...items,
@@ -82,6 +103,7 @@ export default function Assistant() {
           result: response.result
         })
       ])
+      setStrongConfirmed(false)
     } catch (error) {
       toast.error(error.message || 'Không thể thực hiện lệnh.')
       setMessages((items) => [...items, taoTinNhan('assistant', error.message || 'Không thể thực hiện lệnh.')])
@@ -90,9 +112,54 @@ export default function Assistant() {
     }
   }
 
+  const handleRefresh = async () => {
+    setLoading(true)
+    try {
+      await resetAssistantSession()
+      setMessages([
+        taoTinNhan('assistant', 'Chào bạn! Mình là Trợ lý AI. Mình có thể giúp bạn cập nhật chỉ số điện nước, kiểm tra phòng trống hoặc truy vấn nhanh hóa đơn trọ. Bạn cần hỗ trợ việc gì hôm nay?')
+      ])
+      setInput('')
+      setStrongConfirmed(false)
+      toast.success('Đã làm mới cuộc hội thoại thành công!')
+    } catch (error) {
+      toast.error(error.message || 'Không thể làm mới phiên trợ lý.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const submit = (event) => {
     event.preventDefault()
     guiTinNhan()
+  }
+
+  const xuLyPhimNhap = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      guiTinNhan()
+    }
+  }
+
+  const taiPdfHoaDon = async (invoiceId) => {
+    if (!invoiceId || loading) return
+    setLoading(true)
+
+    try {
+      const blob = await downloadInvoicePdf(invoiceId)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `HoaDon-${invoiceId}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      toast.error(error.message || 'Không thể tải PDF hóa đơn.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -113,7 +180,32 @@ export default function Assistant() {
           <div className="assistant-chat-header">
             <Bot size={20} className="text-accent" />
             <h3>Hội thoại với Trợ lý</h3>
-            <div className="status-indicator" style={{ marginLeft: 'auto' }}>
+            <button 
+              type="button" 
+              className="assistant-refresh-btn" 
+              onClick={handleRefresh}
+              disabled={loading}
+              title="Làm mới hội thoại"
+              style={{
+                marginLeft: 'auto',
+                marginRight: '12px',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 10px',
+                borderRadius: '4px',
+                fontSize: '0.82rem',
+                fontWeight: '500'
+              }}
+            >
+              <RotateCw size={14} className={loading ? 'animate-spin' : ''} />
+              Làm mới
+            </button>
+            <div className="status-indicator">
               <div className="status-dot"></div>
               Hệ thống sẵn sàng
             </div>
@@ -126,17 +218,69 @@ export default function Assistant() {
                 className={`chat-message-bubble chat-message-bubble--${message.role}`}
               >
                 <p>{message.text}</p>
+                <AssistantProgress plan={message.agentPlan} execution={message.agentExecution} />
                 
                 {message.type === 'confirmation_required' && message.commandId && (
+                  <div className="chat-message-actions-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {message.requiresStrongConfirmation && (
+                      <div className="assistant-strong-confirm-checkbox" style={{ margin: '4px 0', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-warning, #d97706)' }}>
+                        <input
+                          type="checkbox"
+                          id={`strong-confirm-${message.id}`}
+                          checked={strongConfirmed}
+                          onChange={(e) => setStrongConfirmed(e.target.checked)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <label htmlFor={`strong-confirm-${message.id}`} style={{ cursor: 'pointer', fontWeight: 500 }}>
+                          Tôi xác nhận đồng ý thực hiện hành động này
+                        </label>
+                      </div>
+                    )}
+                    <div className="chat-message-actions" style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                      <button 
+                        type="button" 
+                        className="assistant-confirm-btn" 
+                        onClick={() => xacNhanLenh(message.commandId, message.requiresStrongConfirmation)} 
+                        disabled={loading || (message.requiresStrongConfirmation && !strongConfirmed)}
+                      >
+                        <Check size={16} />
+                        Xác nhận thực hiện lệnh
+                      </button>
+                      <button
+                        type="button"
+                        className="assistant-reject-btn"
+                        onClick={() => guiTinNhan('Không đúng')}
+                        disabled={loading}
+                      >
+                        Không đúng
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {message.role === 'assistant' && (message.command || message.agentPlan) && message.type !== 'confirmation_required' && (
                   <div className="chat-message-actions">
-                    <button 
-                      type="button" 
-                      className="assistant-confirm-btn" 
-                      onClick={() => xacNhanLenh(message.commandId)} 
+                    <button
+                      type="button"
+                      className="assistant-reject-btn"
+                      onClick={() => guiTinNhan('Không đúng')}
                       disabled={loading}
                     >
-                      <Check size={16} />
-                      Xác nhận thực hiện lệnh
+                      Không đúng
+                    </button>
+                  </div>
+                )}
+
+                {message.result?.downloadUrl && message.result?.invoiceId && (
+                  <div className="chat-message-actions">
+                    <button
+                      type="button"
+                      className="assistant-confirm-btn"
+                      onClick={() => taiPdfHoaDon(message.result.invoiceId)}
+                      disabled={loading}
+                    >
+                      <Download size={16} />
+                      Tải PDF hóa đơn
                     </button>
                   </div>
                 )}
@@ -151,6 +295,22 @@ export default function Assistant() {
                         disabled={loading}
                       >
                         {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {message.actionSuggestions?.length > 0 && (
+                  <div className="assistant-action-suggestions">
+                    {message.actionSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion.intent}
+                        type="button"
+                        onClick={() => guiTinNhan(`__intent:${suggestion.intent}`, suggestion.label)}
+                        disabled={loading}
+                        title={suggestion.intent}
+                      >
+                        {suggestion.label}
                       </button>
                     ))}
                   </div>
@@ -172,17 +332,19 @@ export default function Assistant() {
 
           <div className="chat-input-container">
             <form className="chat-input-form" onSubmit={submit}>
-              <input
+              <textarea
                 className="chat-input-field"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
+                onKeyDown={xuLyPhimNhap}
                 placeholder="Nhập yêu cầu bằng tiếng Việt (ví dụ: số điện A1 tháng này là 1024)..."
-                disabled={loading}
+                disabled={loading || !sessionReady}
+                rows={2}
               />
               <button 
                 type="submit" 
                 className="chat-send-btn" 
-                disabled={loading || !input.trim()}
+                disabled={loading || !sessionReady || !input.trim()}
                 aria-label="Gửi yêu cầu"
               >
                 <Send size={18} />

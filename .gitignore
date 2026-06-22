@@ -19,6 +19,8 @@ obj/
 # =========================
 *.log
 App_Data/assistant-learning.json
+App_Data/assistant-semantic-memory.json
+App_Data/assistant-audit-log.json
 
 # =========================
 # OS files

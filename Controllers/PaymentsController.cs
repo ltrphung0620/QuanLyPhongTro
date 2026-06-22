@@ -19,13 +19,14 @@ namespace NhaTro.Controllers
             _realtimeService = realtimeService;
         }
 
+        [AllowAnonymous]
         [HttpPost("sepay/webhook")]
         [HttpPost("/api/webhooks/sepay")]
-        public async Task<IActionResult> HandleSepayWebhook([FromBody] SepayWebhookDto dto)
+        public async Task<IActionResult> HandleSepayWebhook([FromBody] SepayWebhookDto dto, [FromQuery] int? userId = null)
         {
             try
             {
-                var result = await _service.HandleSepayWebhookAsync(dto);
+                var result = await _service.HandleSepayWebhookAsync(dto, userId);
                 await _realtimeService.PublishAsync("payment.webhook-received", "payments", "invoices", "reports");
                 return Ok(new
                 {

@@ -11,6 +11,8 @@ namespace NhaTro.Dtos.Contracts
         public DateOnly? ExpectedEndDate { get; set; }
         public DateOnly? ActualEndDate { get; set; }
         public decimal DepositAmount { get; set; }
+        public decimal DepositPaidAmount { get; set; }
+        public decimal DepositDebtAmount => Math.Max(0, DepositAmount - DepositPaidAmount);
         public int OccupantCount { get; set; }
         public decimal ActualRoomPrice { get; set; }
         public string Status { get; set; } = string.Empty;

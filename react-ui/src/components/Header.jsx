@@ -1,9 +1,9 @@
 import React from 'react'
 import { useLocation } from 'react-router-dom'
-import { Bell, Calendar, Menu, User } from 'lucide-react'
+import { Bell, Calendar, Menu, User, Sun, Moon } from 'lucide-react'
 import './Header.css'
 
-export default function Header({ toggleSidebar }) {
+export default function Header({ toggleSidebar, theme, toggleTheme }) {
   const location = useLocation()
 
   // Map path to title
@@ -49,6 +49,10 @@ export default function Header({ toggleSidebar }) {
       </div>
 
       <div className="header-right">
+        <button className="header-action-btn" onClick={toggleTheme} aria-label="Chuyển chế độ sáng/tối">
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
+
         <button className="header-action-btn">
           <Bell size={18} />
           <span className="badge-dot"></span>

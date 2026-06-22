@@ -223,6 +223,10 @@ namespace NhaTro.Data
                     .HasColumnName("deposit_amount")
                     .HasPrecision(18, 2);
 
+                entity.Property(e => e.DepositPaidAmount)
+                    .HasColumnName("deposit_paid_amount")
+                    .HasPrecision(18, 2);
+
                 entity.Property(e => e.OccupantCount)
                     .HasColumnName("occupant_count");
 
@@ -262,12 +266,16 @@ namespace NhaTro.Data
                     .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasIndex(e => new { e.RoomId, e.Status })
-                    .HasDatabaseName("IX_contracts_room_id_status");
+                    .HasDatabaseName("IX_contracts_room_id_status")
+                    .IsUnique()
+                    .HasFilter("[status] = 'active' AND [is_archived] = 0");
 
                 entity.ToTable(t =>
                 {
                     t.HasCheckConstraint("CK_contracts_status", "status IN ('active', 'ended', 'cancelled')");
                     t.HasCheckConstraint("CK_contracts_deposit_amount", "deposit_amount >= 0");
+                    t.HasCheckConstraint("CK_contracts_deposit_paid_amount", "deposit_paid_amount >= 0 AND deposit_paid_amount <= deposit_amount");
+                    t.HasCheckConstraint("CK_contracts_expected_end_date", "expected_end_date IS NULL OR expected_end_date >= start_date");
                     t.HasCheckConstraint("CK_contracts_occupant_count", "occupant_count > 0");
                     t.HasCheckConstraint("CK_contracts_actual_room_price", "actual_room_price > 0");
                 });
@@ -403,6 +411,10 @@ namespace NhaTro.Data
                     .HasColumnName("debt_amount")
                     .HasPrecision(18, 2);
 
+                entity.Property(e => e.DepositDebtAmount)
+                    .HasColumnName("deposit_debt_amount")
+                    .HasPrecision(18, 2);
+
                 entity.Property(e => e.TotalAmount)
                     .HasColumnName("total_amount")
                     .HasPrecision(18, 2);
@@ -468,7 +480,9 @@ namespace NhaTro.Data
                     .IsUnique();
 
                 entity.HasIndex(e => new { e.RoomId, e.BillingMonth, e.InvoiceType })
-                    .HasDatabaseName("IX_invoices_room_month_type");
+                    .HasDatabaseName("IX_invoices_room_month_type")
+                    .IsUnique()
+                    .HasFilter("[replaced_by_invoice_id] IS NULL");
 
                 entity.ToTable(t =>
                 {

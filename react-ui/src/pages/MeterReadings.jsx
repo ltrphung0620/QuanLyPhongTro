@@ -18,6 +18,7 @@ import {
   layChiSoThang, 
   layChiSoConThieu, 
   nhapChiSoDienNuoc, 
+  nhapChiSoDienNuocBulk,
   previewChiSoDienNuoc, 
   xoaChiSoDienNuoc,
   layDanhSachHopDong,
@@ -69,6 +70,12 @@ export default function MeterReadings() {
   
   // Image Upload State
   const [uploadingReadingId, setUploadingReadingId] = useState(null)
+
+  // Bulk Log Modal State
+  const [bulkModalOpen, setBulkModalOpen] = useState(false)
+  const [bulkInputs, setBulkInputs] = useState({})
+  const [bulkError, setBulkError] = useState(null)
+  const [bulkSubmitting, setBulkSubmitting] = useState(false)
 
   const taiDuLieu = async () => {
     setLoading(true)
@@ -172,6 +179,92 @@ export default function MeterReadings() {
       setModalError(err.message || 'Lỗi khi lưu số điện')
     } finally {
       setModalSubmitting(false)
+    }
+  }
+
+  // Handle open bulk modal
+  const handleOpenBulkModal = () => {
+    // Filter rooms that have active contracts (or contractId since we populated it)
+    const roomsWithContracts = missingRooms.filter(r => r.contractId > 0 || timHopDongPhong(r.roomId) !== undefined)
+    if (roomsWithContracts.length === 0) {
+      toast.error('Không có phòng nào có hợp đồng hiệu lực để nhập hàng loạt.')
+      return
+    }
+
+    const initialInputs = {}
+    roomsWithContracts.forEach(r => {
+      initialInputs[r.roomId] = ''
+    })
+    setBulkInputs(initialInputs)
+    setBulkError(null)
+    setBulkModalOpen(true)
+  }
+
+  // Handle input change in bulk form
+  const handleBulkInputChange = (roomId, val) => {
+    setBulkInputs(prev => ({
+      ...prev,
+      [roomId]: val
+    }))
+  }
+
+  // Handle submit bulk readings
+  const handleBulkSubmit = async (e) => {
+    e.preventDefault()
+    setBulkError(null)
+    setBulkSubmitting(true)
+
+    const readingsList = []
+    const roomsWithContracts = missingRooms.filter(r => r.contractId > 0 || timHopDongPhong(r.roomId) !== undefined)
+
+    for (const room of roomsWithContracts) {
+      const inputVal = bulkInputs[room.roomId]
+      // Skip empty inputs
+      if (inputVal === undefined || inputVal === '') continue
+
+      const currentVal = parseInt(inputVal)
+      const contract = timHopDongPhong(room.roomId)
+      const contractId = room.contractId || (contract ? contract.contractId : null)
+      const prevReading = room.previousReading || 0
+
+      if (isNaN(currentVal) || currentVal < prevReading) {
+        setBulkError(`Số điện mới của phòng ${room.roomCode} phải lớn hơn hoặc bằng số cũ (${prevReading})`)
+        setBulkSubmitting(false)
+        return
+      }
+
+      if (!contractId) {
+        setBulkError(`Không tìm thấy thông tin hợp đồng cho phòng ${room.roomCode}`)
+        setBulkSubmitting(false)
+        return
+      }
+
+      readingsList.push({
+        roomId: room.roomId,
+        contractId: contractId,
+        currentReading: currentVal
+      })
+    }
+
+    if (readingsList.length === 0) {
+      setBulkError('Vui lòng nhập ít nhất một chỉ số điện mới.')
+      setBulkSubmitting(false)
+      return
+    }
+
+    try {
+      await nhapChiSoDienNuocBulk({
+        billingMonth: `${thang}-01`,
+        readings: readingsList
+      })
+      setBulkModalOpen(false)
+      toast.success(`Đã lưu thành công ${readingsList.length} chỉ số điện.`)
+      taiDuLieu()
+    } catch (err) {
+      console.error(err)
+      setBulkError(err.message || 'Lỗi khi lưu chỉ số hàng loạt')
+    } finally {
+      setBulkSubmitting(false)
     }
   }
 
@@ -300,14 +393,27 @@ export default function MeterReadings() {
           </button>
         </div>
 
-        <div className="search-box">
-          <Search size={18} className="search-icon" />
-          <input 
-            type="text" 
-            placeholder="Tìm theo số phòng..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+        <div className="search-box" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <Search size={18} className="search-icon" style={{ position: 'absolute', left: '12px' }} />
+            <input 
+              type="text" 
+              placeholder="Tìm theo số phòng..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ paddingLeft: '36px' }}
+            />
+          </div>
+          {activeTab === 'missing' && filteredMissing.length > 0 && (
+            <button 
+              type="button" 
+              className="btn btn-primary"
+              onClick={handleOpenBulkModal}
+              style={{ whiteSpace: 'nowrap' }}
+            >
+              Nhập hàng loạt
+            </button>
+          )}
         </div>
       </div>
 
@@ -669,6 +775,103 @@ export default function MeterReadings() {
                 style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: '8px', objectFit: 'contain' }} 
               />
             </div>
+          </div>
+        </div>
+      )}
+      {/* Bulk Log Reading Modal */}
+      {bulkModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '800px', width: '95%' }}>
+            <div className="modal-header">
+              <span className="modal-title">Nhập Chỉ Số Điện Hàng Loạt - Tháng {thang}</span>
+              <button className="btn-close-modal" onClick={() => setBulkModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleBulkSubmit}>
+              <div className="modal-body">
+                {bulkError && (
+                  <div className="error-alert">
+                    <AlertCircle size={18} />
+                    <span>{bulkError}</span>
+                  </div>
+                )}
+
+                <p style={{ marginBottom: '16px', fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
+                  Nhập chỉ số điện mới cho các phòng dưới đây. Các ô trống sẽ được bỏ qua.
+                </p>
+
+                <div className="bulk-reading-table-container">
+                  <table className="bulk-table">
+                    <thead>
+                      <tr>
+                        <th>Phòng</th>
+                        <th>Khách thuê</th>
+                        <th>Chỉ số cũ</th>
+                        <th>Chỉ số mới *</th>
+                        <th>Tiêu thụ</th>
+                        <th>Thành tiền (3.5k/kWh)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {missingRooms.filter(r => r.contractId > 0 || timHopDongPhong(r.roomId) !== undefined).map(room => {
+                        const prevReading = room.previousReading || 0
+                        const currentInput = bulkInputs[room.roomId] || ''
+                        const currentVal = parseInt(currentInput)
+                        const consumed = !isNaN(currentVal) && currentVal >= prevReading ? currentVal - prevReading : 0
+                        const amount = consumed * 3500
+                        const tenantName = timHopDongPhong(room.roomId)?.tenantName || 'Khách thuê'
+
+                        return (
+                          <tr key={room.roomId}>
+                            <td><strong>{room.roomCode}</strong></td>
+                            <td>{tenantName}</td>
+                            <td>{prevReading}</td>
+                            <td>
+                              <input
+                                type="number"
+                                className="bulk-input-field"
+                                min={prevReading}
+                                placeholder={`>= ${prevReading}`}
+                                value={currentInput}
+                                onChange={(e) => handleBulkInputChange(room.roomId, e.target.value)}
+                              />
+                            </td>
+                            <td>
+                              <span style={{ fontWeight: consumed > 0 ? '700' : 'normal', color: consumed > 0 ? 'var(--accent)' : 'var(--text-secondary)' }}>
+                                {consumed} kWh
+                              </span>
+                            </td>
+                            <td>
+                              <strong>{dinhDangTien(amount)}</strong>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={() => setBulkModalOpen(false)}
+                  disabled={bulkSubmitting}
+                >
+                  Hủy
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  disabled={bulkSubmitting}
+                >
+                  {bulkSubmitting ? 'Đang lưu...' : 'Lưu tất cả'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

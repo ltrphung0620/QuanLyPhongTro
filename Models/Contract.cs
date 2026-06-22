@@ -20,6 +20,9 @@ namespace NhaTro.Models
         [Column(TypeName = "decimal(18,2)")]
         public decimal DepositAmount { get; set; }
 
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal DepositPaidAmount { get; set; }
+
         public int OccupantCount { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]

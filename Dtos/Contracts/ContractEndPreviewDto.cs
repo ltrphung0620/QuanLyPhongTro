@@ -9,6 +9,7 @@ namespace NhaTro.Dtos.Contracts
         public string TenantName { get; set; } = string.Empty;
 
         public DateOnly StartDate { get; set; }
+        public DateOnly FromDate { get; set; }
         public DateOnly ActualEndDate { get; set; }
 
         public int NumberOfDays { get; set; }

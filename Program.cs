@@ -9,6 +9,7 @@ using NhaTro.Interfaces.Services;
 using NhaTro.Repositories;
 using NhaTro.Services;
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddJsonFile("secrets.json", optional: true, reloadOnChange: true);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -72,9 +73,16 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddSingleton<AssistantCommandStore>();
 builder.Services.AddSingleton<AssistantConversationStore>();
+builder.Services.AddSingleton<AssistantAgentStateStore>();
 builder.Services.AddSingleton<AssistantActionRegistry>();
+builder.Services.AddSingleton<AssistantToolRegistry>();
 builder.Services.AddSingleton<AssistantLearningStore>();
+builder.Services.AddSingleton<AssistantSemanticMemoryStore>();
+builder.Services.AddSingleton<AssistantTrainingPhraseCatalog>();
+builder.Services.AddSingleton<AssistantLocalIntentMatcher>();
+builder.Services.AddSingleton<AssistantAuditStore>();
 builder.Services.AddHttpClient<IAssistantCommandParser, AssistantCommandParser>();
+builder.Services.AddHttpClient<AssistantAgentPlanner>();
 builder.Services.AddScoped<IAssistantService, AssistantService>();
 
 

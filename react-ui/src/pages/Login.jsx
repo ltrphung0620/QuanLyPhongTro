@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { login } from '../api'
-import { Mail, Lock, ArrowRight, AlertCircle, Home } from 'lucide-react'
+import { Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react'
 import '../Auth.css'
 
 export default function Login() {
@@ -30,68 +30,80 @@ export default function Login() {
   }
 
   return (
-    <div className="auth-container">
-      {/* Background patterns */}
-      <div className="auth-bg-pattern-1"></div>
-      <div className="auth-bg-pattern-2"></div>
-
-      <div className="auth-card">
-        <div className="auth-header">
-          <div className="auth-logo-wrapper">
-            <Home size={24} />
+    <div className="auth-page auth-split-container">
+      {/* Left Pane: Form */}
+      <div className="auth-left-pane">
+        <div className="auth-form-wrapper">
+          {/* Brand/logo row */}
+          <div className="auth-brand-logo">
+            <img src="/logo-lph.jpg" alt="LPH Logo" />
+            <h2>Quản lý phòng trọ</h2>
           </div>
-          <h2>NhaTro Premium</h2>
-          <p>Đăng nhập tài khoản quản trị</p>
-        </div>
 
-        {error && (
-          <div className="auth-error-alert">
-            <AlertCircle size={16} />
-            <span>{error}</span>
-          </div>
-        )}
+          <h1 className="auth-title">Chào mừng trở lại</h1>
+          <p className="auth-subtitle">Nhập thông tin quản trị viên để quản lý hệ thống trọ.</p>
 
-        <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-group">
-            <label className="form-label">Email đăng nhập</label>
-            <div className="auth-input-wrapper">
-              <Mail className="auth-input-icon" size={16} />
-              <input
-                type="email"
-                className="form-control auth-input-control"
-                placeholder="ten@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+
+          {error && (
+            <div className="auth-error-alert">
+              <AlertCircle size={16} />
+              <span>{error}</span>
             </div>
-          </div>
+          )}
 
-          <div className="form-group">
-            <label className="form-label">Mật khẩu</label>
-            <div className="auth-input-wrapper">
-              <Lock className="auth-input-icon" size={16} />
-              <input
-                type="password"
-                className="form-control auth-input-control"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+          <form onSubmit={handleSubmit} className="auth-form">
+            <div className="form-group">
+              <label className="form-label" htmlFor="email-input">Email đăng nhập</label>
+              <div className="auth-input-wrapper">
+                <Mail className="auth-input-icon" size={16} />
+                <input
+                  id="email-input"
+                  type="email"
+                  className="auth-input-control"
+                  placeholder="ten@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
             </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="password-input">Mật khẩu</label>
+              <div className="auth-input-wrapper">
+                <Lock className="auth-input-icon" size={16} />
+                <input
+                  id="password-input"
+                  type="password"
+                  className="auth-input-control"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <button type="submit" className="auth-submit-btn-pill" disabled={isLoading}>
+              {isLoading ? 'Đang xử lý...' : 'Tiếp tục đăng nhập'}
+              {!isLoading && <ArrowRight size={16} />}
+            </button>
+          </form>
+
+          <div className="auth-terms-text">
+            Bằng cách tiếp tục, bạn đồng ý với <a href="#!">Điều khoản dịch vụ</a> và <a href="#!">Chính sách bảo mật</a> của chúng tôi.
           </div>
 
-          <button type="submit" className="btn btn-primary auth-submit-btn" disabled={isLoading}>
-            {isLoading ? 'Đang xử lý...' : 'Đăng nhập'}
-            {!isLoading && <ArrowRight size={16} />}
-          </button>
-        </form>
-
-        <div className="auth-footer-text">
-          <p>
+          <div className="auth-footer-link">
             Chưa có tài khoản? <Link to="/register">Đăng ký ngay</Link>
-          </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Pane: Large Logo Showcase */}
+      <div className="auth-right-pane">
+        <div className="auth-logo-showcase">
+          <img src="/logo-lph.jpg" alt="LPH Corporate Logo" />
         </div>
       </div>
     </div>

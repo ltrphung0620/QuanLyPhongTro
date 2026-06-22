@@ -18,6 +18,18 @@ import { useNotification } from './context/NotificationContext'
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { toast: notify } = useNotification()
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('theme') || 'light'
+  })
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light')
+  }
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen)
@@ -85,7 +97,7 @@ export default function App() {
       <Sidebar isOpen={sidebarOpen} />
 
       <div className="main-content">
-        <Header toggleSidebar={toggleSidebar} />
+        <Header toggleSidebar={toggleSidebar} theme={theme} toggleTheme={toggleTheme} />
         
         {/* Main page content area */}
         <Routes>
