@@ -468,6 +468,13 @@ export function taoToChuc(data) {
   })
 }
 
+export function suaToChuc(id, data) {
+  return goiApi(`/super-admin/organizations/${id}`, {}, {
+    method: 'PUT',
+    body: JSON.stringify(data)
+  })
+}
+
 export function toggleToChuc(id, makeActive) {
   const endpoint = makeActive ? `/super-admin/organizations/${id}/enable` : `/super-admin/organizations/${id}/disable`
   return goiApi(endpoint, {}, {

@@ -30,9 +30,12 @@ export default function Admins() {
       setLoadingOrgs(true)
       try {
         const data = await layDanhSachToChuc()
-        setOrgs(data)
-        if (data.length > 0) {
-          setSelectedOrgId(data[0].id)
+        const activeOrgs = data.filter(org => org.isActive)
+        setOrgs(activeOrgs)
+        if (activeOrgs.length > 0) {
+          setSelectedOrgId(activeOrgs[0].id)
+        } else {
+          setSelectedOrgId('')
         }
       } catch (err) {
         toast.error('Không thể tải danh sách tổ chức: ' + err.message)
@@ -44,7 +47,10 @@ export default function Admins() {
   }, [])
 
   useEffect(() => {
-    if (!selectedOrgId) return
+    if (!selectedOrgId) {
+      setAdmins([])
+      return
+    }
 
     const fetchAdmins = async () => {
       setLoadingAdmins(true)
@@ -153,7 +159,11 @@ export default function Admins() {
             <div>Đang tải...</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {orgs.map(org => (
+              {orgs.length === 0 ? (
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                  Không có tổ chức đang hoạt động.
+                </div>
+              ) : orgs.map(org => (
                 <button
                   key={org.id}
                   onClick={() => setSelectedOrgId(org.id)}

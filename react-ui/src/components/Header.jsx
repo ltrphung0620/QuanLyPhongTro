@@ -199,7 +199,7 @@ export default function Header({ toggleSidebar, theme, toggleTheme }) {
       case '/invoices':
         return 'Hóa Đơn Hàng Tháng'
       case '/payments':
-        return 'Lịch Sử Giao Dịch'
+        return 'Thu Chi Tháng'
       case '/reports':
         return 'Báo Cáo Sổ Quỹ'
       case '/assistant':

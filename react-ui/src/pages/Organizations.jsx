@@ -1,29 +1,30 @@
-import React, { useState, useEffect } from 'react'
-import { Plus, ToggleLeft, ToggleRight, Building, Phone, Mail, MapPin, User, Search, RefreshCw } from 'lucide-react'
-import { layDanhSachToChuc, taoToChuc, toggleToChuc } from '../api'
+import React, { useEffect, useMemo, useState } from 'react'
+import { Building, Edit3, Mail, Phone, Plus, RefreshCw, Search, ToggleLeft, ToggleRight, User } from 'lucide-react'
+import { layDanhSachToChuc, suaToChuc, taoToChuc, toggleToChuc } from '../api'
 import { useNotification } from '../context/NotificationContext'
 
+const emptyForm = {
+  name: '',
+  code: '',
+  ownerName: '',
+  phone: '',
+  email: ''
+}
+
 export default function Organizations() {
+  const { toast, confirm } = useNotification()
   const [orgs, setOrgs] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [showModal, setShowModal] = useState(false)
-  const { toast, confirm } = useNotification()
-
-  // Form states
-  const [name, setName] = useState('')
-  const [code, setCode] = useState('')
-  const [ownerName, setOwnerName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [email, setEmail] = useState('')
-  const [address, setAddress] = useState('')
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingOrg, setEditingOrg] = useState(null)
+  const [form, setForm] = useState(emptyForm)
   const [submitLoading, setSubmitLoading] = useState(false)
 
   const fetchOrgs = async () => {
     setLoading(true)
     try {
-      const data = await layDanhSachToChuc()
-      setOrgs(data)
+      setOrgs(await layDanhSachToChuc())
     } catch (err) {
       toast.error('Không thể tải danh sách tổ chức: ' + err.message)
     } finally {
@@ -35,82 +36,125 @@ export default function Organizations() {
     fetchOrgs()
   }, [])
 
+  const filteredOrgs = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase()
+    if (!keyword) return orgs
+
+    return orgs.filter((org) =>
+      org.name?.toLowerCase().includes(keyword) ||
+      org.code?.toLowerCase().includes(keyword) ||
+      org.ownerName?.toLowerCase().includes(keyword)
+    )
+  }, [orgs, searchTerm])
+
+  const activeOrgs = filteredOrgs.filter((org) => org.isActive)
+  const lockedOrgs = filteredOrgs.filter((org) => !org.isActive)
+
+  const openCreate = () => {
+    setEditingOrg(null)
+    setForm(emptyForm)
+    setModalOpen(true)
+  }
+
+  const openEdit = (org) => {
+    setEditingOrg(org)
+    setForm({
+      name: org.name || '',
+      code: org.code || '',
+      ownerName: org.ownerName || '',
+      phone: org.phone || '',
+      email: org.email || ''
+    })
+    setModalOpen(true)
+  }
+
+  const closeModal = () => {
+    setModalOpen(false)
+    setEditingOrg(null)
+    setForm(emptyForm)
+  }
+
+  const updateForm = (key, value) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!form.name.trim() || !form.code.trim()) {
+      toast.warning('Tên tổ chức và mã tổ chức là bắt buộc')
+      return
+    }
+
+    const payload = {
+      name: form.name.trim(),
+      code: form.code.trim().toUpperCase(),
+      ownerName: form.ownerName.trim() || null,
+      phone: form.phone.trim() || null,
+      email: form.email.trim() || null,
+      address: null
+    }
+
+    setSubmitLoading(true)
+    try {
+      if (editingOrg) {
+        await suaToChuc(editingOrg.id, payload)
+        toast.success('Cập nhật tổ chức thành công')
+      } else {
+        await taoToChuc(payload)
+        toast.success('Tạo tổ chức thành công')
+      }
+
+      closeModal()
+      fetchOrgs()
+    } catch (err) {
+      toast.error((editingOrg ? 'Lỗi khi cập nhật tổ chức: ' : 'Lỗi khi tạo tổ chức: ') + err.message)
+    } finally {
+      setSubmitLoading(false)
+    }
+  }
+
   const handleToggleActive = async (org) => {
-    const action = org.isActive ? 'Khóa' : 'Mở khóa'
-    const ok = await confirm(`Bạn có chắc chắn muốn ${action.toLowerCase()} tổ chức "${org.name}"?`, `Xác nhận thay đổi trạng thái`)
+    const action = org.isActive ? 'khóa' : 'mở khóa'
+    const ok = await confirm(
+      `Bạn có chắc chắn muốn ${action} tổ chức "${org.name}"?`,
+      'Xác nhận thay đổi trạng thái'
+    )
     if (!ok) return
 
     try {
       await toggleToChuc(org.id, !org.isActive)
-      toast.success(`${action} tổ chức thành công!`)
+      toast.success(`${org.isActive ? 'Khóa' : 'Mở khóa'} tổ chức thành công`)
       fetchOrgs()
     } catch (err) {
       toast.error('Lỗi khi thay đổi trạng thái: ' + err.message)
     }
   }
 
-  const handleCreate = async (e) => {
-    e.preventDefault()
-    if (!name || !code) {
-      toast.warning('Tên tổ chức và Mã tổ chức là bắt buộc')
-      return
-    }
-
-    setSubmitLoading(true)
-    try {
-      await taoToChuc({ name, code, ownerName, phone, email, address })
-      toast.success('Tạo tổ chức thành công!')
-      setShowModal(false)
-      // Reset form
-      setName('')
-      setCode('')
-      setOwnerName('')
-      setPhone('')
-      setEmail('')
-      setAddress('')
-      fetchOrgs()
-    } catch (err) {
-      toast.error('Lỗi khi tạo tổ chức: ' + err.message)
-    } finally {
-      setSubmitLoading(false)
-    }
-  }
-
-  const filteredOrgs = orgs.filter(o => 
-    o.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    o.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (o.ownerName && o.ownerName.toLowerCase().includes(searchTerm.toLowerCase()))
-  )
-
   return (
-    <div className="page-container" style={{ padding: '24px', fontFamily: 'Inter, sans-serif' }}>
+    <div className="page-container" style={{ padding: 24, fontFamily: 'Inter, sans-serif' }}>
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '24px',
+        marginBottom: 24,
         flexWrap: 'wrap',
-        gap: '16px'
+        gap: 16
       }}>
         <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Danh sách Tổ chức / Chủ trọ</h2>
-          <p style={{ margin: '4px 0 0 0', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Quản lý hoạt động các tổ chức đối tác sử dụng phần mềm</p>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+            Danh sách Tổ chức / Chủ trọ
+          </h2>
+          <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+            Quản lý thông tin và trạng thái các tổ chức đang sử dụng phần mềm
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button 
-            className="btn btn-secondary" 
-            onClick={fetchOrgs} 
-            disabled={loading}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
+
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button className="btn btn-secondary" onClick={fetchOrgs} disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <RefreshCw size={16} className={loading ? 'spin-anim' : ''} />
             <span>Làm mới</span>
           </button>
-          <button 
-            className="btn btn-primary" 
-            onClick={() => setShowModal(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
+          <button className="btn btn-primary" onClick={openCreate} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Plus size={16} />
             <span>Thêm tổ chức</span>
           </button>
@@ -120,16 +164,16 @@ export default function Organizations() {
       <div style={{
         background: 'var(--bg-secondary, #fff)',
         border: '1px solid var(--border-color, #e2e8f0)',
-        borderRadius: '12px',
-        padding: '16px',
-        marginBottom: '20px',
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 20,
         display: 'flex',
         alignItems: 'center',
-        gap: '10px'
+        gap: 10
       }}>
         <Search size={18} style={{ color: 'var(--text-secondary)' }} />
-        <input 
-          type="text" 
+        <input
+          type="text"
           placeholder="Tìm kiếm theo tên, mã hoặc tên chủ trọ..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -145,210 +189,97 @@ export default function Organizations() {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px' }}>Đang tải danh sách tổ chức...</div>
+        <div style={{ textAlign: 'center', padding: 60 }}>Đang tải danh sách tổ chức...</div>
       ) : (
-        <div style={{
-          background: 'var(--bg-secondary, #fff)',
-          border: '1px solid var(--border-color, #e2e8f0)',
-          borderRadius: '12px',
-          overflow: 'hidden'
-        }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg-primary, #f8fafc)', borderBottom: '1px solid var(--border-color)' }}>
-                  <th style={{ padding: '14px 16px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Mã / Tên</th>
-                  <th style={{ padding: '14px 16px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Người đại diện</th>
-                  <th style={{ padding: '14px 16px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Liên hệ</th>
-                  <th style={{ padding: '14px 16px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Địa chỉ</th>
-                  <th style={{ padding: '14px 16px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Trạng thái</th>
-                  <th style={{ padding: '14px 16px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', textAlign: 'right' }}>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOrgs.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>Không tìm thấy tổ chức nào</td>
-                  </tr>
-                ) : (
-                  filteredOrgs.map((org) => (
-                    <tr key={org.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <div style={{
-                            width: '38px',
-                            height: '38px',
-                            borderRadius: '8px',
-                            background: org.isActive ? 'rgba(59, 130, 246, 0.1)' : 'rgba(100, 116, 139, 0.1)',
-                            color: org.isActive ? 'var(--primary-color, #3b82f6)' : 'var(--text-secondary)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}>
-                            <Building size={20} />
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{org.name}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Code: {org.code}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-primary)', fontSize: '0.88rem' }}>
-                          <User size={14} style={{ color: 'var(--text-secondary)' }} />
-                          <span>{org.ownerName || 'N/A'}</span>
-                        </div>
-                      </td>
-                      <td style={{ padding: '16px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.82rem' }}>
-                          {org.phone && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-primary)' }}>
-                              <Phone size={12} style={{ color: 'var(--text-secondary)' }} />
-                              <span>{org.phone}</span>
-                            </div>
-                          )}
-                          {org.email && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-primary)' }}>
-                              <Mail size={12} style={{ color: 'var(--text-secondary)' }} />
-                              <span>{org.email}</span>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td style={{ padding: '16px', maxWidth: '250px' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', fontSize: '0.82rem', color: 'var(--text-primary)' }}>
-                          <MapPin size={12} style={{ color: 'var(--text-secondary)', marginTop: '2px', flexShrink: 0 }} />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                            {org.address || 'N/A'}
-                          </span>
-                        </div>
-                      </td>
-                      <td style={{ padding: '16px' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          padding: '4px 8px',
-                          borderRadius: '12px',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          background: org.isActive ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                          color: org.isActive ? 'var(--text-success, #22c55e)' : 'var(--text-danger, #ef4444)'
-                        }}>
-                          {org.isActive ? 'Hoạt động' : 'Đã khóa'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '16px', textAlign: 'right' }}>
-                        <button
-                          onClick={() => handleToggleActive(org)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            padding: '6px',
-                            color: org.isActive ? 'var(--text-danger, #ef4444)' : 'var(--text-success, #22c55e)',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            fontWeight: 500,
-                            fontSize: '0.85rem'
-                          }}
-                        >
-                          {org.isActive ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
-                          <span>{org.isActive ? 'Khóa' : 'Mở'}</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div style={{ display: 'grid', gap: 24 }}>
+          <OrganizationSection
+            title="Đang hoạt động"
+            count={activeOrgs.length}
+            orgs={activeOrgs}
+            emptyText="Không có tổ chức đang hoạt động"
+            onEdit={openEdit}
+            onToggle={handleToggleActive}
+          />
+          <OrganizationSection
+            title="Đã khóa"
+            count={lockedOrgs.length}
+            orgs={lockedOrgs}
+            emptyText="Không có tổ chức đã khóa"
+            onEdit={openEdit}
+            onToggle={handleToggleActive}
+          />
         </div>
       )}
 
-      {/* Modal create */}
-      {showModal && (
-        <div className="modal-overlay" style={{ zIndex: 100 }} onClick={() => setShowModal(false)}>
-          <div className="modal-content" style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
+      {modalOpen && (
+        <div className="modal-overlay" style={{ zIndex: 100 }} onClick={closeModal}>
+          <div className="modal-content" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Thêm tổ chức mới</h3>
-              <button className="btn-icon-only close-btn" onClick={() => setShowModal(false)}>×</button>
+              <h3 className="modal-title">{editingOrg ? 'Sửa thông tin tổ chức' : 'Thêm tổ chức mới'}</h3>
+              <button className="btn-icon-only close-btn" onClick={closeModal}>×</button>
             </div>
-            <form onSubmit={handleCreate}>
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '24px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Tên tổ chức *</label>
-                    <input 
-                      type="text" 
-                      required 
-                      value={name} 
-                      onChange={(e) => setName(e.target.value)} 
+
+            <form onSubmit={handleSubmit}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 24 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Field label="Tên tổ chức *">
+                    <input
+                      type="text"
+                      required
+                      value={form.name}
+                      onChange={(e) => updateForm('name', e.target.value)}
                       placeholder="VD: Nhà trọ Hùng Nam"
-                      style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
+                      style={inputStyle}
                     />
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Mã tổ chức *</label>
-                    <input 
-                      type="text" 
-                      required 
-                      value={code} 
-                      onChange={(e) => setCode(e.target.value.toUpperCase())} 
+                  </Field>
+                  <Field label="Mã tổ chức *">
+                    <input
+                      type="text"
+                      required
+                      value={form.code}
+                      onChange={(e) => updateForm('code', e.target.value.toUpperCase())}
                       placeholder="VD: HUNGNAM"
-                      style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
+                      style={inputStyle}
                     />
-                  </div>
+                  </Field>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Người đại diện</label>
-                  <input 
-                    type="text" 
-                    value={ownerName} 
-                    onChange={(e) => setOwnerName(e.target.value)} 
+                <Field label="Người đại diện">
+                  <input
+                    type="text"
+                    value={form.ownerName}
+                    onChange={(e) => updateForm('ownerName', e.target.value)}
                     placeholder="VD: Nguyễn Văn A"
-                    style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
+                    style={inputStyle}
                   />
-                </div>
+                </Field>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Số điện thoại</label>
-                    <input 
-                      type="text" 
-                      value={phone} 
-                      onChange={(e) => setPhone(e.target.value)} 
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Field label="Số điện thoại">
+                    <input
+                      type="text"
+                      value={form.phone}
+                      onChange={(e) => updateForm('phone', e.target.value)}
                       placeholder="Số điện thoại liên hệ"
-                      style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
+                      style={inputStyle}
                     />
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Email</label>
-                    <input 
-                      type="email" 
-                      value={email} 
-                      onChange={(e) => setEmail(e.target.value)} 
+                  </Field>
+                  <Field label="Email">
+                    <input
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => updateForm('email', e.target.value)}
                       placeholder="Email liên hệ"
-                      style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
+                      style={inputStyle}
                     />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '0.82rem', fontWeight: 600 }}>Địa chỉ</label>
-                  <textarea 
-                    value={address} 
-                    onChange={(e) => setAddress(e.target.value)} 
-                    placeholder="Địa chỉ trụ sở / tòa nhà trọ chính"
-                    rows="3"
-                    style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', resize: 'vertical' }}
-                  />
+                  </Field>
                 </div>
               </div>
-              <div className="modal-footer" style={{ padding: '16px 24px', gap: '12px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Hủy</button>
+
+              <div className="modal-footer" style={{ padding: '16px 24px', gap: 12 }}>
+                <button type="button" className="btn btn-secondary" onClick={closeModal}>Hủy</button>
                 <button type="submit" className="btn btn-primary" disabled={submitLoading}>
-                  {submitLoading ? 'Đang lưu...' : 'Thêm tổ chức'}
+                  {submitLoading ? 'Đang lưu...' : editingOrg ? 'Lưu thay đổi' : 'Thêm tổ chức'}
                 </button>
               </div>
             </form>
@@ -366,4 +297,166 @@ export default function Organizations() {
       `}</style>
     </div>
   )
+}
+
+function OrganizationSection({ title, count, orgs, emptyText, onEdit, onToggle }) {
+  return (
+    <section style={{
+      background: 'var(--bg-secondary, #fff)',
+      border: '1px solid var(--border-color, #e2e8f0)',
+      borderRadius: 12,
+      overflow: 'hidden'
+    }}>
+      <div style={{
+        padding: '14px 16px',
+        borderBottom: '1px solid var(--border-color, #e2e8f0)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        background: 'var(--bg-primary, #f8fafc)'
+      }}>
+        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{title}</h3>
+        <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{count} tổ chức</span>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+              <th style={thStyle}>Mã / Tên</th>
+              <th style={thStyle}>Người đại diện</th>
+              <th style={thStyle}>Liên hệ</th>
+              <th style={thStyle}>Trạng thái</th>
+              <th style={{ ...thStyle, textAlign: 'right' }}>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orgs.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={{ padding: 32, textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  {emptyText}
+                </td>
+              </tr>
+            ) : (
+              orgs.map((org) => (
+                <tr key={org.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 8,
+                        background: org.isActive ? 'rgba(59, 130, 246, 0.1)' : 'rgba(100, 116, 139, 0.1)',
+                        color: org.isActive ? 'var(--primary-color, #3b82f6)' : 'var(--text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <Building size={20} />
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{org.name}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 }}>Code: {org.code}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-primary)', fontSize: '0.88rem' }}>
+                      <User size={14} style={{ color: 'var(--text-secondary)' }} />
+                      <span>{org.ownerName || 'N/A'}</span>
+                    </div>
+                  </td>
+                  <td style={{ padding: 16 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.82rem' }}>
+                      {org.phone ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-primary)' }}>
+                          <Phone size={12} style={{ color: 'var(--text-secondary)' }} />
+                          <span>{org.phone}</span>
+                        </div>
+                      ) : null}
+                      {org.email ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-primary)' }}>
+                          <Mail size={12} style={{ color: 'var(--text-secondary)' }} />
+                          <span>{org.email}</span>
+                        </div>
+                      ) : null}
+                      {!org.phone && !org.email ? <span style={{ color: 'var(--text-secondary)' }}>N/A</span> : null}
+                    </div>
+                  </td>
+                  <td style={{ padding: 16 }}>
+                    <span style={{
+                      display: 'inline-flex',
+                      padding: '4px 8px',
+                      borderRadius: 12,
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      background: org.isActive ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                      color: org.isActive ? 'var(--text-success, #22c55e)' : 'var(--text-danger, #ef4444)'
+                    }}>
+                      {org.isActive ? 'Hoạt động' : 'Đã khóa'}
+                    </span>
+                  </td>
+                  <td style={{ padding: 16, textAlign: 'right' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <button type="button" onClick={() => onEdit(org)} style={actionButtonStyle}>
+                        <Edit3 size={16} />
+                        <span>Sửa</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onToggle(org)}
+                        style={{
+                          ...actionButtonStyle,
+                          color: org.isActive ? 'var(--text-danger, #ef4444)' : 'var(--text-success, #22c55e)'
+                        }}
+                      >
+                        {org.isActive ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+                        <span>{org.isActive ? 'Khóa' : 'Mở'}</span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function Field({ label, children }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <label style={{ fontSize: '0.82rem', fontWeight: 700 }}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
+const inputStyle = {
+  padding: '8px 12px',
+  borderRadius: 6,
+  border: '1px solid var(--border-color)'
+}
+
+const thStyle = {
+  padding: '14px 16px',
+  fontSize: '0.8rem',
+  fontWeight: 700,
+  color: 'var(--text-secondary)',
+  textTransform: 'uppercase'
+}
+
+const actionButtonStyle = {
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  padding: 6,
+  color: 'var(--text-primary)',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  fontWeight: 700,
+  fontSize: '0.85rem'
 }

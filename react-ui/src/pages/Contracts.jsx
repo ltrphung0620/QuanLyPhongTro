@@ -1122,7 +1122,7 @@ export default function Contracts() {
                       value={editForm.status}
                       onChange={(e) => setEditForm({...editForm, status: e.target.value})}
                     >
-                      <option value="Active">Đang chạy (Còn hạn)</option>
+                      <option value="Active">Còn hạn</option>
                       <option value="Ended">Kết thúc hợp đồng</option>
                       <option value="Cancelled">Hủy bỏ</option>
                     </select>

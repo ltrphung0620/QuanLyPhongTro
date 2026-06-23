@@ -41,7 +41,7 @@ export default function Sidebar({ isOpen }) {
       { path: '/contracts', label: 'Hợp Đồng', icon: FileText },
       { path: '/meter-readings', label: 'Chỉ Số Điện Nước', icon: Zap },
       { path: '/invoices', label: 'Hóa Đơn', icon: Receipt },
-      { path: '/payments', label: 'Lịch Sử Giao Dịch', icon: History },
+      { path: '/payments', label: 'Thu Chi Tháng', icon: History },
       { path: '/reports', label: 'Báo Cáo Sổ Quỹ', icon: FileSpreadsheet },
       { path: '/pricing-settings', label: 'Bảng Giá', icon: Settings },
       { path: '/assistant', label: 'Trợ Lý AI', icon: Bot },

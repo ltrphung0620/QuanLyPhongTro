@@ -178,6 +178,7 @@ namespace NhaTro.Controllers
                 .FirstOrDefaultAsync(o => o.Id == id);
 
             if (org == null) return NotFound(new { message = "Organization not found." });
+            if (!org.IsActive) return BadRequest(new { message = "Cannot create admin for a locked organization." });
 
             var userExists = await _context.Users
                 .IgnoreQueryFilters()
