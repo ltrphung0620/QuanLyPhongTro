@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using System.Text.Json;
+using Microsoft.AspNetCore.SignalR;
+using NhaTro.Hubs;
 using NhaTro.Interfaces.Services;
 
 namespace NhaTro.Services
@@ -8,6 +10,12 @@ namespace NhaTro.Services
     public class RealtimeService : IRealtimeService
     {
         private readonly ConcurrentDictionary<string, Channel<string>> _clients = new();
+        private readonly IHubContext<RealtimeHub> _hubContext;
+
+        public RealtimeService(IHubContext<RealtimeHub> hubContext)
+        {
+            _hubContext = hubContext;
+        }
 
         public string RegisterClient()
         {
@@ -44,7 +52,7 @@ namespace NhaTro.Services
 
         public Task PublishAsync(string eventName, params string[] modules)
         {
-            var payload = JsonSerializer.Serialize(new
+            var payload = new
             {
                 eventName,
                 modules = modules
@@ -52,14 +60,52 @@ namespace NhaTro.Services
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray(),
                 occurredAt = DateTime.UtcNow
-            });
+            };
 
+            PublishToSseClients(payload);
+            return _hubContext.Clients.All.SendAsync("RealtimeEvent", payload);
+        }
+
+        public Task PublishWithDataAsync(string eventName, object? data, params string[] modules)
+        {
+            var payload = new
+            {
+                eventName,
+                modules = modules
+                    .Where(module => !string.IsNullOrWhiteSpace(module))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray(),
+                data,
+                occurredAt = DateTime.UtcNow
+            };
+
+            PublishToSseClients(payload);
+            return _hubContext.Clients.All.SendAsync("RealtimeEvent", payload);
+        }
+
+        public Task PublishToTenantAsync(int tenantId, string eventName, object? data = null, params string[] modules)
+        {
+            var payload = new
+            {
+                eventName,
+                modules = modules
+                    .Where(module => !string.IsNullOrWhiteSpace(module))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray(),
+                data,
+                occurredAt = DateTime.UtcNow
+            };
+
+            return _hubContext.Clients.Group($"tenant:{tenantId}").SendAsync("RealtimeEvent", payload);
+        }
+
+        private void PublishToSseClients(object payload)
+        {
+            var json = JsonSerializer.Serialize(payload);
             foreach (var client in _clients.Values)
             {
-                client.Writer.TryWrite(payload);
+                client.Writer.TryWrite(json);
             }
-
-            return Task.CompletedTask;
         }
     }
 }

@@ -25,61 +25,44 @@ namespace NhaTro.Services
 
         public async Task<bool> RegisterAsync(RegisterDto dto)
         {
-            if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
-            {
-                return false; // User already exists
-            }
-
-            var otp = new Random().Next(100000, 999999).ToString();
-            var user = new AppUser
-            {
-                Email = dto.Email,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-                IsActive = false,
-                OtpCode = otp,
-                OtpExpiryTime = DateTime.UtcNow.AddMinutes(5)
-            };
-
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
-
-            await _emailService.SendOtpEmailAsync(user.Email, otp);
-
-            return true;
+            // Public registration is disabled
+            return false;
         }
 
         public async Task<bool> VerifyOtpAsync(VerifyOtpDto dto)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
-            if (user == null || user.OtpCode != dto.OtpCode)
-            {
-                return false;
-            }
-
-            if (user.OtpExpiryTime < DateTime.UtcNow)
-            {
-                return false; // OTP expired
-            }
-
-            user.IsActive = true;
-            user.OtpCode = null;
-            user.OtpExpiryTime = null;
-            await _context.SaveChangesAsync();
-
-            return true;
+            // OTP verification is disabled
+            return false;
         }
-
         public async Task<AuthResponseDto?> LoginAsync(LoginDto dto)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
-            if (user == null || !user.IsActive)
+            var loginName = NormalizeLoginName(dto.Email);
+            var user = await _context.Users
+                .IgnoreQueryFilters()
+                .Include(u => u.Organization)
+                .FirstOrDefaultAsync(u =>
+                    u.Email.ToLower() == loginName ||
+                    u.Username.ToLower() == loginName);
+
+            if (user == null)
             {
-                return null;
+                throw new InvalidOperationException("Tên đăng nhập hoặc Email không tồn tại.");
+            }
+
+            if (!user.IsActive)
+            {
+                throw new InvalidOperationException("Tài khoản đã bị khóa hoặc ngừng hoạt động.");
+            }
+
+            // Check if organization is active (skip for SuperAdmins as organizationId is null)
+            if (user.OrganizationId.HasValue && user.Organization != null && !user.Organization.IsActive)
+            {
+                throw new InvalidOperationException("Tổ chức của tài khoản này đã bị khóa hoặc ngừng hoạt động.");
             }
 
             if (!BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
             {
-                return null;
+                throw new InvalidOperationException("Mật khẩu không chính xác.");
             }
 
             var tokenHandler = new JwtSecurityTokenHandler();
@@ -90,13 +73,29 @@ namespace NhaTro.Services
             }
             
             var key = Encoding.UTF8.GetBytes(keyStr);
+
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim("userId", user.Id.ToString()),
+                new Claim(ClaimTypes.Email, user.Email),
+                new Claim(ClaimTypes.Role, user.Role),
+                new Claim("role", user.Role)
+            };
+
+            if (user.OrganizationId.HasValue)
+            {
+                claims.Add(new Claim("organizationId", user.OrganizationId.Value.ToString()));
+            }
+
+            if (user.TenantId.HasValue)
+            {
+                claims.Add(new Claim("tenantId", user.TenantId.Value.ToString()));
+            }
+
             var tokenDescriptor = new SecurityTokenDescriptor
             {
-                Subject = new ClaimsIdentity(new[]
-                {
-                    new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                    new Claim(ClaimTypes.Email, user.Email)
-                }),
+                Subject = new ClaimsIdentity(claims),
                 Expires = DateTime.UtcNow.AddMinutes(double.Parse(_configuration["Jwt:ExpireMinutes"] ?? "10")),
                 Issuer = _configuration["Jwt:Issuer"],
                 Audience = _configuration["Jwt:Audience"],
@@ -105,12 +104,45 @@ namespace NhaTro.Services
 
             var token = tokenHandler.CreateToken(tokenDescriptor);
 
+            // Update last login timestamp
+            user.LastLoginAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
             return new AuthResponseDto
             {
                 Token = tokenHandler.WriteToken(token),
                 Email = user.Email,
                 UserId = user.Id
             };
+        }
+
+        private static string NormalizeLoginName(string value)
+        {
+            var normalized = value.Trim().ToLowerInvariant();
+            return normalized.StartsWith('@') ? normalized[1..] : normalized;
+        }
+
+        public async Task<bool> ChangePasswordAsync(int userId, string oldPassword, string newPassword)
+        {
+            var user = await _context.Users
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (user == null)
+            {
+                return false;
+            }
+
+            if (!BCrypt.Net.BCrypt.Verify(oldPassword, user.PasswordHash))
+            {
+                return false;
+            }
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+            user.MustChangePassword = false;
+            await _context.SaveChangesAsync();
+
+            return true;
         }
     }
 }

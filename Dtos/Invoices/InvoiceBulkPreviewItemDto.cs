@@ -16,6 +16,7 @@ namespace NhaTro.Dtos.Invoices
         public decimal ExtraFee { get; set; }
         public decimal DiscountAmount { get; set; }
         public decimal DebtAmount { get; set; }
+        public decimal DepositDebtAmount { get; set; }
         public decimal TotalAmount { get; set; }
     }
 }

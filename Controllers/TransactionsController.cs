@@ -5,7 +5,7 @@ using NhaTro.Interfaces.Services;
 
 namespace NhaTro.Controllers
 {
-    [Authorize]
+    [Authorize(Policy = "AdminOnly")]
     [ApiController]
     [Route("api/[controller]")]
     public class TransactionsController : ControllerBase

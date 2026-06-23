@@ -111,7 +111,7 @@ namespace NhaTro.Services
             var (fromDate, toDate) = GetSalesLedgerRange(fromMonth, toMonth);
 
             var paymentTransactions = await _paymentTransactionRepository.GetAllAsync("paid");
-            var rows = paymentTransactions
+            var transferRows = paymentTransactions
                 .Where(IsQualifiedSalesLedgerPayment)
                 .Select(payment => new
                 {
@@ -119,17 +119,44 @@ namespace NhaTro.Services
                     TransactionDate = ResolveLedgerDate(payment)
                 })
                 .Where(x => x.TransactionDate >= fromDate && x.TransactionDate <= toDate)
-                .OrderBy(x => x.TransactionDate)
-                .ThenBy(x => x.Payment.PaymentTransactionId)
                 .Select(x => MapToSalesLedgerRow(x.Payment, x.TransactionDate))
+                .ToList();
+
+            var cashInvoices = await _invoiceRepository.GetAllAsync(null, null, "paid");
+            var cashRows = cashInvoices
+                .Where(invoice => string.Equals(invoice.PaymentMethod, "Tiền mặt", StringComparison.OrdinalIgnoreCase))
+                .Select(invoice => new
+                {
+                    Invoice = invoice,
+                    TransactionDate = invoice.PaidAt.HasValue 
+                        ? DateOnly.FromDateTime(invoice.PaidAt.Value) 
+                        : (invoice.BillingMonth ?? DateOnly.FromDateTime(invoice.CreatedAt))
+                })
+                .Where(x => x.TransactionDate >= fromDate && x.TransactionDate <= toDate)
+                .Select(x => new SalesLedgerRowDto
+                {
+                    PaymentTransactionId = -x.Invoice.InvoiceId,
+                    TransactionDate = x.TransactionDate,
+                    Description = $"Thu tiền mặt phòng {x.Invoice.Room?.RoomCode} - hóa đơn #{x.Invoice.InvoiceId}",
+                    Amount = x.Invoice.PaidAmount ?? x.Invoice.TotalAmount,
+                    RoomCode = x.Invoice.Room?.RoomCode,
+                    PaymentCode = x.Invoice.PaymentCode,
+                    ReferenceCode = x.Invoice.PaymentReference,
+                    PaymentMethod = "Tiền mặt"
+                })
+                .ToList();
+
+            var allRows = transferRows.Concat(cashRows)
+                .OrderBy(x => x.TransactionDate)
+                .ThenBy(x => x.PaymentTransactionId)
                 .ToList();
 
             return new SalesLedgerDto
             {
                 FromDate = fromDate,
                 ToDate = toDate,
-                TotalAmount = rows.Sum(x => x.Amount),
-                Rows = rows
+                TotalAmount = allRows.Sum(x => x.Amount),
+                Rows = allRows
             };
         }
 
@@ -264,7 +291,8 @@ namespace NhaTro.Services
                 Amount = payment.TransferAmount ?? 0,
                 RoomCode = roomCode,
                 PaymentCode = paymentCode,
-                ReferenceCode = referenceCode
+                ReferenceCode = referenceCode,
+                PaymentMethod = "Chuyển khoản"
             };
         }
 

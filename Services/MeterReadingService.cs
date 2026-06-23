@@ -2,6 +2,11 @@ using NhaTro.Dtos.MeterReadings;
 using NhaTro.Interfaces.Repositories;
 using NhaTro.Interfaces.Services;
 using NhaTro.Models;
+using System.Net.Http;
+using System.Text.Json;
+using System.Text;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace NhaTro.Services
 {
@@ -12,8 +17,11 @@ namespace NhaTro.Services
         private readonly IRoomRepository _roomRepo;
         private readonly IInvoiceRepository _invoiceRepo;
         private readonly IWebHostEnvironment _environment;
+        private readonly HttpClient _httpClient;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<MeterReadingService> _logger;
+        private readonly IPricingSettingsService _pricingSettingsService;
 
-        private const decimal ELECTRIC_PRICE = 3500;
         private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
             ".jpg",
@@ -27,13 +35,21 @@ namespace NhaTro.Services
             IContractRepository contractRepo,
             IRoomRepository roomRepo,
             IInvoiceRepository invoiceRepo,
-            IWebHostEnvironment environment)
+            IWebHostEnvironment environment,
+            HttpClient httpClient,
+            IConfiguration configuration,
+            ILogger<MeterReadingService> logger,
+            IPricingSettingsService pricingSettingsService)
         {
             _meterRepo = meterRepo;
             _contractRepo = contractRepo;
             _roomRepo = roomRepo;
             _invoiceRepo = invoiceRepo;
             _environment = environment;
+            _httpClient = httpClient;
+            _configuration = configuration;
+            _logger = logger;
+            _pricingSettingsService = pricingSettingsService;
         }
 
         public async Task<List<MeterReadingDto>> GetAllAsync(int? roomId = null, DateOnly? month = null)
@@ -56,13 +72,16 @@ namespace NhaTro.Services
             }
 
             var normalizedBillingMonth = NormalizeMonth(dto.BillingMonth);
+            EnsureContractCoversMonth(contract, normalizedBillingMonth);
             var existing = await _meterRepo.GetByContractAndMonthAsync(contract.ContractId, normalizedBillingMonth);
             if (existing != null)
             {
                 throw new InvalidOperationException("Đã nhập điện cho tháng này.");
             }
 
-            var last = await _meterRepo.GetLatestByRoomAsync(dto.RoomId);
+            var last = await _meterRepo.GetLatestBeforeDateAsync(
+                dto.RoomId,
+                ResolveMonthlyReadingDate(normalizedBillingMonth));
             var previous = last?.CurrentReading ?? 0;
 
             if (dto.CurrentReading < previous)
@@ -71,7 +90,8 @@ namespace NhaTro.Services
             }
 
             var consumed = dto.CurrentReading - previous;
-            var amount = consumed * ELECTRIC_PRICE;
+            var electricPrice = (await _pricingSettingsService.GetAsync()).ElectricityUnitPrice;
+            var amount = consumed * electricPrice;
 
             var meter = new MeterReading
             {
@@ -81,7 +101,7 @@ namespace NhaTro.Services
                 PreviousReading = previous,
                 CurrentReading = dto.CurrentReading,
                 ConsumedUnits = consumed,
-                UnitPrice = ELECTRIC_PRICE,
+                UnitPrice = electricPrice,
                 Amount = amount,
                 CreatedAt = DateTime.UtcNow,
                 Room = contract.Room
@@ -146,17 +166,20 @@ namespace NhaTro.Services
 
             if (dto.ContractId != contract.ContractId)
             {
-                throw new InvalidOperationException("Há»£p Ä‘á»“ng ghi chá»‰ sá»‘ khÃ´ng cÃ²n hiá»‡u lá»±c.");
+                throw new InvalidOperationException("Hợp đồng ghi chỉ số không còn hiệu lực.");
             }
 
             var normalizedBillingMonth = NormalizeMonth(dto.BillingMonth);
+            EnsureContractCoversMonth(contract, normalizedBillingMonth);
             var existing = await _meterRepo.GetByContractAndMonthAsync(contract.ContractId, normalizedBillingMonth);
             if (existing != null)
             {
                 throw new InvalidOperationException("Đã có dữ liệu tháng này.");
             }
 
-            var last = await _meterRepo.GetLatestByRoomAsync(dto.RoomId);
+            var last = await _meterRepo.GetLatestBeforeDateAsync(
+                dto.RoomId,
+                ResolveMonthlyReadingDate(normalizedBillingMonth));
             var previous = last?.CurrentReading ?? 0;
 
             if (dto.CurrentReading < previous)
@@ -165,7 +188,8 @@ namespace NhaTro.Services
             }
 
             var consumed = dto.CurrentReading - previous;
-            var amount = consumed * ELECTRIC_PRICE;
+            var electricPrice = (await _pricingSettingsService.GetAsync()).ElectricityUnitPrice;
+            var amount = consumed * electricPrice;
 
             return new MeterReadingPreviewDto
             {
@@ -176,7 +200,7 @@ namespace NhaTro.Services
                 PreviousReading = previous,
                 CurrentReading = dto.CurrentReading,
                 ConsumedUnits = consumed,
-                UnitPrice = ELECTRIC_PRICE,
+                UnitPrice = electricPrice,
                 Amount = amount
             };
         }
@@ -208,6 +232,7 @@ namespace NhaTro.Services
 
             var previousReading = await _meterRepo.GetLatestBeforeDateAsync(room.RoomId, target.BillingMonth);
             var runningPrevious = previousReading?.CurrentReading ?? 0;
+            var electricPrice = (await _pricingSettingsService.GetAsync()).ElectricityUnitPrice;
 
             foreach (var reading in readings)
             {
@@ -224,7 +249,7 @@ namespace NhaTro.Services
                 reading.PreviousReading = runningPrevious;
                 reading.CurrentReading = desiredCurrentReading;
                 reading.ConsumedUnits = desiredCurrentReading - runningPrevious;
-                reading.UnitPrice = ELECTRIC_PRICE;
+                reading.UnitPrice = electricPrice;
                 reading.Amount = reading.ConsumedUnits * reading.UnitPrice;
 
                 runningPrevious = desiredCurrentReading;
@@ -303,7 +328,9 @@ namespace NhaTro.Services
                 {
                     reading.PreviousReading = runningPrevious;
                     reading.ConsumedUnits = reading.CurrentReading - runningPrevious;
-                    reading.UnitPrice = ELECTRIC_PRICE;
+                    reading.UnitPrice = reading.UnitPrice > 0
+                        ? reading.UnitPrice
+                        : (await _pricingSettingsService.GetAsync()).ElectricityUnitPrice;
                     reading.Amount = reading.ConsumedUnits * reading.UnitPrice;
                     changedReadings.Add(reading);
                 }
@@ -346,16 +373,27 @@ namespace NhaTro.Services
                 .Select(r => r.ContractId!.Value)
                 .ToHashSet();
 
-            var missing = activeContracts
+            var missingContracts = activeContracts
+                .Where(c => ContractCoversMonth(c, NormalizeMonth(month)))
                 .Where(c => !contractIdsWithReading.Contains(c.ContractId))
-                .Select(c => new MissingMeterDto
-                {
-                    RoomId = c.RoomId,
-                    RoomCode = c.Room?.RoomCode ?? string.Empty
-                })
                 .ToList();
 
-            return missing;
+            var results = new List<MissingMeterDto>();
+            foreach (var c in missingContracts)
+            {
+                var last = await _meterRepo.GetLatestBeforeDateAsync(
+                    c.RoomId,
+                    ResolveMonthlyReadingDate(NormalizeMonth(month)));
+                results.Add(new MissingMeterDto
+                {
+                    RoomId = c.RoomId,
+                    RoomCode = c.Room?.RoomCode ?? string.Empty,
+                    ContractId = c.ContractId,
+                    PreviousReading = last?.CurrentReading ?? 0
+                });
+            }
+
+            return results;
         }
 
         private static DateOnly NormalizeMonth(DateOnly value)
@@ -375,6 +413,23 @@ namespace NhaTro.Services
             return left.Year == right.Year && left.Month == right.Month;
         }
 
+        private static bool ContractCoversMonth(Contract contract, DateOnly billingMonth)
+        {
+            var monthStart = NormalizeMonth(billingMonth);
+            var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+            return contract.StartDate <= monthEnd
+                && (!contract.ActualEndDate.HasValue || contract.ActualEndDate.Value >= monthStart);
+        }
+
+        private static void EnsureContractCoversMonth(Contract contract, DateOnly billingMonth)
+        {
+            if (!ContractCoversMonth(contract, billingMonth))
+            {
+                throw new InvalidOperationException(
+                    $"Hợp đồng không có hiệu lực trong tháng {billingMonth:MM/yyyy}.");
+            }
+        }
+
         private async Task SyncInvoiceElectricityAsync(int contractId, DateOnly billingMonth, decimal electricityAmount)
         {
             var invoice = await _invoiceRepo.GetByContractAndMonthAsync(contractId, billingMonth);
@@ -386,7 +441,9 @@ namespace NhaTro.Services
                 + invoice.ElectricityFee
                 + invoice.WaterFee
                 + invoice.TrashFee
+                + invoice.ExtraFee
                 + invoice.DebtAmount
+                + invoice.DepositDebtAmount
                 - invoice.DiscountAmount;
 
             if (invoice.TotalAmount < 0)
@@ -446,6 +503,173 @@ namespace NhaTro.Services
             }
 
             File.Delete(fullPath);
+        }
+
+        public async Task<List<MeterReadingDto>> CreateBulkAsync(CreateMeterReadingBulkDto dto)
+        {
+            if (dto.Readings == null || !dto.Readings.Any())
+            {
+                return new List<MeterReadingDto>();
+            }
+
+            var normalizedBillingMonth = NormalizeMonth(dto.BillingMonth);
+            var results = new List<MeterReading>();
+
+            foreach (var item in dto.Readings)
+            {
+                var contract = await _contractRepo.GetActiveByRoomIdAsync(item.RoomId);
+                if (contract == null)
+                {
+                    throw new InvalidOperationException($"Hợp đồng không hợp lệ cho phòng ID {item.RoomId}.");
+                }
+
+                if (item.ContractId != contract.ContractId)
+                {
+                    throw new InvalidOperationException($"Lỗi hợp đồng không khớp cho phòng {contract.Room?.RoomCode ?? item.RoomId.ToString()}.");
+                }
+
+                EnsureContractCoversMonth(contract, normalizedBillingMonth);
+
+                var existing = await _meterRepo.GetByContractAndMonthAsync(contract.ContractId, normalizedBillingMonth);
+                if (existing != null)
+                {
+                    throw new InvalidOperationException($"Phòng {contract.Room?.RoomCode ?? item.RoomId.ToString()} đã có chỉ số điện cho tháng này.");
+                }
+
+                var last = await _meterRepo.GetLatestBeforeDateAsync(
+                    item.RoomId,
+                    ResolveMonthlyReadingDate(normalizedBillingMonth));
+                var previous = last?.CurrentReading ?? 0;
+
+                if (item.CurrentReading < previous)
+                {
+                    throw new InvalidOperationException($"Số điện mới cho phòng {contract.Room?.RoomCode ?? item.RoomId.ToString()} không hợp lệ (phải >= {previous}).");
+                }
+
+                var consumed = item.CurrentReading - previous;
+                var electricPrice = (await _pricingSettingsService.GetAsync()).ElectricityUnitPrice;
+                var amount = consumed * electricPrice;
+
+                var meter = new MeterReading
+                {
+                    RoomId = contract.RoomId,
+                    ContractId = contract.ContractId,
+                    BillingMonth = ResolveMonthlyReadingDate(normalizedBillingMonth),
+                    PreviousReading = previous,
+                    CurrentReading = item.CurrentReading,
+                    ConsumedUnits = consumed,
+                    UnitPrice = electricPrice,
+                    Amount = amount,
+                    CreatedAt = DateTime.UtcNow,
+                    Room = contract.Room
+                };
+
+                await _meterRepo.AddAsync(meter);
+                results.Add(meter);
+            }
+
+            await _meterRepo.SaveChangesAsync();
+
+            return results.Select(MapToDto).ToList();
+        }
+
+        public async Task<int?> ScanMeterImageAsync(IFormFile image)
+        {
+            var apiKey = _configuration["Gemini:ApiKey"] ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                _logger.LogWarning("Gemini API key is not configured.");
+                return null;
+            }
+
+            try
+            {
+                var model = _configuration["Gemini:Model"] ?? "gemini-1.5-flash";
+                var requestUrl = $"https://generativelanguage.googleapis.com/v1beta/models/{Uri.EscapeDataString(model)}:generateContent";
+                
+                using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
+                request.Headers.Add("x-goog-api-key", apiKey);
+
+                using var ms = new MemoryStream();
+                await image.CopyToAsync(ms);
+                var imageBytes = ms.ToArray();
+                var base64Data = Convert.ToBase64String(imageBytes);
+
+                var body = new
+                {
+                    contents = new[]
+                    {
+                        new
+                        {
+                            parts = new object[]
+                            {
+                                new
+                                {
+                                    inlineData = new
+                                    {
+                                        mimeType = image.ContentType,
+                                        data = base64Data
+                                    }
+                                },
+                                new
+                                {
+                                    text = "Hãy đọc chỉ số điện (chỉ số tiêu thụ kWh chính, thường là dãy chữ số lớn màu đen/trắng, bỏ qua phần số thập phân nhỏ màu đỏ hoặc ký hiệu khác ở cuối) từ ảnh công tơ điện này. Chỉ trả về duy nhất một số nguyên đại diện cho chỉ số đó, không thêm bất kỳ chữ hay lời giải thích nào khác."
+                                }
+                            }
+                        }
+                    },
+                    generationConfig = new
+                    {
+                        temperature = 0.0
+                    }
+                };
+
+                request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+                using var response = await _httpClient.SendAsync(request);
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorText = await response.Content.ReadAsStringAsync();
+                    _logger.LogWarning("Gemini OCR request failed with status {StatusCode}: {Error}", response.StatusCode, errorText);
+                    return null;
+                }
+
+                var jsonText = await response.Content.ReadAsStringAsync();
+                
+                using var doc = JsonDocument.Parse(jsonText);
+                var root = doc.RootElement;
+                
+                if (root.TryGetProperty("candidates", out var candidates) && 
+                    candidates.ValueKind == JsonValueKind.Array && 
+                    candidates.GetArrayLength() > 0)
+                {
+                    var firstCandidate = candidates[0];
+                    if (firstCandidate.TryGetProperty("content", out var content) &&
+                        content.TryGetProperty("parts", out var parts) &&
+                        parts.ValueKind == JsonValueKind.Array &&
+                        parts.GetArrayLength() > 0)
+                    {
+                        var firstPart = parts[0];
+                        if (firstPart.TryGetProperty("text", out var text))
+                        {
+                            var valueStr = text.GetString()?.Trim();
+                            if (!string.IsNullOrWhiteSpace(valueStr))
+                            {
+                                var cleanStr = new string(valueStr.Where(char.IsDigit).ToArray());
+                                if (int.TryParse(cleanStr, out var reading))
+                                {
+                                    return reading;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Gemini OCR execution failed.");
+            }
+            return null;
         }
     }
 }

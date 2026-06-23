@@ -66,6 +66,7 @@ namespace NhaTro.Repositories
                 .FirstOrDefaultAsync(x =>
                     x.ContractId == contractId &&
                     x.BillingMonth == month &&
+                    x.InvoiceType == "monthly" &&
                     x.ReplacedByInvoiceId == null);
         }
 
@@ -92,6 +93,20 @@ namespace NhaTro.Repositories
                 .FirstOrDefaultAsync();
         }
 
+        public async Task<Invoice?> GetLatestBeforeMonthByContractAsync(int contractId, DateOnly month)
+        {
+            return await _context.Invoices
+                .Include(x => x.Room)
+                .Where(x =>
+                    x.ContractId == contractId &&
+                    x.BillingMonth.HasValue &&
+                    x.BillingMonth.Value < month &&
+                    x.ReplacedByInvoiceId == null)
+                .OrderByDescending(x => x.BillingMonth)
+                .ThenByDescending(x => x.InvoiceId)
+                .FirstOrDefaultAsync();
+        }
+
         public async Task<List<Invoice>> GetUnpaidAsync(DateOnly? month = null)
         {
             var query = _context.Invoices
@@ -106,10 +121,29 @@ namespace NhaTro.Repositories
                 .ToListAsync();
         }
 
+        public async Task<List<Invoice>> GetUnpaidIgnoreQueryFiltersAsync()
+        {
+            return await _context.Invoices
+                .IgnoreQueryFilters()
+                .Include(x => x.Room)
+                .Where(x => x.Status == "unpaid" && x.ReplacedByInvoiceId == null)
+                .OrderBy(x => x.RoomId)
+                .ToListAsync();
+        }
+
         public async Task<Invoice?> GetByPaymentCodeAsync(string paymentCode)
         {
             var normalized = paymentCode.Trim();
             return await _context.Invoices
+                .Include(x => x.Room)
+                .FirstOrDefaultAsync(x => x.PaymentCode == normalized && x.ReplacedByInvoiceId == null);
+        }
+
+        public async Task<Invoice?> GetByPaymentCodeIgnoreQueryFiltersAsync(string paymentCode)
+        {
+            var normalized = paymentCode.Trim();
+            return await _context.Invoices
+                .IgnoreQueryFilters()
                 .Include(x => x.Room)
                 .FirstOrDefaultAsync(x => x.PaymentCode == normalized && x.ReplacedByInvoiceId == null);
         }

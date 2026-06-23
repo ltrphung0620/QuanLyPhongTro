@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Globalization;
+using System.Text;
 using NhaTro.Dtos.Assistant;
 
 namespace NhaTro.Services
@@ -57,6 +59,40 @@ namespace NhaTro.Services
                 .ToDictionary(x => x.Key, x => x.Value);
 
             WriteAll(items);
+        }
+
+        public bool TryGetCorrectedIntent(int userId, string message, out string intent)
+        {
+            intent = string.Empty;
+            var messageKey = NormalizeKey(message);
+            if (string.IsNullOrWhiteSpace(messageKey))
+            {
+                return false;
+            }
+
+            var corrections = ReadAll()
+                .Where(x =>
+                    x.UserId == userId
+                    && x.Kind != "value_alias"
+                    && !string.IsNullOrWhiteSpace(x.RawMessage)
+                    && !string.IsNullOrWhiteSpace(x.CorrectedIntent))
+                .OrderByDescending(x => x.CreatedAt)
+                .ToList();
+
+            foreach (var correction in corrections)
+            {
+                var learnedKey = NormalizeKey(correction.RawMessage);
+                if (messageKey == learnedKey
+                    || messageKey.Contains(learnedKey)
+                    || learnedKey.Contains(messageKey)
+                    || Similarity(messageKey, learnedKey) >= 0.82)
+                {
+                    intent = correction.CorrectedIntent!;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public void RecordValueAlias(int userId, string intent, string field, string rawValue, string normalizedValue)
@@ -129,7 +165,7 @@ namespace NhaTro.Services
                 .ToList();
 
             var correctionLessons = string.Join("\n", items.Select(item =>
-                $"- If user says similar to \"{item.CorrectionMessage}\", prefer intent {item.CorrectedIntent} with params {JsonSerializer.Serialize(item.CorrectedParams, JsonOptions)}. Avoid previous rejected intent {item.RejectedIntent}."));
+                $"- If user says similar to \"{item.RawMessage}\", prefer intent {item.CorrectedIntent} with params {JsonSerializer.Serialize(item.CorrectedParams, JsonOptions)}. Avoid previous rejected intent {item.RejectedIntent}."));
 
             var aliases = ReadAll()
                 .Where(x => x.UserId == userId && x.Kind == "value_alias" && x.Field != null && x.RawValue != null && x.NormalizedValue != null)
@@ -143,9 +179,83 @@ namespace NhaTro.Services
             return string.IsNullOrWhiteSpace(lessons) ? "No user-specific correction history." : lessons;
         }
 
+        public IReadOnlyList<AssistantSemanticMemoryCandidate> BuildSemanticCorrectionCandidates(int userId)
+        {
+            return ReadAll()
+                .Where(x =>
+                    x.UserId == userId
+                    && x.Kind != "value_alias"
+                    && !string.IsNullOrWhiteSpace(x.RawMessage)
+                    && !string.IsNullOrWhiteSpace(x.CorrectedIntent))
+                .OrderByDescending(x => x.CreatedAt)
+                .Take(100)
+                .Select(x => new AssistantSemanticMemoryCandidate(
+                    x.UserId,
+                    "learned_correction",
+                    $"learned:{x.UserId}:{NormalizeKey(x.RawMessage)}:{x.CorrectedIntent}",
+                    x.CorrectedIntent!,
+                    $"User phrase: {x.RawMessage}. Correct intent: {x.CorrectedIntent}. Correct params: {JsonSerializer.Serialize(x.CorrectedParams, JsonOptions)}"))
+                .ToList();
+        }
+
         private static string NormalizeKey(string value)
         {
-            return new string(value.Trim().ToLowerInvariant().Where(c => !char.IsWhiteSpace(c)).ToArray());
+            var normalized = value.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
+            var builder = new StringBuilder(normalized.Length);
+
+            foreach (var c in normalized)
+            {
+                var category = CharUnicodeInfo.GetUnicodeCategory(c);
+                if (category == UnicodeCategory.NonSpacingMark)
+                {
+                    continue;
+                }
+
+                if (char.IsLetterOrDigit(c))
+                {
+                    builder.Append(c == 'đ' ? 'd' : c);
+                }
+            }
+
+            return builder.ToString().Normalize(NormalizationForm.FormC);
+        }
+
+        private static double Similarity(string left, string right)
+        {
+            if (left.Length == 0 || right.Length == 0)
+            {
+                return 0;
+            }
+
+            var distance = LevenshteinDistance(left, right);
+            return 1d - (double)distance / Math.Max(left.Length, right.Length);
+        }
+
+        private static int LevenshteinDistance(string left, string right)
+        {
+            var costs = new int[right.Length + 1];
+            for (var j = 0; j <= right.Length; j++)
+            {
+                costs[j] = j;
+            }
+
+            for (var i = 1; i <= left.Length; i++)
+            {
+                var previousDiagonal = costs[0];
+                costs[0] = i;
+
+                for (var j = 1; j <= right.Length; j++)
+                {
+                    var previousAbove = costs[j];
+                    var cost = left[i - 1] == right[j - 1] ? 0 : 1;
+                    costs[j] = Math.Min(
+                        Math.Min(costs[j] + 1, costs[j - 1] + 1),
+                        previousDiagonal + cost);
+                    previousDiagonal = previousAbove;
+                }
+            }
+
+            return costs[right.Length];
         }
 
         private List<AssistantLearningItem> ReadAll()

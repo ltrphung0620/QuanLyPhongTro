@@ -11,7 +11,10 @@ import {
   AlertCircle, 
   Layers,
   Edit3,
-  Info
+  Info,
+  Eye,
+  MoreVertical,
+  DollarSign
 } from 'lucide-react'
 import { 
   layHoaDonThang, 
@@ -42,6 +45,14 @@ export default function Invoices() {
   const [error, setError] = useState(null)
   
   const [invoices, setInvoices] = useState([])
+  const [openMenuInvoiceId, setOpenMenuInvoiceId] = useState(null)
+  
+  useEffect(() => {
+    const handleCloseMenu = () => setOpenMenuInvoiceId(null)
+    window.addEventListener('click', handleCloseMenu)
+    return () => window.removeEventListener('click', handleCloseMenu)
+  }, [])
+
   const [activeContracts, setActiveContracts] = useState([])
   
   // Filtering & Search
@@ -90,6 +101,15 @@ export default function Invoices() {
   const [editError, setEditError] = useState(null)
   const [editSubmitting, setEditSubmitting] = useState(false)
 
+  // Detail Modal State
+  const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const [detailTarget, setDetailTarget] = useState(null)
+
+  const handleOpenDetail = (invoice) => {
+    setDetailTarget(invoice)
+    setDetailModalOpen(true)
+  }
+
   const taiDuLieu = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -127,6 +147,7 @@ export default function Invoices() {
         payload.eventName === 'invoice.updated' ||
         payload.eventName === 'invoice.deleted' ||
         payload.eventName === 'invoice.electricity-updated' ||
+        payload.eventName === 'payment.webhook-received' ||
         payload.eventName === 'payment.reconciled'
       ) {
         taiDuLieu()
@@ -285,7 +306,7 @@ export default function Invoices() {
     setPayTarget(invoice)
     setPayForm({
       amount: invoice.totalAmount.toString(),
-      paymentMethod: 'Chuyển khoản',
+      paymentMethod: 'Tiền mặt',
       paymentReference: '',
       note: ''
     })
@@ -486,14 +507,14 @@ export default function Invoices() {
             </div>
           ) : (
             <div className="table-container">
-              <table className="custom-table">
+              <table className="custom-table invoices-page-table">
                 <thead>
                   <tr>
                     <th>Phòng</th>
                     <th>Tiền phòng</th>
                     <th>Tiền điện (kWh)</th>
                     <th>Nước & DV khác</th>
-                    <th>Giảm giá/Nợ cũ</th>
+                    <th>Giảm giá/Công nợ</th>
                     <th>Tổng cộng</th>
                     <th>Trạng thái</th>
                     <th>Mã thanh toán</th>
@@ -505,14 +526,16 @@ export default function Invoices() {
                     <tr key={inv.invoiceId}>
                       <td>
                         <strong>{inv.roomCode}</strong>
-                        {inv.invoiceType === 'end' && <span className="type-badge-mini">Quyết toán</span>}
+                        {inv.invoiceType === 'end' && <span className="type-badge-mini" style={{ marginLeft: '4px' }}>Quyết toán</span>}
                       </td>
                       <td>{dinhDangTien(inv.roomFee)}</td>
                       <td>
                         <div className="details-cell-mini">
                           <span>{dinhDangTien(inv.electricityFee)}</span>
                           {inv.consumedUnits !== null && (
-                            <span className="subtext">{inv.consumedUnits} kWh ({inv.previousReading}→{inv.currentReading})</span>
+                            <span className="subtext" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              {inv.consumedUnits} kWh ({inv.previousReading}→{inv.currentReading})
+                            </span>
                           )}
                         </div>
                       </td>
@@ -521,7 +544,8 @@ export default function Invoices() {
                         <div className="details-cell-mini">
                           {inv.discountAmount > 0 && <span className="text-success">Giảm: -{dinhDangTien(inv.discountAmount)}</span>}
                           {inv.debtAmount > 0 && <span className="text-danger">Nợ cũ: +{dinhDangTien(inv.debtAmount)}</span>}
-                          {inv.discountAmount === 0 && inv.debtAmount === 0 && <span className="text-muted">—</span>}
+                          {inv.depositDebtAmount > 0 && <span className="text-danger">Nợ cọc: +{dinhDangTien(inv.depositDebtAmount)}</span>}
+                          {inv.discountAmount === 0 && inv.debtAmount === 0 && inv.depositDebtAmount === 0 && <span className="text-muted">—</span>}
                         </div>
                       </td>
                       <td>
@@ -536,56 +560,61 @@ export default function Invoices() {
                         <span className="payment-code-lbl">{inv.paymentCode || 'N/A'}</span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <div className="invoice-actions-flex">
+                        <div className="invoice-actions-flex" style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                          {(inv.status || '').toLowerCase() === 'unpaid' ? (
+                            <button 
+                              className="btn btn-success btn-xs btn-collect-money"
+                              onClick={() => handleOpenPay(inv)}
+                            >
+                              <DollarSign size={13} />
+                              <span>Thu tiền</span>
+                            </button>
+                          ) : (
+                            <button 
+                              className="btn btn-secondary btn-xs btn-cancel-collect"
+                              onClick={() => handleMarkUnpaid(inv.invoiceId)}
+                              title="Hủy thanh toán"
+                            >
+                              <span>Hủy thu</span>
+                            </button>
+                          )}
+
                           <button 
                             className="btn-card-edit"
                             onClick={() => handleDownloadPdf(inv.invoiceId, inv.roomCode)}
                             title="Tải hóa đơn PDF"
+                            style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
-                            <Download size={15} />
+                            <Download size={14} />
                           </button>
 
                           {(inv.status || '').toLowerCase() === 'unpaid' && (
-                            <>
-                              <button 
-                                className="btn btn-success btn-xs"
-                                onClick={() => handleOpenPay(inv)}
-                              >
-                                Thu tiền
-                              </button>
-                              <button 
-                                className="btn-card-edit"
-                                onClick={() => handleOpenEditModal(inv)}
-                                title="Chỉnh sửa hóa đơn"
-                              >
-                                <Edit3 size={15} />
-                              </button>
-                              <button 
-                                className="btn-card-edit"
-                                onClick={() => handleReplaceInvoice(inv.invoiceId)}
-                                title="Tính toán lại hóa đơn"
-                              >
-                                <RefreshCw size={14} />
-                              </button>
-                            </>
-                          )}
-
-                          {(inv.status || '').toLowerCase() === 'paid' && (
                             <button 
-                              className="btn btn-secondary btn-xs"
-                              onClick={() => handleMarkUnpaid(inv.invoiceId)}
-                              title="Hủy thanh toán"
+                              className="btn-card-edit"
+                              onClick={() => handleOpenEditModal(inv)}
+                              title="Chỉnh sửa hóa đơn"
+                              style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                             >
-                              Hủy thu
+                              <Edit3 size={14} />
                             </button>
                           )}
+
+                          <button 
+                            className="btn-card-edit"
+                            onClick={() => handleOpenDetail(inv)}
+                            title="Xem chi tiết hóa đơn"
+                            style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Eye size={14} />
+                          </button>
 
                           <button 
                             className="btn-card-edit btn-danger-icon"
                             onClick={() => handleDeleteInvoice(inv.invoiceId)}
                             title="Xóa hóa đơn"
+                            style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
-                            <Trash2 size={15} />
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       </td>
@@ -794,17 +823,13 @@ export default function Invoices() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" htmlFor="pay-method">Phương thức thanh toán</label>
-                  <select 
-                    id="pay-method" 
-                    className="form-control"
-                    value={payForm.paymentMethod}
-                    onChange={(e) => setPayForm({...payForm, paymentMethod: e.target.value})}
-                  >
-                    <option value="Chuyển khoản">Chuyển khoản ngân hàng</option>
-                    <option value="Tiền mặt">Tiền mặt</option>
-                    <option value="Ví điện tử">Ví điện tử</option>
-                  </select>
+                  <label className="form-label">Phương thức thanh toán</label>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    value="Tiền mặt" 
+                    disabled 
+                  />
                 </div>
 
                 <div className="form-group">
@@ -933,6 +958,145 @@ export default function Invoices() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* View Detail Invoice Modal */}
+      {detailModalOpen && detailTarget && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '600px' }}>
+            <div className="modal-header">
+              <span className="modal-title">Chi Tiết Hóa Đơn - Phòng {detailTarget.roomCode}</span>
+              <button className="btn-close-modal" onClick={() => setDetailModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="modal-body">
+              <div className="invoice-detail-modal">
+                <div className="detail-section">
+                  <h4 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '10px' }}>Thông tin chung</h4>
+                  <div className="detail-grid">
+                    <div className="detail-item"><strong>Kỳ hóa đơn:</strong> <span>{detailTarget.billingMonth || 'N/A'}</span></div>
+                    <div className="detail-item"><strong>Mã thanh toán:</strong> <span className="payment-code-lbl" style={{ padding: '2px 6px', fontSize: '0.78rem' }}>{detailTarget.paymentCode || 'N/A'}</span></div>
+                    <div className="detail-item" style={{ marginTop: '5px' }}>
+                      <strong>Trạng thái: </strong>
+                      <span className={`status-badge ${layBadgeClass(detailTarget.status)}`}>
+                        {layTenTrangThai(detailTarget.status)}
+                      </span>
+                    </div>
+                    {detailTarget.invoiceType === 'final' && (
+                      <div className="detail-item" style={{ marginTop: '5px' }}>
+                        <strong>Phân loại:</strong> <span className="type-badge-mini">Quyết toán thanh lý</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <hr style={{ margin: '15px 0', borderColor: 'var(--border-color)', opacity: 0.5 }} />
+
+                <div className="detail-section">
+                  <h4 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '10px' }}>Các hạng mục tiền phòng & dịch vụ</h4>
+                  <table className="detail-table">
+                    <thead>
+                      <tr>
+                        <th>Khoản mục</th>
+                        <th style={{ textAlign: 'right' }}>Thành tiền</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Tiền thuê phòng</td>
+                        <td style={{ textAlign: 'right' }}>{dinhDangTien(detailTarget.roomFee)}</td>
+                      </tr>
+                      <tr>
+                        <td>
+                          Tiền điện sử dụng
+                          {detailTarget.consumedUnits !== null && (
+                            <span className="subtext-detail"> ({detailTarget.consumedUnits} kWh: {detailTarget.previousReading} → {detailTarget.currentReading})</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>{dinhDangTien(detailTarget.electricityFee)}</td>
+                      </tr>
+                      <tr>
+                        <td>Tiền nước sinh hoạt</td>
+                        <td style={{ textAlign: 'right' }}>{dinhDangTien(detailTarget.waterFee)}</td>
+                      </tr>
+                      <tr>
+                        <td>Tiền thu gom rác & dịch vụ khác</td>
+                        <td style={{ textAlign: 'right' }}>{dinhDangTien(detailTarget.trashFee)}</td>
+                      </tr>
+                      {detailTarget.extraFee > 0 && (
+                        <tr>
+                          <td>
+                            Phí phát sinh khác
+                            {detailTarget.extraFeeNote && <span className="subtext-detail"> ({detailTarget.extraFeeNote})</span>}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>{dinhDangTien(detailTarget.extraFee)}</td>
+                        </tr>
+                      )}
+                      {detailTarget.depositDebtAmount > 0 && (
+                        <tr>
+                          <td>Khấu trừ cọc thanh lý</td>
+                          <td style={{ textAlign: 'right' }}>+{dinhDangTien(detailTarget.depositDebtAmount)}</td>
+                        </tr>
+                      )}
+                      {detailTarget.discountAmount > 0 && (
+                        <tr>
+                          <td className="text-success">Khuyến mãi / Giảm giá</td>
+                          <td style={{ textAlign: 'right' }} className="text-success">-{dinhDangTien(detailTarget.discountAmount)}</td>
+                        </tr>
+                      )}
+                      {detailTarget.debtAmount > 0 && (
+                        <tr>
+                          <td className="text-danger">Nợ cũ cộng thêm</td>
+                          <td style={{ textAlign: 'right' }} className="text-danger">+{dinhDangTien(detailTarget.debtAmount)}</td>
+                        </tr>
+                      )}
+                      <tr className="detail-total-row">
+                        <td><strong>TỔNG TIỀN CẦN THANH TOÁN</strong></td>
+                        <td style={{ textAlign: 'right' }}><strong>{dinhDangTien(detailTarget.totalAmount)}</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {detailTarget.status === 'paid' && (
+                  <>
+                    <hr style={{ margin: '15px 0', borderColor: 'var(--border-color)', opacity: 0.5 }} />
+                    <div className="detail-section">
+                      <h4 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '10px' }}>Thông tin thanh toán</h4>
+                      <div className="detail-grid">
+                        <div className="detail-item"><strong>Ngày thu tiền:</strong> <span>{detailTarget.paidAt ? new Date(detailTarget.paidAt).toLocaleString('vi-VN') : 'N/A'}</span></div>
+                        <div className="detail-item"><strong>Phương thức:</strong> <span>{detailTarget.paymentMethod || 'N/A'}</span></div>
+                        <div className="detail-item"><strong>Mã giao dịch/Tham chiếu:</strong> <span>{detailTarget.paymentReference || 'N/A'}</span></div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {detailTarget.note && (
+                  <>
+                    <hr style={{ margin: '15px 0', borderColor: 'var(--border-color)', opacity: 0.5 }} />
+                    <div className="detail-section">
+                      <strong>Ghi chú:</strong>
+                      <p className="detail-note" style={{ margin: '5px 0 0 0' }}>{detailTarget.note}</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => setDetailModalOpen(false)}
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}

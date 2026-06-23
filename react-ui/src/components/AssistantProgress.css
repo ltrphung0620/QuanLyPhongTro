@@ -1,0 +1,120 @@
+.assistant-progress {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.assistant-progress__understood {
+  display: grid;
+  gap: 3px;
+}
+
+.assistant-progress__understood span {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.assistant-progress__understood strong {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.assistant-progress__details {
+  margin-top: 10px;
+}
+
+.assistant-progress__details summary {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 650;
+  cursor: pointer;
+  list-style: none;
+}
+
+.assistant-progress__details summary::-webkit-details-marker {
+  display: none;
+}
+
+.assistant-progress__details summary > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.assistant-progress__count {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.assistant-progress__chevron {
+  transition: transform 160ms ease;
+}
+
+.assistant-progress__details[open] .assistant-progress__chevron {
+  transform: rotate(180deg);
+}
+
+.assistant-progress__details ol {
+  margin: 5px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--border-color);
+  list-style: none;
+}
+
+.assistant-progress__details li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.assistant-progress__details li > div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.assistant-progress__details li span {
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+}
+
+.assistant-progress__details li small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.assistant-progress__icon {
+  margin-top: 2px;
+}
+
+.assistant-progress__icon--success {
+  color: var(--success);
+}
+
+.assistant-progress__icon--waiting {
+  color: var(--warning);
+}
+
+.assistant-progress__icon--error {
+  color: var(--danger);
+}
+
+.assistant-progress__icon--muted {
+  color: var(--text-muted);
+}
+
+.assistant-progress--compact .assistant-progress__understood strong,
+.assistant-progress--compact .assistant-progress__details li span {
+  font-size: 0.78rem;
+}

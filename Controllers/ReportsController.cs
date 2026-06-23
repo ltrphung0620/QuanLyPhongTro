@@ -5,7 +5,7 @@ using NhaTro.Interfaces.Services;
 
 namespace NhaTro.Controllers
 {
-    [Authorize]
+    [Authorize(Policy = "AdminOnly")]
     [ApiController]
     [Route("api/[controller]")]
     public class ReportsController : ControllerBase
@@ -59,6 +59,28 @@ namespace NhaTro.Controllers
             var fileName = _reportService.BuildSalesLedgerPdfFileName(request.FromMonth, request.ToMonth);
 
             return File(pdfBytes, "application/pdf", fileName);
+        }
+
+        [HttpGet("sales-ledger/pdf")]
+        public async Task<IActionResult> DownloadSalesLedgerPdf(
+            [FromQuery] DateOnly fromMonth,
+            [FromQuery] DateOnly toMonth,
+            [FromQuery] string? businessOwnerName = null,
+            [FromQuery] string? address = null,
+            [FromQuery] string? taxCode = null,
+            [FromQuery] string? businessLocation = null)
+        {
+            var request = new SalesLedgerPdfRequestDto
+            {
+                FromMonth = fromMonth,
+                ToMonth = toMonth,
+                BusinessOwnerName = businessOwnerName,
+                Address = address,
+                TaxCode = taxCode,
+                BusinessLocation = businessLocation
+            };
+            var pdfBytes = await _reportService.GenerateSalesLedgerPdfAsync(request);
+            return File(pdfBytes, "application/pdf", _reportService.BuildSalesLedgerPdfFileName(fromMonth, toMonth));
         }
     }
 }

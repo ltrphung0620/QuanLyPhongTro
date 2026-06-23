@@ -9,5 +9,6 @@ namespace NhaTro.Dtos.Reports
         public string? RoomCode { get; set; }
         public string? PaymentCode { get; set; }
         public string? ReferenceCode { get; set; }
+        public string PaymentMethod { get; set; } = "Chuyển khoản";
     }
 }

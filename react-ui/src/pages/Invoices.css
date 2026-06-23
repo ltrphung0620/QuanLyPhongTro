@@ -101,3 +101,148 @@
   color: #fff !important;
   border-color: var(--danger) !important;
 }
+
+/* Detail Modal styles */
+.detail-section h4 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.detail-item {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.detail-item strong {
+  color: var(--text-primary);
+}
+
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 0.9rem;
+}
+
+.detail-table th, .detail-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.detail-table th {
+  text-align: left;
+  font-weight: 700;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.subtext-detail {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.detail-total-row td {
+  font-size: 1.05rem;
+  border-top: 2px solid var(--border-color);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.detail-note {
+  background: var(--bg-hover);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  border-left: 3px solid var(--primary-color);
+}
+
+.dropdown-item-action {
+  transition: background-color 0.15s ease;
+}
+
+.dropdown-item-action:hover {
+  background-color: var(--bg-hover, rgba(0, 0, 0, 0.04)) !important;
+}
+
+.dropdown-item-action.delete:hover {
+  background-color: rgba(239, 68, 68, 0.08) !important;
+}
+
+/* Compact padding and font size for Invoices Page Table to fit laptop viewports */
+.invoices-page-table th,
+.invoices-page-table td {
+  padding: 10px 8px !important;
+  font-size: 0.85rem !important;
+}
+
+.invoices-page-table .details-cell-mini {
+  gap: 1px;
+}
+
+.invoices-page-table strong {
+  font-size: 0.85rem;
+}
+
+/* Premium styling for "Thu tiền" button */
+.btn-collect-money {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  height: 30px !important;
+  padding: 0 10px !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  background: var(--success) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 2px 4px rgba(62, 107, 92, 0.15) !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.btn-collect-money:hover {
+  background: var(--success-hover) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(62, 107, 92, 0.25) !important;
+}
+
+.btn-collect-money:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 3px rgba(62, 107, 92, 0.15) !important;
+}
+
+/* Premium styling for "Hủy thu" button */
+.btn-cancel-collect {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 30px !important;
+  padding: 0 10px !important;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  border-radius: 6px !important;
+  background: var(--bg-primary) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-secondary) !important;
+  transition: all 0.2s ease !important;
+}
+
+.btn-cancel-collect:hover {
+  border-color: var(--border-hover) !important;
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}

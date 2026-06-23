@@ -1,32 +1,71 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using NhaTro.Data;
 using NhaTro.Dtos.Payments;
 using NhaTro.Interfaces.Services;
 
 namespace NhaTro.Controllers
 {
-    [Authorize]
+    [Authorize(Policy = "AdminOnly")]
     [ApiController]
     [Route("api/[controller]")]
     public class PaymentsController : ControllerBase
     {
         private readonly IPaymentService _service;
         private readonly IRealtimeService _realtimeService;
+        private readonly NhaTroDbContext _context;
 
-        public PaymentsController(IPaymentService service, IRealtimeService realtimeService)
+        public PaymentsController(
+            IPaymentService service, 
+            IRealtimeService realtimeService,
+            NhaTroDbContext context)
         {
             _service = service;
             _realtimeService = realtimeService;
+            _context = context;
         }
 
+        [AllowAnonymous]
         [HttpPost("sepay/webhook")]
         [HttpPost("/api/webhooks/sepay")]
-        public async Task<IActionResult> HandleSepayWebhook([FromBody] SepayWebhookDto dto)
+        public async Task<IActionResult> HandleSepayWebhook([FromBody] SepayWebhookDto dto, [FromQuery] int? userId = null)
         {
             try
             {
-                var result = await _service.HandleSepayWebhookAsync(dto);
-                await _realtimeService.PublishAsync("payment.webhook-received", "payments", "invoices", "reports");
+                var result = await _service.HandleSepayWebhookAsync(dto, userId);
+                
+                if (result.ProcessStatus == "paid" && result.MatchedInvoiceId.HasValue)
+                {
+                    var invoice = await _context.Invoices
+                        .Include(i => i.Room)
+                        .FirstOrDefaultAsync(i => i.InvoiceId == result.MatchedInvoiceId.Value);
+
+                    if (invoice != null)
+                    {
+                        var billingMonthStr = invoice.BillingMonth?.ToString("MM/yyyy");
+                        var message = $"Phòng {invoice.Room?.RoomCode} đã thanh toán hóa đơn tháng {billingMonthStr} với số tiền {invoice.TotalAmount:N0} đồng.";
+
+                        await _realtimeService.PublishWithDataAsync("invoice.marked-paid", new
+                        {
+                            invoiceId = invoice.InvoiceId,
+                            roomCode = invoice.Room?.RoomCode,
+                            billingMonth = invoice.BillingMonth,
+                            totalAmount = invoice.TotalAmount,
+                            message = message,
+                            organizationId = invoice.OrganizationId
+                        }, "invoices", "payments", "reports");
+                    }
+                    else
+                    {
+                        await _realtimeService.PublishAsync("payment.webhook-received", "payments", "invoices", "reports");
+                    }
+                }
+                else
+                {
+                    await _realtimeService.PublishAsync("payment.webhook-received", "payments", "invoices", "reports");
+                }
+
                 return Ok(new
                 {
                     success = true,
@@ -73,7 +112,37 @@ namespace NhaTro.Controllers
                     return NotFound(new { message = "Không tìm thấy giao dịch." });
                 }
 
-                await _realtimeService.PublishAsync("payment.reconciled", "payments", "invoices", "reports");
+                if (result.ProcessStatus == "paid" && result.MatchedInvoiceId.HasValue)
+                {
+                    var invoice = await _context.Invoices
+                        .Include(i => i.Room)
+                        .FirstOrDefaultAsync(i => i.InvoiceId == result.MatchedInvoiceId.Value);
+
+                    if (invoice != null)
+                    {
+                        var billingMonthStr = invoice.BillingMonth?.ToString("MM/yyyy");
+                        var message = $"Phòng {invoice.Room?.RoomCode} đã thanh toán hóa đơn tháng {billingMonthStr} với số tiền {invoice.TotalAmount:N0} đồng.";
+
+                        await _realtimeService.PublishWithDataAsync("invoice.marked-paid", new
+                        {
+                            invoiceId = invoice.InvoiceId,
+                            roomCode = invoice.Room?.RoomCode,
+                            billingMonth = invoice.BillingMonth,
+                            totalAmount = invoice.TotalAmount,
+                            message = message,
+                            organizationId = invoice.OrganizationId
+                        }, "invoices", "payments", "reports");
+                    }
+                    else
+                    {
+                        await _realtimeService.PublishAsync("payment.reconciled", "payments", "invoices", "reports");
+                    }
+                }
+                else
+                {
+                    await _realtimeService.PublishAsync("payment.reconciled", "payments", "invoices", "reports");
+                }
+
                 return Ok(result);
             }
             catch (Exception ex)

@@ -12,5 +12,7 @@ namespace NhaTro.Interfaces.Services
         Task<bool> DeleteAsync(int meterReadingId);
         Task<DeleteMeterReadingsByEndedContractDto?> DeleteByEndedContractAsync(int contractId);
         Task<List<MissingMeterDto>> GetMissingAsync(DateOnly month);
+        Task<List<MeterReadingDto>> CreateBulkAsync(CreateMeterReadingBulkDto dto);
+        Task<int?> ScanMeterImageAsync(IFormFile image);
     }
 }

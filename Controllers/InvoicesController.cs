@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using NhaTro.Data;
 using NhaTro.Dtos.Invoices;
 using NhaTro.Interfaces.Services;
 
@@ -13,12 +15,21 @@ namespace NhaTro.Controllers
         private readonly IInvoiceService _service;
         private readonly IInvoicePdfService _pdfService;
         private readonly IRealtimeService _realtimeService;
+        private readonly ITenantInvoiceNotificationService _tenantInvoiceNotificationService;
+        private readonly NhaTroDbContext _context;
 
-        public InvoicesController(IInvoiceService service, IInvoicePdfService pdfService, IRealtimeService realtimeService)
+        public InvoicesController(
+            IInvoiceService service, 
+            IInvoicePdfService pdfService, 
+            IRealtimeService realtimeService,
+            ITenantInvoiceNotificationService tenantInvoiceNotificationService,
+            NhaTroDbContext context)
         {
             _service = service;
             _pdfService = pdfService;
             _realtimeService = realtimeService;
+            _tenantInvoiceNotificationService = tenantInvoiceNotificationService;
+            _context = context;
         }
 
         [HttpGet]
@@ -83,6 +94,7 @@ namespace NhaTro.Controllers
             {
                 var invoice = await _service.CreateAsync(dto);
                 await _realtimeService.PublishAsync("invoice.created", "invoices", "reports");
+                await _tenantInvoiceNotificationService.NotifyInvoiceCreatedAsync(invoice, HttpContext.RequestAborted);
                 return Ok(invoice);
             }
             catch (Exception ex)
@@ -132,7 +144,30 @@ namespace NhaTro.Controllers
                     return NotFound(new { message = "Không tìm thấy hóa đơn." });
                 }
 
-                await _realtimeService.PublishAsync("invoice.marked-paid", "invoices", "payments", "reports");
+                var dbInvoice = await _context.Invoices
+                    .Include(i => i.Room)
+                    .FirstOrDefaultAsync(i => i.InvoiceId == id);
+
+                if (dbInvoice != null)
+                {
+                    var billingMonthStr = dbInvoice.BillingMonth?.ToString("MM/yyyy");
+                    var message = $"Phòng {dbInvoice.Room?.RoomCode} đã thanh toán hóa đơn tháng {billingMonthStr} với số tiền {dbInvoice.TotalAmount:N0} đồng.";
+                    
+                    await _realtimeService.PublishWithDataAsync("invoice.marked-paid", new
+                    {
+                        invoiceId = dbInvoice.InvoiceId,
+                        roomCode = dbInvoice.Room?.RoomCode,
+                        billingMonth = dbInvoice.BillingMonth,
+                        totalAmount = dbInvoice.TotalAmount,
+                        message = message,
+                        organizationId = dbInvoice.OrganizationId
+                    }, "invoices", "payments", "reports");
+                }
+                else
+                {
+                    await _realtimeService.PublishAsync("invoice.marked-paid", "invoices", "payments", "reports");
+                }
+
                 return Ok(invoice);
             }
             catch (Exception ex)
@@ -194,6 +229,10 @@ namespace NhaTro.Controllers
             {
                 var invoices = await _service.MonthlyBulkCreateAsync(dto);
                 await _realtimeService.PublishAsync("invoice.bulk-created", "invoices", "reports");
+                foreach (var invoice in invoices)
+                {
+                    await _tenantInvoiceNotificationService.NotifyInvoiceCreatedAsync(invoice, HttpContext.RequestAborted);
+                }
                 return Ok(invoices);
             }
             catch (Exception ex)

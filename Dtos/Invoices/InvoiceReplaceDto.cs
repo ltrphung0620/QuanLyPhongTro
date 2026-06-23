@@ -22,6 +22,9 @@ namespace NhaTro.Dtos.Invoices
         [Range(0, double.MaxValue)]
         public decimal DebtAmount { get; set; }
 
+        [Range(0, double.MaxValue)]
+        public decimal? DepositDebtAmount { get; set; }
+
         public string? Note { get; set; }
     }
 }

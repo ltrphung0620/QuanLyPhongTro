@@ -94,13 +94,17 @@ export default function Reports() {
     )
   }) || []
 
+  const transferRows = filteredRows.filter(r => r.paymentMethod === 'Chuyển khoản')
+  const cashRows = filteredRows.filter(r => r.paymentMethod === 'Tiền mặt')
+
   return (
     <div className="page-body">
-      <header className="page-header" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+      {/* Header section with page banner styling */}
+      <header className="reports-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <span className="page-eyebrow">Báo cáo tài chính</span>
-          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <FileSpreadsheet className="text-accent" size={26} />
+          <span className="page-eyebrow" style={{ textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Báo cáo tài chính</span>
+          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '4px 0 0 0', fontSize: '1.6rem', fontWeight: '800' }}>
+            <FileSpreadsheet className="text-accent" size={28} />
             Nhật Ký Sổ Quỹ Thu Chi
           </h1>
         </div>
@@ -109,7 +113,7 @@ export default function Reports() {
           className="btn btn-primary"
           onClick={handleExportPdf}
           disabled={exporting || loading || !ledger}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: 'var(--radius-md)', fontWeight: 'bold' }}
         >
           {exporting ? (
             <Loader2 className="spinner" size={16} />
@@ -120,38 +124,55 @@ export default function Reports() {
         </button>
       </header>
 
-      {/* Filter range section */}
-      <section className="reports-filter-section card" aria-label="Bộ lọc khoảng thời gian">
-        <div className="filter-row" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
-          <div className="form-group" style={{ margin: 0, flex: '1 1 200px' }}>
-            <label className="form-label" style={{ marginBottom: '6px' }}>Từ tháng</label>
-            <div className="auth-input-wrapper" style={{ padding: '0 12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center' }}>
-              <Calendar size={16} className="text-muted" style={{ marginRight: '8px' }} />
-              <input 
-                type="month" 
-                className="form-control" 
-                style={{ border: 'none', padding: '10px 0', width: '100%' }}
-                value={fromMonth}
-                onChange={(e) => setFromMonth(e.target.value)}
-              />
+      {/* Filter and search controls panel */}
+      <section className="reports-controls-card">
+        <div className="reports-controls-row">
+          <div className="reports-filter-inputs">
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.8rem', fontWeight: '600' }}>Từ tháng</label>
+              <div className="auth-input-wrapper" style={{ padding: '0 12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center' }}>
+                <Calendar size={16} className="text-muted" style={{ marginRight: '8px' }} />
+                <input 
+                  type="month" 
+                  className="form-control" 
+                  style={{ border: 'none', padding: '10px 0', width: '100%', background: 'transparent' }}
+                  value={fromMonth}
+                  onChange={(e) => setFromMonth(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="text-muted" style={{ alignSelf: 'flex-end', paddingBottom: '12px', display: 'flex', alignItems: 'center' }}>
+              <ArrowRight size={18} />
+            </div>
+
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.8rem', fontWeight: '600' }}>Đến tháng</label>
+              <div className="auth-input-wrapper" style={{ padding: '0 12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center' }}>
+                <Calendar size={16} className="text-muted" style={{ marginRight: '8px' }} />
+                <input 
+                  type="month" 
+                  className="form-control" 
+                  style={{ border: 'none', padding: '10px 0', width: '100%', background: 'transparent' }}
+                  value={toMonth}
+                  onChange={(e) => setToMonth(e.target.value)}
+                  min={fromMonth}
+                />
+              </div>
             </div>
           </div>
 
-          <div className="text-muted" style={{ alignSelf: 'flex-end', paddingBottom: '12px', fontWeight: 'bold' }}>
-            <ArrowRight size={18} />
-          </div>
-
-          <div className="form-group" style={{ margin: 0, flex: '1 1 200px' }}>
-            <label className="form-label" style={{ marginBottom: '6px' }}>Đến tháng</label>
-            <div className="auth-input-wrapper" style={{ padding: '0 12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center' }}>
-              <Calendar size={16} className="text-muted" style={{ marginRight: '8px' }} />
+          <div className="reports-search-wrapper">
+            <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.8rem', fontWeight: '600' }}>Tìm kiếm nhanh</label>
+            <div className="auth-input-wrapper" style={{ padding: '0 12px', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', background: 'var(--bg-primary)' }}>
+              <Search size={16} className="text-muted" style={{ marginRight: '8px' }} />
               <input 
-                type="month" 
-                className="form-control" 
-                style={{ border: 'none', padding: '10px 0', width: '100%' }}
-                value={toMonth}
-                onChange={(e) => setToMonth(e.target.value)}
-                min={fromMonth}
+                type="text"
+                className="form-control"
+                style={{ border: 'none', padding: '10px 0', width: '100%', fontSize: '0.9rem', background: 'transparent' }}
+                placeholder="Tìm phòng, nội dung..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
           </div>
@@ -159,14 +180,14 @@ export default function Reports() {
       </section>
 
       {error && (
-        <div className="error-alert" style={{ marginBottom: '24px' }}>
+        <div className="error-alert" style={{ marginBottom: '24px', padding: '16px', borderRadius: 'var(--radius-md)', display: 'flex', gap: '12px', alignItems: 'center', backgroundColor: 'var(--danger-light)', color: 'var(--danger)', border: '1px solid rgba(166, 93, 87, 0.2)' }}>
           <AlertCircle size={18} />
           <span>{error}</span>
         </div>
       )}
 
       {loading ? (
-        <div className="loading-container" style={{ minHeight: '300px' }}>
+        <div className="loading-container" style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
           <Loader2 className="spinner" size={36} />
           <span>Đang tổng hợp dữ liệu sổ quỹ...</span>
         </div>
@@ -174,82 +195,157 @@ export default function Reports() {
         <>
           {ledger && (
             <>
-              {/* Summary stat box */}
-              <section className="reports-summary-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', marginBottom: '32px' }} aria-label="Tóm tắt doanh thu">
-                <div className="stat-card card" style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
-                  <div className="stat-icon-wrapper" style={{ width: '48px', height: '48px', borderRadius: '12px', backgroundColor: 'var(--success-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)' }}>
-                    <TrendingUp size={24} />
+              {/* Summary Cards Grid */}
+              <section className="reports-summary-grid" aria-label="Tóm tắt doanh thu">
+                <div className="reports-stat-card total">
+                  <div className="stat-icon-wrapper-premium">
+                    <TrendingUp size={26} />
                   </div>
                   <div>
-                    <span className="stat-label" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Tổng doanh thu thực nhận (Chuyển khoản đã khớp)</span>
-                    <h2 className="stat-value text-success" style={{ fontSize: '1.8rem', fontWeight: '800', marginTop: '4px' }}>
+                    <span style={{ fontSize: '0.8rem', opacity: '0.9', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600' }}>Tổng doanh thu thực nhận</span>
+                    <h2 style={{ fontSize: '1.9rem', fontWeight: '800', marginTop: '4px', margin: 0 }}>
                       {dinhDangTien(ledger.totalAmount)}
+                    </h2>
+                  </div>
+                </div>
+
+                <div className="reports-stat-card transfer">
+                  <div className="stat-icon-wrapper-premium">
+                    <TrendingUp size={26} />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.8rem', opacity: '0.9', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600' }}>Doanh thu Chuyển khoản</span>
+                    <h2 style={{ fontSize: '1.9rem', fontWeight: '800', marginTop: '4px', margin: 0 }}>
+                      {dinhDangTien(ledger.rows.filter(r => r.paymentMethod === 'Chuyển khoản').reduce((sum, r) => sum + r.amount, 0))}
+                    </h2>
+                  </div>
+                </div>
+
+                <div className="reports-stat-card cash">
+                  <div className="stat-icon-wrapper-premium">
+                    <TrendingUp size={26} />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.8rem', opacity: '0.9', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600' }}>Doanh thu Tiền mặt</span>
+                    <h2 style={{ fontSize: '1.9rem', fontWeight: '800', marginTop: '4px', margin: 0 }}>
+                      {dinhDangTien(ledger.rows.filter(r => r.paymentMethod === 'Tiền mặt').reduce((sum, r) => sum + r.amount, 0))}
                     </h2>
                   </div>
                 </div>
               </section>
 
-              {/* Transactions list card */}
-              <section className="card" style={{ padding: '24px' }} aria-label="Bút toán chi tiết">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-primary)' }}>Chi Tiết Doanh Thu</h3>
-                  
-                  <div className="search-box" style={{ maxWidth: '300px', width: '100%' }}>
-                    <div className="auth-input-wrapper" style={{ padding: '0 12px', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center' }}>
-                      <Search size={16} className="text-muted" style={{ marginRight: '8px' }} />
-                      <input 
-                        type="text"
-                        className="form-control"
-                        style={{ border: 'none', padding: '8px 0', width: '100%', fontSize: '0.9rem' }}
-                        placeholder="Tìm phòng, nội dung..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                      />
+              {/* Side-by-Side Tables Container */}
+              <div className="reports-tables-container">
+                
+                {/* Bank Transfer Table Card */}
+                <section className="reports-table-card" aria-label="Doanh thu chuyển khoản">
+                  <div className="reports-table-header">
+                    <div className="reports-table-title">
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#3b82f6', display: 'inline-block' }}></span>
+                      Chi Tiết Doanh Thu Chuyển Khoản
                     </div>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#3b82f6', background: 'rgba(59, 130, 246, 0.1)', padding: '6px 12px', borderRadius: '20px' }}>
+                      Cộng: {dinhDangTien(transferRows.reduce((sum, r) => sum + r.amount, 0))}
+                    </span>
                   </div>
-                </div>
 
-                {filteredRows.length === 0 ? (
-                  <div className="meter-empty-state" style={{ padding: '48px 0' }}>
-                    <FileSpreadsheet size={64} className="empty-icon" />
-                    <h3>Không có dữ liệu doanh thu</h3>
-                    <p>Không tìm thấy bản ghi thu chi nào trong khoảng thời gian đã chọn.</p>
-                  </div>
-                ) : (
-                  <div className="table-container">
-                    <table className="custom-table">
-                      <thead>
-                        <tr>
-                          <th>Ngày giao dịch</th>
-                          <th>Phòng</th>
-                          <th>Nội dung chi tiết</th>
-                          <th style={{ textAlign: 'right' }}>Số tiền nhận</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredRows.map((row, idx) => (
-                          <tr key={row.paymentTransactionId || idx}>
-                            <td>
-                              <span className="date-cell">
-                                {row.transactionDate ? new Date(row.transactionDate).toLocaleDateString('vi-VN') : 'N/A'}
-                              </span>
-                            </td>
-                            <td>
-                              <strong>{row.roomCode || 'N/A'}</strong>
-                            </td>
-                            <td>
-                              <span>{row.description}</span>
-                            </td>
-                            <td style={{ textAlign: 'right' }}>
-                              <strong className="text-success">+{dinhDangTien(row.amount)}</strong>
-                            </td>
+                  {transferRows.length === 0 ? (
+                    <div className="premium-empty-state">
+                      <FileSpreadsheet size={48} />
+                      <h4>Không có dữ liệu chuyển khoản</h4>
+                      <p>Không tìm thấy bản ghi chuyển khoản nào trong khoảng thời gian đã chọn.</p>
+                    </div>
+                  ) : (
+                    <div className="table-container" style={{ flexGrow: 1, overflowY: 'auto' }}>
+                      <table className="reports-custom-table custom-table">
+                        <thead>
+                          <tr>
+                            <th>Ngày tháng</th>
+                            <th>Phòng</th>
+                            <th>Nội dung chi tiết</th>
+                            <th style={{ textAlign: 'right' }}>Số tiền</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {transferRows.map((row, idx) => (
+                            <tr key={row.paymentTransactionId || idx}>
+                              <td>
+                                <span className="date-cell" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                  {row.transactionDate ? new Date(row.transactionDate).toLocaleDateString('vi-VN') : 'N/A'}
+                                </span>
+                              </td>
+                              <td>
+                                <span className="room-badge-premium">{row.roomCode || 'N/A'}</span>
+                              </td>
+                              <td>
+                                <span style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{row.description}</span>
+                              </td>
+                              <td style={{ textAlign: 'right' }}>
+                                <strong style={{ color: 'var(--success)', fontWeight: '700' }}>+{dinhDangTien(row.amount)}</strong>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+
+                {/* Cash Table Card */}
+                <section className="reports-table-card" aria-label="Doanh thu tiền mặt">
+                  <div className="reports-table-header">
+                    <div className="reports-table-title">
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block' }}></span>
+                      Chi Tiết Doanh Thu Tiền Mặt
+                    </div>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)', padding: '6px 12px', borderRadius: '20px' }}>
+                      Cộng: {dinhDangTien(cashRows.reduce((sum, r) => sum + r.amount, 0))}
+                    </span>
                   </div>
-                )}
-              </section>
+
+                  {cashRows.length === 0 ? (
+                    <div className="premium-empty-state">
+                      <FileSpreadsheet size={48} />
+                      <h4>Không có dữ liệu tiền mặt</h4>
+                      <p>Không tìm thấy bản ghi tiền mặt nào trong khoảng thời gian đã chọn.</p>
+                    </div>
+                  ) : (
+                    <div className="table-container" style={{ flexGrow: 1, overflowY: 'auto' }}>
+                      <table className="reports-custom-table custom-table">
+                        <thead>
+                          <tr>
+                            <th>Ngày tháng</th>
+                            <th>Phòng</th>
+                            <th>Nội dung chi tiết</th>
+                            <th style={{ textAlign: 'right' }}>Số tiền</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cashRows.map((row, idx) => (
+                            <tr key={row.paymentTransactionId || idx}>
+                              <td>
+                                <span className="date-cell" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                  {row.transactionDate ? new Date(row.transactionDate).toLocaleDateString('vi-VN') : 'N/A'}
+                                </span>
+                              </td>
+                              <td>
+                                <span className="room-badge-premium">{row.roomCode || 'N/A'}</span>
+                              </td>
+                              <td>
+                                <span style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{row.description}</span>
+                              </td>
+                              <td style={{ textAlign: 'right' }}>
+                                <strong style={{ color: 'var(--success)', fontWeight: '700' }}>+{dinhDangTien(row.amount)}</strong>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+                
+              </div>
             </>
           )}
         </>

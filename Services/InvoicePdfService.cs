@@ -66,6 +66,7 @@ namespace NhaTro.Services
                                 AddMoneyRow(table, "Ti\u1EC1n r\u00E1c", invoice.TrashFee);
                                 AddMoneyRow(table, "Ph\u00ED ph\u00E1t sinh", invoice.ExtraFee);
                                 AddMoneyRow(table, "N\u1EE3 c\u0169 chuy\u1EC3n k\u1EF3", invoice.DebtAmount);
+                                AddMoneyRow(table, "N\u1EE3 ti\u1EC1n c\u1ECDc", invoice.DepositDebtAmount);
                                 AddMoneyRow(table, "Gi\u1EA3m tr\u1EEB", -invoice.DiscountAmount);
 
                                 table.Cell().Element(CellLabel).Text("T\u1ED5ng thanh to\u00E1n").SemiBold();

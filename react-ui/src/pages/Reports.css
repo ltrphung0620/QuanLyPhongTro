@@ -1,36 +1,231 @@
-/* Reports Styling - Warm Editorial Beige Theme */
+/* ===================================================================
+   REPORTS PAGE CUSTOM STYLES - Premium Financial Dashboard
+   =================================================================== */
 
-.reports-filter-section {
-  padding: 24px;
-  background-color: var(--bg-card);
+/* Header section with page banner styling */
+.reports-header {
+  padding: 28px;
+  background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  margin-bottom: 24px;
   box-shadow: var(--shadow-sm);
+  margin-bottom: 24px;
 }
 
+/* Premium Filter Card combining Date range and Search */
+.reports-controls-card {
+  padding: 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.reports-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.reports-filter-inputs {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex-grow: 1;
+}
+
+.reports-search-wrapper {
+  max-width: 320px;
+  width: 100%;
+}
+
+/* Elegant stat card styling with rich gradients and glows */
 .reports-summary-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 24px;
   margin-bottom: 32px;
 }
 
-.stat-icon-wrapper {
+.reports-stat-card {
+  position: relative;
+  padding: 28px 24px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  overflow: hidden;
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.reports-stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.reports-stat-card.total {
+  background: linear-gradient(135deg, #3E6B5C 0%, #2A483E 100%);
+  border-color: #3E6B5C;
+  color: #FFFFFF;
+}
+
+.reports-stat-card.total:hover {
+  box-shadow: 0 12px 24px -10px rgba(62, 107, 92, 0.4);
+}
+
+.reports-stat-card.transfer {
+  background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+  border-color: #1e40af;
+  color: #FFFFFF;
+}
+
+.reports-stat-card.transfer:hover {
+  box-shadow: 0 12px 24px -10px rgba(30, 64, 175, 0.4);
+}
+
+.reports-stat-card.cash {
+  background: linear-gradient(135deg, #b45309 0%, #78350f 100%);
+  border-color: #b45309;
+  color: #FFFFFF;
+}
+
+.reports-stat-card.cash:hover {
+  box-shadow: 0 12px 24px -10px rgba(180, 83, 9, 0.4);
+}
+
+/* Card Icons */
+.stat-icon-wrapper-premium {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: transform var(--transition-fast);
 }
 
-.stat-card:hover .stat-icon-wrapper {
-  transform: scale(1.08);
+.reports-stat-card:hover .stat-icon-wrapper-premium {
+  transform: scale(1.1) rotate(5deg);
 }
 
-@media (max-width: 768px) {
-  .filter-row {
-    flex-direction: column;
-    align-items: stretch !important;
+.reports-stat-card.total .stat-icon-wrapper-premium {
+  background: rgba(255, 255, 255, 0.15);
+  color: #FFFFFF;
+}
+
+.reports-stat-card.transfer .stat-icon-wrapper-premium {
+  background: rgba(255, 255, 255, 0.15);
+  color: #FFFFFF;
+}
+
+.reports-stat-card.cash .stat-icon-wrapper-premium {
+  background: rgba(255, 255, 255, 0.15);
+  color: #FFFFFF;
+}
+
+/* Side-by-Side Tables Grid container on desktop */
+.reports-tables-container {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 32px;
+  margin-bottom: 32px;
+}
+
+@media (min-width: 1024px) {
+  .reports-tables-container {
+    grid-template-columns: 1fr 1fr;
   }
-  
-  .filter-row > div:nth-child(2) {
-    display: none !important; /* hide arrow icon on mobile */
-  }
+}
+
+/* Modern Card for individual tables */
+.reports-table-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  min-height: 400px;
+}
+
+.reports-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 16px;
+}
+
+.reports-table-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Soft badges for room codes */
+.room-badge-premium {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* Premium zebra rows & hovers */
+.reports-custom-table tbody tr {
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.reports-custom-table tbody tr:hover {
+  background-color: var(--bg-hover) !important;
+  transform: scale(1.005);
+}
+
+/* empty state styling */
+.premium-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-grow: 1;
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.premium-empty-state svg {
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  opacity: 0.7;
+}
+
+.premium-empty-state h4 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.premium-empty-state p {
+  font-size: 0.85rem;
+  max-width: 280px;
 }

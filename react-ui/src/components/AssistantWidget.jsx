@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Bot, Check, Loader2, MessageCircle, Send, X } from 'lucide-react'
-import { guiTinNhanAssistant, thucThiLenhAssistant } from '../api'
+import { Bot, Check, Download, Loader2, MessageCircle, Send, X } from 'lucide-react'
+import { downloadAssistantFile, guiTinNhanAssistant, thucThiLenhAssistant } from '../api'
+import AssistantProgress, { layNoiDungTraLoi } from './AssistantProgress'
 
 const GOI_Y = [
   'Nhập số điện tháng 10 phòng A1 là 1000',
@@ -21,28 +22,35 @@ export default function AssistantWidget() {
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [strongConfirmed, setStrongConfirmed] = useState(false)
   const [messages, setMessages] = useState([
     taoTinNhan('assistant', 'Bạn cần mình làm gì? Mình có thể nhập số điện, tìm phòng trống hoặc xem hóa đơn chưa thanh toán.')
   ])
 
-  const guiTinNhan = async (text = input) => {
+  const guiTinNhan = async (text = input, displayText = null) => {
     const trimmed = text.trim()
     if (!trimmed || loading) return
 
     setInput('')
-    setMessages((items) => [...items, taoTinNhan('user', trimmed)])
+    setMessages((items) => [...items, taoTinNhan('user', displayText || trimmed)])
     setLoading(true)
 
     try {
       const response = await guiTinNhanAssistant(trimmed)
       setMessages((items) => [
         ...items,
-        taoTinNhan('assistant', response.message || 'Mình đã xử lý yêu cầu.', {
+        taoTinNhan('assistant', layNoiDungTraLoi(response), {
           commandId: response.commandId,
+          command: response.command,
           type: response.type,
           preview: response.preview,
+          result: response.result,
           pendingCommand: response.pendingCommand,
-          suggestions: response.suggestions || []
+          agentPlan: response.agentPlan,
+          agentExecution: response.agentExecution,
+          suggestions: response.suggestions || [],
+          actionSuggestions: response.actionSuggestions || [],
+          requiresStrongConfirmation: response.requiresStrongConfirmation
         })
       ])
     } catch (error) {
@@ -52,12 +60,12 @@ export default function AssistantWidget() {
     }
   }
 
-  const xacNhanLenh = async (commandId) => {
+  const xacNhanLenh = async (commandId, requiresStrong) => {
     if (!commandId || loading) return
     setLoading(true)
 
     try {
-      const response = await thucThiLenhAssistant(commandId)
+      const response = await thucThiLenhAssistant(commandId, requiresStrong)
       setMessages((items) => [
         ...items,
         taoTinNhan('assistant', response.message || 'Đã thực hiện xong.', {
@@ -65,6 +73,7 @@ export default function AssistantWidget() {
           result: response.result
         })
       ])
+      setStrongConfirmed(false)
     } catch (error) {
       setMessages((items) => [...items, taoTinNhan('assistant', error.message || 'Không thể thực hiện lệnh.')])
     } finally {
@@ -75,6 +84,31 @@ export default function AssistantWidget() {
   const submit = (event) => {
     event.preventDefault()
     guiTinNhan()
+  }
+
+  const taiBaoCao = async (downloadUrl) => {
+    if (!downloadUrl || loading) return
+    setLoading(true)
+    try {
+      const blob = await downloadAssistantFile(downloadUrl)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'SoDoanhThu.pdf'
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      setMessages((items) => [...items, taoTinNhan('assistant', error.message || 'Không thể tải báo cáo.')])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const xuLyPhimNhap = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      guiTinNhan()
+    }
   }
 
   return (
@@ -95,14 +129,50 @@ export default function AssistantWidget() {
             {messages.map((message) => (
               <article key={message.id} className={`assistant-message assistant-message--${message.role}`}>
                 <p>{message.text}</p>
+                <AssistantProgress plan={message.agentPlan} execution={message.agentExecution} compact />
                 {message.type === 'confirmation_required' && message.commandId && (
+                  <div className="assistant-confirm-wrapper">
+                    {message.requiresStrongConfirmation && (
+                      <div className="assistant-strong-confirm-checkbox" style={{ margin: '8px 0', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-warning, #d97706)' }}>
+                        <input
+                          type="checkbox"
+                          id={`strong-confirm-${message.id}`}
+                          checked={strongConfirmed}
+                          onChange={(e) => setStrongConfirmed(e.target.checked)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <label htmlFor={`strong-confirm-${message.id}`} style={{ cursor: 'pointer', fontWeight: 500 }}>
+                          Tôi xác nhận đồng ý thực hiện hành động này
+                        </label>
+                      </div>
+                    )}
+                    <div className="assistant-confirm-row">
+                      <button
+                        type="button"
+                        className="assistant-confirm"
+                        onClick={() => xacNhanLenh(message.commandId, message.requiresStrongConfirmation)}
+                        disabled={loading || (message.requiresStrongConfirmation && !strongConfirmed)}
+                      >
+                        <Check size={16} />
+                        Xác nhận thực hiện
+                      </button>
+                      <button type="button" className="assistant-reject" onClick={() => guiTinNhan('Không đúng')} disabled={loading}>
+                        Không đúng
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {message.role === 'assistant' && (message.command || message.agentPlan) && message.type !== 'confirmation_required' && (
                   <div className="assistant-confirm-row">
-                    <button type="button" className="assistant-confirm" onClick={() => xacNhanLenh(message.commandId)} disabled={loading}>
-                    <Check size={16} />
-                    Xác nhận thực hiện
+                    <button type="button" className="assistant-reject" onClick={() => guiTinNhan('Không đúng')} disabled={loading}>
+                      Không đúng
                     </button>
-                    <button type="button" className="assistant-reject" onClick={() => guiTinNhan('khong dung')} disabled={loading}>
-                      KhÃ´ng Ä‘Ãºng
+                  </div>
+                )}
+                {message.result?.downloadUrl && message.result?.reportType === 'salesLedger' && (
+                  <div className="assistant-confirm-row">
+                    <button type="button" className="assistant-confirm" onClick={() => taiBaoCao(message.result.downloadUrl)} disabled={loading}>
+                      <Download size={16} /> Tải PDF sổ doanh thu
                     </button>
                   </div>
                 )}
@@ -111,6 +181,20 @@ export default function AssistantWidget() {
                     {message.suggestions.map((suggestion) => (
                       <button key={suggestion} type="button" onClick={() => guiTinNhan(suggestion)} disabled={loading}>
                         {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {message.actionSuggestions?.length > 0 && (
+                  <div className="assistant-action-suggestions">
+                    {message.actionSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion.intent}
+                        type="button"
+                        onClick={() => guiTinNhan(`__intent:${suggestion.intent}`, suggestion.label)}
+                        disabled={loading}
+                      >
+                        {suggestion.label}
                       </button>
                     ))}
                   </div>
@@ -133,10 +217,12 @@ export default function AssistantWidget() {
           </div>
 
           <form className="assistant-input" onSubmit={submit}>
-            <input
+            <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}
+              onKeyDown={xuLyPhimNhap}
               placeholder="Ví dụ: nhập số điện tháng 10 phòng A1 là 1000"
+              rows={2}
             />
             <button type="submit" aria-label="Gửi yêu cầu" disabled={loading || !input.trim()}>
               <Send size={17} />

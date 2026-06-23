@@ -290,7 +290,7 @@ export default function Payments() {
     <div className="page-body">
       <div className="payments-header">
         <div>
-          <h1>Lịch Sử Thu Chi & Giao Dịch</h1>
+          <h1>Thu Chi Tháng</h1>
           <p className="subtitle">Quản lý quỹ thu chi phát sinh vận hành và log chuyển khoản ngân hàng tự động</p>
         </div>
 

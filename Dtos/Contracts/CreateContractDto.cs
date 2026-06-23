@@ -18,6 +18,9 @@ namespace NhaTro.Dtos.Contracts
         [Range(0, double.MaxValue)]
         public decimal DepositAmount { get; set; }
 
+        [Range(0, double.MaxValue)]
+        public decimal? DepositPaidAmount { get; set; }
+
         [Range(1, int.MaxValue)]
         public int OccupantCount { get; set; }
 
