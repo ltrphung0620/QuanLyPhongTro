@@ -16,6 +16,7 @@ namespace NhaTro.Services
         private readonly AssistantToolRegistry _toolRegistry;
         private readonly IAssistantCommandParser _commandParser;
         private readonly AssistantLearningStore _learningStore;
+        private readonly ICurrentUserService _currentUserService;
 
         public AssistantAgentPlanner(
             HttpClient httpClient,
@@ -23,7 +24,8 @@ namespace NhaTro.Services
             ILogger<AssistantAgentPlanner> logger,
             AssistantToolRegistry toolRegistry,
             IAssistantCommandParser commandParser,
-            AssistantLearningStore learningStore)
+            AssistantLearningStore learningStore,
+            ICurrentUserService currentUserService)
         {
             _httpClient = httpClient;
             _configuration = configuration;
@@ -31,6 +33,7 @@ namespace NhaTro.Services
             _toolRegistry = toolRegistry;
             _commandParser = commandParser;
             _learningStore = learningStore;
+            _currentUserService = currentUserService;
         }
 
         public virtual async Task<AssistantAgentPlanDto> PlanAsync(string message, int userId)
@@ -244,7 +247,7 @@ Put unknown required inputs in missingInformation and leave corresponding args e
 High-risk or write tools must set requiresConfirmation true at either plan or step level.
 
 Tool catalog:
-{_toolRegistry.BuildPromptCatalog()}
+{_toolRegistry.BuildPromptCatalog(_currentUserService.Role)}
 
 User-specific correction history:
 {_learningStore.BuildPromptLessons(userId)}

@@ -36,5 +36,8 @@ namespace NhaTro.Models
         public int AppUserId { get; set; }
         public AppUser? AppUser { get; set; }
 
+        public int OrganizationId { get; set; }
+        public Organization? Organization { get; set; }
+
     }
 }

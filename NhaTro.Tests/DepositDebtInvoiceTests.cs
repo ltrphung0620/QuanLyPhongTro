@@ -3,6 +3,8 @@ using NhaTro.Interfaces.Repositories;
 using NhaTro.Models;
 using NhaTro.Services;
 using NhaTro.Dtos.Invoices;
+using NhaTro.Dtos.Pricing;
+using NhaTro.Interfaces.Services;
 
 namespace NhaTro.Tests
 {
@@ -93,7 +95,20 @@ namespace NhaTro.Tests
                 contractRepository.Object,
                 meterRepository.Object,
                 new Mock<IRoomRepository>().Object,
-                transactionRepository.Object));
+                transactionRepository.Object,
+                CreatePricingService().Object));
+        }
+
+        private static Mock<IPricingSettingsService> CreatePricingService()
+        {
+            var pricing = new Mock<IPricingSettingsService>();
+            pricing.Setup(x => x.GetAsync()).ReturnsAsync(new PricingSettingsDto
+            {
+                ElectricityUnitPrice = 3500m,
+                WaterFeePerPerson = 50000m,
+                TrashFee = 30000m
+            });
+            return pricing;
         }
 
         private sealed record Fixture(InvoiceService Service);

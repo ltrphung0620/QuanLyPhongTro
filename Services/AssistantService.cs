@@ -7,6 +7,7 @@ using NhaTro.Dtos.Invoices;
 using NhaTro.Dtos.MeterReadings;
 using NhaTro.Dtos.Payments;
 using NhaTro.Dtos.Rooms;
+using NhaTro.Dtos.Reports;
 using NhaTro.Dtos.Tenants;
 using NhaTro.Dtos.Transactions;
 using NhaTro.Interfaces.Services;
@@ -298,6 +299,11 @@ namespace NhaTro.Services
 
         public async Task<AssistantResponseDto> HandleAgentAsync(string message)
         {
+            if (_currentUserService.Role == "Tenant" || _currentUserService.Role == "SuperAdmin")
+            {
+                throw new InvalidOperationException("User has no permission to access AI Agent.");
+            }
+
             if (string.IsNullOrWhiteSpace(message))
             {
                 return HelpResponse("Bạn nhập mục tiêu cần agent xử lý nhé.");
@@ -856,6 +862,7 @@ namespace NhaTro.Services
             }
 
             _toolRegistry.TryGet(pending.Command.Intent, out var tool);
+            ValidateUserRolePermissions(pending.Command.Intent);
             var requiresStrong = tool?.RequiresStrongConfirmation ?? false;
 
             if (requiresStrong && strongConfirm != true)
@@ -902,6 +909,8 @@ namespace NhaTro.Services
                     AssistantActionRegistry.ContractsDeleteEnded => await ExecuteContractDeleteEndedAsync(pending.Command),
                     AssistantActionRegistry.MeterReadingsUpdate => await ExecuteMeterReadingUpdateAsync(pending.Command),
                     AssistantActionRegistry.MeterReadingsDelete => await ExecuteMeterReadingDeleteAsync(pending.Command),
+                    AssistantActionRegistry.MeterReadingsDeleteByEndedContract => await ExecuteMeterReadingsDeleteByEndedContractAsync(pending.Command),
+                    AssistantActionRegistry.InvoicesCreate => await ExecuteInvoiceCreateAsync(pending.Command),
                     AssistantActionRegistry.InvoicesMarkUnpaid => await ExecuteInvoiceMarkUnpaidAsync(pending.Command),
                     AssistantActionRegistry.InvoicesUpdateElectricity => await ExecuteInvoiceUpdateElectricityAsync(pending.Command),
                     AssistantActionRegistry.InvoicesReplace => await ExecuteInvoiceReplaceAsync(pending.Command),
@@ -926,8 +935,43 @@ namespace NhaTro.Services
             }
         }
 
+        private void ValidateUserRolePermissions(string intent)
+        {
+            var role = _currentUserService.Role;
+            if (role == "SuperAdmin")
+            {
+                throw new InvalidOperationException("SuperAdmin has no permission to use assistant tools.");
+            }
+
+            if (role == "Tenant")
+            {
+                var tenantAllowedIntents = new[]
+                {
+                    "assistant.help",
+                    "assistant.cancel",
+                    "assistant.correct",
+                    "assistant.clarify_intent",
+                    AssistantActionRegistry.InvoicesFindAll,
+                    AssistantActionRegistry.InvoicesFindUnpaid,
+                    AssistantActionRegistry.InvoicesFindByRoomMonth,
+                    AssistantActionRegistry.InvoicesFindByPaymentCode,
+                    AssistantActionRegistry.InvoicesFindById,
+                    AssistantActionRegistry.InvoicesDownloadPdf,
+                    AssistantActionRegistry.MeterReadingsFind,
+                    AssistantActionRegistry.MeterReadingsFindAll,
+                    AssistantActionRegistry.MeterReadingsFindById
+                };
+
+                if (!tenantAllowedIntents.Contains(intent))
+                {
+                    throw new InvalidOperationException("Tenant has no permission to perform this action.");
+                }
+            }
+        }
+
         private async Task<AssistantResponseDto> DispatchAsync(AssistantCommandDto command)
         {
+            ValidateUserRolePermissions(command.Intent);
             if (!_actionRegistry.TryGet(command.Intent, out var action) || command.Intent == AssistantActionRegistry.AssistantUnknown)
             {
                 return HelpResponse("Mình chưa hiểu yêu cầu này. Bạn có thể yêu cầu về phòng, khách thuê, hợp đồng, số điện, hóa đơn, thu chi hoặc báo cáo.", command);
@@ -945,25 +989,34 @@ namespace NhaTro.Services
                     AssistantActionRegistry.MeterReadingCreate => await PreviewMeterReadingCreateAsync(command),
                     AssistantActionRegistry.MeterReadingsFind => await HandleMeterReadingAsync(command),
                     AssistantActionRegistry.MeterReadingsFindMissing => await HandleMissingMeterReadingsAsync(command),
+                    AssistantActionRegistry.MeterReadingsFindAll => await HandleMeterReadingsAsync(command),
+                    AssistantActionRegistry.MeterReadingsFindById => await HandleMeterReadingByIdAsync(command),
                     AssistantActionRegistry.RoomsFindAll => await HandleRoomsAsync(command, null),
                     AssistantActionRegistry.RoomsFindVacant => await HandleRoomsAsync(command, "vacant"),
                     AssistantActionRegistry.RoomsFindOccupied => await HandleRoomsAsync(command, "occupied"),
                     AssistantActionRegistry.RoomsFindByCode => await HandleRoomByCodeAsync(command),
+                    AssistantActionRegistry.RoomsFindById => await HandleRoomByIdAsync(command),
                     AssistantActionRegistry.RoomsCreate => ConfirmationResponse(command, BuildRoomCreatePreview(command)),
                     AssistantActionRegistry.TenantsFindAll => await HandleTenantsAsync(command),
+                    AssistantActionRegistry.TenantsFind => await HandleTenantFindAsync(command),
                     AssistantActionRegistry.TenantsCreate => ConfirmationResponse(command, BuildTenantCreatePreview(command)),
                     AssistantActionRegistry.ContractsFindAll => await HandleContractsAsync(command, null),
                     AssistantActionRegistry.ContractsFindActive => await HandleContractsAsync(command, "active"),
                     AssistantActionRegistry.ContractsFindByRoom => await HandleContractByRoomAsync(command),
+                    AssistantActionRegistry.ContractsFindById => await HandleContractByIdAsync(command),
                     AssistantActionRegistry.ContractsCreate => await PreviewContractCreateAsync(command),
                     AssistantActionRegistry.ContractsEnd => await PreviewContractEndAsync(command),
                     AssistantActionRegistry.InvoicesFindAll => await HandleInvoicesAsync(command),
                     AssistantActionRegistry.InvoicesFindUnpaid => await HandleUnpaidInvoicesAsync(command),
                     AssistantActionRegistry.InvoicesFindByRoomMonth => await HandleInvoiceByRoomMonthAsync(command),
+                    AssistantActionRegistry.InvoicesFindByPaymentCode => await HandleInvoiceByPaymentCodeAsync(command),
+                    AssistantActionRegistry.InvoicesFindById => await HandleInvoiceByIdAsync(command),
+                    AssistantActionRegistry.InvoicesCreate => await PreviewInvoiceCreateAsync(command),
                     AssistantActionRegistry.InvoicesCreateMonthlyBulk => await PreviewInvoiceMonthlyBulkCreateAsync(command),
                     AssistantActionRegistry.InvoicesCreateMonthlyBulkAfterMeterCheck => await PreviewInvoiceMonthlyBulkAfterMeterCheckAsync(command),
                     AssistantActionRegistry.InvoicesMarkPaid => await PreviewInvoiceMarkPaidAsync(command),
                     AssistantActionRegistry.TransactionsFind => await HandleTransactionsAsync(command),
+                    AssistantActionRegistry.TransactionsFindById => await HandleTransactionByIdAsync(command),
                     AssistantActionRegistry.TransactionsCreate => ConfirmationResponse(command, BuildTransactionCreatePreview(command)),
                     AssistantActionRegistry.RoomsUpdate => await PreviewRoomUpdateAsync(command),
                     AssistantActionRegistry.RoomsUpdateStatus => await PreviewRoomStatusUpdateAsync(command),
@@ -973,6 +1026,7 @@ namespace NhaTro.Services
                     AssistantActionRegistry.ContractsDeleteEnded => await PreviewContractDeleteEndedAsync(command),
                     AssistantActionRegistry.MeterReadingsUpdate => await PreviewMeterReadingUpdateAsync(command),
                     AssistantActionRegistry.MeterReadingsDelete => await PreviewMeterReadingDeleteAsync(command),
+                    AssistantActionRegistry.MeterReadingsDeleteByEndedContract => await PreviewMeterReadingsDeleteByEndedContractAsync(command),
                     AssistantActionRegistry.InvoicesMarkUnpaid => await PreviewInvoiceMarkUnpaidAsync(command),
                     AssistantActionRegistry.InvoicesUpdateElectricity => await PreviewInvoiceUpdateElectricityAsync(command),
                     AssistantActionRegistry.InvoicesReplace => await PreviewInvoiceReplaceAsync(command),
@@ -982,12 +1036,15 @@ namespace NhaTro.Services
                     AssistantActionRegistry.TransactionsUpdate => await PreviewTransactionUpdateAsync(command),
                     AssistantActionRegistry.TransactionsDelete => await PreviewTransactionDeleteAsync(command),
                     AssistantActionRegistry.PaymentsFind => await HandlePaymentsAsync(command),
+                    AssistantActionRegistry.PaymentsFindById => await HandlePaymentByIdAsync(command),
                     AssistantActionRegistry.PaymentsReconcile => await PreviewPaymentReconcileAsync(command),
                     AssistantActionRegistry.PaymentsDelete => await PreviewPaymentDeleteAsync(command),
                     AssistantActionRegistry.ReportsMonthlyRevenue => await HandleMonthlyRevenueReportAsync(command),
                     AssistantActionRegistry.ReportsMonthlyExpense => await HandleMonthlyExpenseReportAsync(command),
                     AssistantActionRegistry.ReportsMonthlyProfitLoss => await HandleMonthlyProfitLossReportAsync(command),
                     AssistantActionRegistry.ReportsPaymentStatus => await HandlePaymentStatusReportAsync(command),
+                    AssistantActionRegistry.ReportsSalesLedger => await HandleSalesLedgerAsync(command),
+                    AssistantActionRegistry.ReportsSalesLedgerPdf => await HandleSalesLedgerPdfAsync(command),
                     _ => HelpResponse($"Mình đã hiểu intent {command.Intent}, nhưng action này chưa được nối executor.", command)
                 };
             }
@@ -1060,6 +1117,23 @@ namespace NhaTro.Services
                 reading);
         }
 
+        private async Task<AssistantResponseDto> HandleMeterReadingsAsync(AssistantCommandDto command)
+        {
+            var roomId = await ResolveOptionalRoomIdAsync(command);
+            var month = ParseOptionalDate(command, "billingMonth");
+            var readings = await _meterReadingService.GetAllAsync(roomId, month);
+            var message = readings.Count == 0
+                ? "Không có chỉ số điện phù hợp."
+                : $"Có {readings.Count} bản ghi chỉ số điện: {string.Join(", ", readings.Take(20).Select(x => $"{x.RoomCode} {x.BillingMonth:MM/yyyy}: {x.PreviousReading} → {x.CurrentReading}"))}.";
+            return MessageResponse(command, message, readings);
+        }
+
+        private async Task<AssistantResponseDto> HandleMeterReadingByIdAsync(AssistantCommandDto command)
+        {
+            var reading = await ResolveMeterReadingAsync(command);
+            return MessageResponse(command, $"Chỉ số điện {reading.MeterReadingId}, phòng {reading.RoomCode}, tháng {reading.BillingMonth:MM/yyyy}: {reading.PreviousReading} → {reading.CurrentReading}, tiêu thụ {reading.ConsumedUnits} kWh.", reading);
+        }
+
         private async Task<AssistantResponseDto> HandleRoomsAsync(AssistantCommandDto command, string? status)
         {
             var rooms = await _roomService.GetAllAsync(status);
@@ -1081,6 +1155,15 @@ namespace NhaTro.Services
             var room = await _roomService.GetByRoomCodeAsync(roomCode);
             return room == null
                 ? ErrorResponse(command, $"Không tìm thấy phòng {roomCode}.")
+                : MessageResponse(command, $"Phòng {room.RoomCode}: giá niêm yết {FormatMoney(room.ListedPrice)}, trạng thái {room.Status}.", room);
+        }
+
+        private async Task<AssistantResponseDto> HandleRoomByIdAsync(AssistantCommandDto command)
+        {
+            var roomId = ParseInt(command, "roomId");
+            var room = await _roomService.GetByIdAsync(roomId);
+            return room == null
+                ? ErrorResponse(command, $"Không tìm thấy phòng ID {roomId}.")
                 : MessageResponse(command, $"Phòng {room.RoomCode}: giá niêm yết {FormatMoney(room.ListedPrice)}, trạng thái {room.Status}.", room);
         }
 
@@ -1107,6 +1190,27 @@ namespace NhaTro.Services
                 ? "Chưa có khách thuê nào."
                 : $"Có {tenants.Count} khách thuê: {string.Join(", ", tenants.Select(x => $"{x.FullName} ({x.Phone ?? "chưa có SĐT"})"))}.";
             return MessageResponse(command, message, tenants);
+        }
+
+        private async Task<AssistantResponseDto> HandleTenantFindAsync(AssistantCommandDto command)
+        {
+            if (int.TryParse(Param(command, "tenantId"), out var tenantId))
+            {
+                var byId = await _tenantService.GetByIdAsync(tenantId);
+                return byId == null
+                    ? ErrorResponse(command, $"Không tìm thấy khách thuê {tenantId}.")
+                    : MessageResponse(command, $"Khách {byId.FullName}, SĐT {byId.Phone ?? "chưa có"}, CCCD {byId.CCCD ?? "chưa có"}.", byId);
+            }
+
+            var query = Param(command, "phone") ?? Param(command, "cccd") ?? Require(command, "tenantName");
+            var matches = AssistantTenantMatcher.FindMatches(await _tenantService.GetAllAsync(), query);
+            var message = matches.Count switch
+            {
+                0 => $"Không tìm thấy khách thuê khớp '{query}'.",
+                1 => $"Khách {matches[0].FullName}, SĐT {matches[0].Phone ?? "chưa có"}, CCCD {matches[0].CCCD ?? "chưa có"}.",
+                _ => $"Có {matches.Count} khách thuê khớp '{query}': {string.Join(", ", matches.Select((x, index) => $"{index + 1}. {x.FullName} ({x.Phone ?? "chưa có SĐT"})"))}."
+            };
+            return MessageResponse(command, message, matches.Count == 1 ? matches[0] : matches);
         }
 
         private string BuildTenantCreatePreview(AssistantCommandDto command)
@@ -1143,6 +1247,15 @@ namespace NhaTro.Services
             return contract == null
                 ? ErrorResponse(command, $"Phòng {roomCode} chưa có hợp đồng đang hiệu lực.")
                 : MessageResponse(command, $"Hợp đồng phòng {contract.RoomCode}: khách {contract.TenantName}, từ {contract.StartDate:dd/MM/yyyy}, giá {FormatMoney(contract.ActualRoomPrice)}, cọc {FormatMoney(contract.DepositAmount)}.", contract);
+        }
+
+        private async Task<AssistantResponseDto> HandleContractByIdAsync(AssistantCommandDto command)
+        {
+            var contractId = ParseInt(command, "contractId");
+            var contract = await _contractService.GetByIdAsync(contractId);
+            return contract == null
+                ? ErrorResponse(command, $"Không tìm thấy hợp đồng {contractId}.")
+                : MessageResponse(command, $"Hợp đồng {contract.ContractId}, phòng {contract.RoomCode}, khách {contract.TenantName}, trạng thái {contract.Status}.", contract);
         }
 
         private async Task<AssistantResponseDto> PreviewContractCreateAsync(AssistantCommandDto command)
@@ -1381,6 +1494,57 @@ namespace NhaTro.Services
                 : MessageResponse(command, $"Hóa đơn phòng {roomCode} tháng {month:MM/yyyy}: {FormatMoney(invoice.TotalAmount)}, trạng thái {invoice.Status}.", invoice);
         }
 
+        private async Task<AssistantResponseDto> HandleInvoiceByPaymentCodeAsync(AssistantCommandDto command)
+        {
+            var paymentCode = Require(command, "paymentCode");
+            var invoice = await _invoiceService.GetByPaymentCodeAsync(paymentCode);
+            return invoice == null
+                ? ErrorResponse(command, $"Không tìm thấy hóa đơn có mã thanh toán {paymentCode}.")
+                : MessageResponse(command, $"Hóa đơn {invoice.InvoiceId} phòng {invoice.RoomCode}: {FormatMoney(invoice.TotalAmount)}, trạng thái {invoice.Status}.", invoice);
+        }
+
+        private async Task<AssistantResponseDto> HandleInvoiceByIdAsync(AssistantCommandDto command)
+        {
+            var invoiceId = ParseInt(command, "invoiceId");
+            var invoice = await _invoiceService.GetByIdAsync(invoiceId);
+            return invoice == null
+                ? ErrorResponse(command, $"Không tìm thấy hóa đơn {invoiceId}.")
+                : MessageResponse(command, $"Hóa đơn {invoice.InvoiceId} phòng {invoice.RoomCode}: {FormatMoney(invoice.TotalAmount)}, trạng thái {invoice.Status}.", invoice);
+        }
+
+        private async Task<AssistantResponseDto> PreviewInvoiceCreateAsync(AssistantCommandDto command)
+        {
+            var payload = await BuildSingleInvoicePayloadAsync(command);
+            var preview = await _invoiceService.PreviewAsync(payload);
+            var room = await _roomService.GetByIdAsync(payload.RoomId);
+            return ConfirmationResponse(
+                command,
+                $"Mình sẽ tạo hóa đơn phòng {room?.RoomCode} tháng {payload.BillingMonth:MM/yyyy}, tổng dự kiến {FormatMoney(preview.TotalAmount)}.",
+                preview);
+        }
+
+        private async Task<AssistantResponseDto> ExecuteInvoiceCreateAsync(AssistantCommandDto command)
+        {
+            var payload = await BuildSingleInvoicePayloadAsync(command);
+            var result = await _invoiceService.CreateAsync(payload);
+            return SuccessResponse(command, $"Đã tạo hóa đơn {result.InvoiceId} phòng {result.RoomCode} tháng {result.BillingMonth:MM/yyyy}.", result);
+        }
+
+        private async Task<CreateInvoiceDto> BuildSingleInvoicePayloadAsync(AssistantCommandDto command)
+        {
+            var room = await ResolveRoomAsync(command);
+            var contract = await _contractService.GetActiveByRoomCodeAsync(room.RoomCode)
+                ?? throw new InvalidOperationException($"Phòng {room.RoomCode} chưa có hợp đồng đang hiệu lực.");
+            return new CreateInvoiceDto
+            {
+                RoomId = room.RoomId,
+                ContractId = contract.ContractId,
+                BillingMonth = ParseDate(command, "billingMonth"),
+                DiscountAmount = ParseOptionalDecimal(command, "discountAmount") ?? 0,
+                DebtAmount = ParseOptionalDecimal(command, "debtAmount") ?? 0
+            };
+        }
+
         private async Task<AssistantResponseDto> PreviewInvoiceMonthlyBulkCreateAsync(AssistantCommandDto command)
         {
             var payload = BuildInvoiceBulkPayload(command);
@@ -1446,25 +1610,24 @@ namespace NhaTro.Services
 
         private async Task<AssistantResponseDto> PreviewInvoiceMarkPaidAsync(AssistantCommandDto command)
         {
-            var invoiceId = ParseInt(command, "invoiceId");
-            var invoice = await _invoiceService.GetByIdAsync(invoiceId)
-                ?? throw new InvalidOperationException($"Không tìm thấy hóa đơn {invoiceId}.");
-            return ConfirmationResponse(command, $"Mình sẽ đánh dấu hóa đơn {invoiceId} phòng {invoice.RoomCode} đã thanh toán {FormatMoney(ParseDecimal(command, "amount"))}.", invoice);
+            var invoice = await ResolveInvoiceAsync(command);
+            var amount = ParseOptionalDecimal(command, "amount") ?? invoice.TotalAmount;
+            return ConfirmationResponse(command, $"Mình sẽ đánh dấu hóa đơn {invoice.InvoiceId} phòng {invoice.RoomCode} đã thanh toán {FormatMoney(amount)}.", new { invoice, amount });
         }
 
         private async Task<AssistantResponseDto> ExecuteInvoiceMarkPaidAsync(AssistantCommandDto command)
         {
-            var invoiceId = ParseInt(command, "invoiceId");
-            var result = await _invoiceService.MarkPaidAsync(invoiceId, new MarkInvoicePaidDto
+            var invoice = await ResolveInvoiceAsync(command);
+            var result = await _invoiceService.MarkPaidAsync(invoice.InvoiceId, new MarkInvoicePaidDto
             {
-                Amount = ParseDecimal(command, "amount"),
+                Amount = ParseOptionalDecimal(command, "amount") ?? invoice.TotalAmount,
                 PaymentMethod = Param(command, "paymentMethod"),
                 PaymentReference = Param(command, "paymentReference"),
                 Note = Param(command, "note")
             });
             return result == null
-                ? ErrorResponse(command, $"Không tìm thấy hóa đơn {invoiceId}.")
-                : SuccessResponse(command, $"Đã ghi nhận thanh toán hóa đơn {invoiceId}.", result);
+                ? ErrorResponse(command, $"Không tìm thấy hóa đơn {invoice.InvoiceId}.")
+                : SuccessResponse(command, $"Đã ghi nhận thanh toán hóa đơn {invoice.InvoiceId}.", result);
         }
 
         private async Task<AssistantResponseDto> HandleTransactionsAsync(AssistantCommandDto command)
@@ -1481,6 +1644,15 @@ namespace NhaTro.Services
         private string BuildTransactionCreatePreview(AssistantCommandDto command)
         {
             return $"Mình sẽ ghi giao dịch {Require(command, "transactionDirection")} {FormatMoney(ParseDecimal(command, "amount"))} ngày {ParseDate(command, "transactionDate"):dd/MM/yyyy}.";
+        }
+
+        private async Task<AssistantResponseDto> HandleTransactionByIdAsync(AssistantCommandDto command)
+        {
+            var transaction = await ResolveTransactionAsync(command);
+            return MessageResponse(
+                command,
+                $"Giao dịch {transaction.TransactionId}: {transaction.TransactionDirection} {FormatMoney(transaction.Amount)}, ngày {transaction.TransactionDate:dd/MM/yyyy}, {transaction.ItemName}.",
+                transaction);
         }
 
         private async Task<AssistantResponseDto> ExecuteTransactionCreateAsync(AssistantCommandDto command)
@@ -1525,6 +1697,39 @@ namespace NhaTro.Services
             var result = await _reportService.GetPaymentStatusAsync(month);
             var unpaid = result.Count(x => !string.Equals(x.Status, "paid", StringComparison.OrdinalIgnoreCase));
             return MessageResponse(command, $"Tháng {month:MM/yyyy} có {result.Count} hóa đơn, {unpaid} hóa đơn chưa thanh toán.", result);
+        }
+
+        private async Task<AssistantResponseDto> HandleSalesLedgerAsync(AssistantCommandDto command)
+        {
+            var fromMonth = ParseDate(command, "fromMonth");
+            var toMonth = ParseDate(command, "toMonth");
+            var ledger = await _reportService.GetSalesLedgerAsync(fromMonth, toMonth);
+            return MessageResponse(command, $"Sổ doanh thu từ {fromMonth:MM/yyyy} đến {toMonth:MM/yyyy} có {ledger.Rows.Count} dòng, tổng {FormatMoney(ledger.TotalAmount)}.", ledger);
+        }
+
+        private Task<AssistantResponseDto> HandleSalesLedgerPdfAsync(AssistantCommandDto command)
+        {
+            var fromMonth = ParseDate(command, "fromMonth");
+            var toMonth = ParseDate(command, "toMonth");
+            var query = new List<string>
+            {
+                $"fromMonth={Uri.EscapeDataString(fromMonth.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))}",
+                $"toMonth={Uri.EscapeDataString(toMonth.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))}"
+            };
+            AddQueryValue(query, "businessOwnerName", Param(command, "businessOwnerName"));
+            AddQueryValue(query, "address", Param(command, "address"));
+            AddQueryValue(query, "taxCode", Param(command, "taxCode"));
+            AddQueryValue(query, "businessLocation", Param(command, "businessLocation"));
+            var url = $"/api/Reports/sales-ledger/pdf?{string.Join("&", query)}";
+            return Task.FromResult(MessageResponse(command, $"Bạn có thể tải PDF sổ doanh thu từ {fromMonth:MM/yyyy} đến {toMonth:MM/yyyy}.", new { reportType = "salesLedger", fromMonth, toMonth, downloadUrl = url }));
+        }
+
+        private static void AddQueryValue(List<string> query, string name, string? value)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                query.Add($"{name}={Uri.EscapeDataString(value)}");
+            }
         }
 
         private async Task<AssistantResponseDto> PreviewRoomUpdateAsync(AssistantCommandDto command)
@@ -1661,6 +1866,23 @@ namespace NhaTro.Services
             var reading = await ResolveMeterReadingAsync(command);
             var deleted = await _meterReadingService.DeleteAsync(reading.MeterReadingId);
             return deleted ? SuccessResponse(command, $"Đã xóa chỉ số điện phòng {reading.RoomCode}.") : ErrorResponse(command, "Không thể xóa chỉ số điện.");
+        }
+
+        private async Task<AssistantResponseDto> PreviewMeterReadingsDeleteByEndedContractAsync(AssistantCommandDto command)
+        {
+            var contract = await ResolveContractAsync(command, requireActive: false);
+            var readings = await _meterReadingService.GetAllAsync(contract.RoomId, null);
+            var count = readings.Count(x => x.ContractId == contract.ContractId);
+            return ConfirmationResponse(command, $"Mình sẽ xóa {count} bản ghi chỉ số điện của hợp đồng {contract.ContractId} phòng {contract.RoomCode}. Hành động này không thể hoàn tác.", new { contract, readingCount = count });
+        }
+
+        private async Task<AssistantResponseDto> ExecuteMeterReadingsDeleteByEndedContractAsync(AssistantCommandDto command)
+        {
+            var contract = await ResolveContractAsync(command, requireActive: false);
+            var result = await _meterReadingService.DeleteByEndedContractAsync(contract.ContractId);
+            return result == null
+                ? ErrorResponse(command, "Không tìm thấy hợp đồng cần xóa chỉ số.")
+                : SuccessResponse(command, $"Đã xóa {result.DeletedCount} bản ghi chỉ số của hợp đồng {result.ContractId} phòng {result.RoomCode}.", result);
         }
 
         private async Task<AssistantResponseDto> PreviewInvoiceMarkUnpaidAsync(AssistantCommandDto command)
@@ -1804,6 +2026,12 @@ namespace NhaTro.Services
             var items = await _paymentService.GetAllAsync(Param(command, "processStatus"));
             var message = items.Count == 0 ? "Không có giao dịch ngân hàng phù hợp." : $"Có {items.Count} giao dịch ngân hàng: {string.Join(", ", items.Take(10).Select(x => $"#{x.PaymentTransactionId} {FormatMoney(x.TransferAmount ?? 0)} ({x.ProcessStatus})"))}.";
             return MessageResponse(command, message, items);
+        }
+
+        private async Task<AssistantResponseDto> HandlePaymentByIdAsync(AssistantCommandDto command)
+        {
+            var payment = await ResolvePaymentAsync(command);
+            return MessageResponse(command, $"Chuyển khoản #{payment.PaymentTransactionId}: {FormatMoney(payment.TransferAmount ?? 0)}, trạng thái {payment.ProcessStatus}, mã thanh toán {payment.PaymentCode ?? "không có"}.", payment);
         }
 
         private async Task<AssistantResponseDto> PreviewPaymentReconcileAsync(AssistantCommandDto command)
@@ -2254,19 +2482,25 @@ namespace NhaTro.Services
                 AssistantActionRegistry.MeterReadingCreate => "Nhập chỉ số điện",
                 AssistantActionRegistry.MeterReadingsFind => "Xem chỉ số điện",
                 AssistantActionRegistry.MeterReadingsFindMissing => "Tìm phòng chưa nhập điện",
+                AssistantActionRegistry.MeterReadingsFindAll => "Danh sách chỉ số điện",
+                AssistantActionRegistry.MeterReadingsFindById => "Chi tiết chỉ số điện",
+                AssistantActionRegistry.MeterReadingsDeleteByEndedContract => "Xóa chỉ số hợp đồng cũ",
                 AssistantActionRegistry.RoomsFindAll => "Danh sách phòng",
                 AssistantActionRegistry.RoomsFindVacant => "Phòng còn trống",
                 AssistantActionRegistry.RoomsFindOccupied => "Phòng đang thuê",
                 AssistantActionRegistry.RoomsFindByCode => "Xem phòng",
+                AssistantActionRegistry.RoomsFindById => "Xem phòng theo ID",
                 AssistantActionRegistry.RoomsCreate => "Tạo phòng",
                 AssistantActionRegistry.RoomsUpdate => "Cập nhật giá phòng",
                 AssistantActionRegistry.RoomsUpdateStatus => "Cập nhật trạng thái phòng",
                 AssistantActionRegistry.TenantsFindAll => "Danh sách khách thuê",
+                AssistantActionRegistry.TenantsFind => "Tìm khách thuê",
                 AssistantActionRegistry.TenantsCreate => "Tạo khách thuê",
                 AssistantActionRegistry.TenantsUpdate => "Cập nhật khách thuê",
                 AssistantActionRegistry.ContractsFindAll => "Danh sách hợp đồng",
                 AssistantActionRegistry.ContractsFindActive => "Hợp đồng hiệu lực",
                 AssistantActionRegistry.ContractsFindByRoom => "Hợp đồng theo phòng",
+                AssistantActionRegistry.ContractsFindById => "Hợp đồng theo ID",
                 AssistantActionRegistry.ContractsCreate => "Tạo hợp đồng",
                 AssistantActionRegistry.ContractsEnd => "Kết thúc hợp đồng",
                 AssistantActionRegistry.ContractsUpdate => "Cập nhật hợp đồng",
@@ -2275,6 +2509,9 @@ namespace NhaTro.Services
                 AssistantActionRegistry.InvoicesFindAll => "Danh sách hóa đơn",
                 AssistantActionRegistry.InvoicesFindUnpaid => "Hóa đơn chưa thanh toán",
                 AssistantActionRegistry.InvoicesFindByRoomMonth => "Hóa đơn theo phòng/tháng",
+                AssistantActionRegistry.InvoicesFindByPaymentCode => "Tra mã thanh toán",
+                AssistantActionRegistry.InvoicesFindById => "Hóa đơn theo ID",
+                AssistantActionRegistry.InvoicesCreate => "Tạo hóa đơn một phòng",
                 AssistantActionRegistry.InvoicesCreateMonthlyBulk => "Tạo hóa đơn tháng",
                 AssistantActionRegistry.InvoicesCreateMonthlyBulkAfterMeterCheck => "Kiểm tra điện rồi tạo hóa đơn",
                 AssistantActionRegistry.InvoicesMarkPaid => "Đánh dấu đã thanh toán",
@@ -2285,18 +2522,22 @@ namespace NhaTro.Services
                 AssistantActionRegistry.InvoicesDelete => "Xóa hóa đơn",
                 AssistantActionRegistry.InvoicesDownloadPdf => "Tải PDF hóa đơn",
                 AssistantActionRegistry.TransactionsFind => "Xem thu chi",
+                AssistantActionRegistry.TransactionsFindById => "Chi tiết giao dịch thu chi",
                 AssistantActionRegistry.TransactionsCreate => "Tạo thu chi",
                 AssistantActionRegistry.TransactionsUpdate => "Cập nhật thu chi",
                 AssistantActionRegistry.TransactionsDelete => "Xóa thu chi",
                 AssistantActionRegistry.MeterReadingsUpdate => "Cập nhật chỉ số điện",
                 AssistantActionRegistry.MeterReadingsDelete => "Xóa chỉ số điện",
                 AssistantActionRegistry.PaymentsFind => "Tra cứu chuyển khoản",
+                AssistantActionRegistry.PaymentsFindById => "Chi tiết chuyển khoản",
                 AssistantActionRegistry.PaymentsReconcile => "Đối soát chuyển khoản",
                 AssistantActionRegistry.PaymentsDelete => "Xóa chuyển khoản",
                 AssistantActionRegistry.ReportsMonthlyRevenue => "Báo cáo doanh thu",
                 AssistantActionRegistry.ReportsMonthlyExpense => "Báo cáo chi phí",
                 AssistantActionRegistry.ReportsMonthlyProfitLoss => "Báo cáo lãi lỗ",
                 AssistantActionRegistry.ReportsPaymentStatus => "Báo cáo thanh toán",
+                AssistantActionRegistry.ReportsSalesLedger => "Sổ doanh thu",
+                AssistantActionRegistry.ReportsSalesLedgerPdf => "PDF sổ doanh thu",
                 _ => intent
             };
         }

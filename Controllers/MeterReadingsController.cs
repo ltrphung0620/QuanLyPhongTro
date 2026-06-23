@@ -5,16 +5,18 @@ using NhaTro.Interfaces.Services;
 
 namespace NhaTro.Controllers
 {
-    [Authorize]
+    [Authorize(Policy = "AdminOnly")]
     [ApiController]
     [Route("api/[controller]")]
     public class MeterReadingsController : ControllerBase
     {
         private readonly IMeterReadingService _service;
+        private readonly IGeminiMeterReadingOcrService _ocrService;
 
-        public MeterReadingsController(IMeterReadingService service)
+        public MeterReadingsController(IMeterReadingService service, IGeminiMeterReadingOcrService ocrService)
         {
             _service = service;
+            _ocrService = ocrService;
         }
 
         [HttpGet]
@@ -65,7 +67,7 @@ namespace NhaTro.Controllers
                 var result = await _service.UploadImageAsync(id, dto.Image);
                 if (result == null)
                 {
-                    return NotFound(new { message = "KhÃ´ng tÃ¬m tháº¥y báº£n ghi chá»‰ sá»‘ Ä‘iá»‡n." });
+                    return NotFound(new { message = "Không tìm thấy bản ghi chỉ số điện." });
                 }
 
                 return Ok(result);
@@ -146,6 +148,59 @@ namespace NhaTro.Controllers
             catch (Exception ex)
             {
                 return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("ocr")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> ScanMeterImage([FromForm] IFormFile image)
+        {
+            try
+            {
+                if (image == null)
+                {
+                    return BadRequest(new { message = "Vui lòng chọn ảnh công tơ điện." });
+                }
+
+                var reading = await _service.ScanMeterImageAsync(image);
+                if (reading == null)
+                {
+                    return BadRequest(new { message = "Không thể đọc được số điện từ ảnh này." });
+                }
+
+                return Ok(new { reading = reading.Value });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("read-image")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> ReadMeterImage([FromForm] IFormFile image, [FromForm] int? previousReading = null)
+        {
+            try
+            {
+                if (image == null)
+                {
+                    return BadRequest(new { message = "Vui lòng chọn ảnh công tơ điện." });
+                }
+
+                var result = await _ocrService.ReadMeterImageAsync(image, previousReading);
+                return Ok(result);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Lỗi hệ thống: {ex.Message}" });
             }
         }
     }

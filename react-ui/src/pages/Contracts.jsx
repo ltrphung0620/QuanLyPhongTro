@@ -233,8 +233,8 @@ export default function Contracts() {
     setEditSubmitting(true)
 
     const dto = {
-      startDate: editForm.startDate ? `${editForm.startDate}T00:00:00Z` : null,
-      expectedEndDate: editForm.expectedEndDate ? `${editForm.expectedEndDate}T00:00:00Z` : null,
+      startDate: editForm.startDate || null,
+      expectedEndDate: editForm.expectedEndDate || null,
       depositAmount: parseFloat(editForm.depositAmount) || 0,
       depositPaidAmount: parseFloat(editForm.depositPaidAmount) || 0,
       occupantCount: parseInt(editForm.occupantCount) || 1,

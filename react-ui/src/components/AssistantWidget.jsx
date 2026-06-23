@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Bot, Check, Loader2, MessageCircle, Send, X } from 'lucide-react'
-import { guiTinNhanAssistant, thucThiLenhAssistant } from '../api'
+import { Bot, Check, Download, Loader2, MessageCircle, Send, X } from 'lucide-react'
+import { downloadAssistantFile, guiTinNhanAssistant, thucThiLenhAssistant } from '../api'
 import AssistantProgress, { layNoiDungTraLoi } from './AssistantProgress'
 
 const GOI_Y = [
@@ -86,6 +86,24 @@ export default function AssistantWidget() {
     guiTinNhan()
   }
 
+  const taiBaoCao = async (downloadUrl) => {
+    if (!downloadUrl || loading) return
+    setLoading(true)
+    try {
+      const blob = await downloadAssistantFile(downloadUrl)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'SoDoanhThu.pdf'
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      setMessages((items) => [...items, taoTinNhan('assistant', error.message || 'Không thể tải báo cáo.')])
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const xuLyPhimNhap = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
@@ -148,6 +166,13 @@ export default function AssistantWidget() {
                   <div className="assistant-confirm-row">
                     <button type="button" className="assistant-reject" onClick={() => guiTinNhan('Không đúng')} disabled={loading}>
                       Không đúng
+                    </button>
+                  </div>
+                )}
+                {message.result?.downloadUrl && message.result?.reportType === 'salesLedger' && (
+                  <div className="assistant-confirm-row">
+                    <button type="button" className="assistant-confirm" onClick={() => taiBaoCao(message.result.downloadUrl)} disabled={loading}>
+                      <Download size={16} /> Tải PDF sổ doanh thu
                     </button>
                   </div>
                 )}

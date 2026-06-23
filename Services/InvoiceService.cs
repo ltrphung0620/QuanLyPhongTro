@@ -1,4 +1,5 @@
 using NhaTro.Dtos.Invoices;
+using NhaTro.Dtos.Pricing;
 using NhaTro.Interfaces.Repositories;
 using NhaTro.Interfaces.Services;
 using NhaTro.Models;
@@ -12,22 +13,22 @@ namespace NhaTro.Services
         private readonly IMeterReadingRepository _meterRepo;
         private readonly IRoomRepository _roomRepo;
         private readonly ITransactionRepository _transactionRepo;
-
-        private const decimal WATER_PER_PERSON = 50000;
-        private const decimal TRASH_FEE = 30000;
+        private readonly IPricingSettingsService _pricingSettingsService;
 
         public InvoiceService(
             IInvoiceRepository invoiceRepo,
             IContractRepository contractRepo,
             IMeterReadingRepository meterRepo,
             IRoomRepository roomRepo,
-            ITransactionRepository transactionRepo)
+            ITransactionRepository transactionRepo,
+            IPricingSettingsService pricingSettingsService)
         {
             _invoiceRepo = invoiceRepo;
             _contractRepo = contractRepo;
             _meterRepo = meterRepo;
             _roomRepo = roomRepo;
             _transactionRepo = transactionRepo;
+            _pricingSettingsService = pricingSettingsService;
         }
 
         public async Task<List<InvoiceDto>> GetAllAsync(int? roomId = null, DateOnly? month = null, string? status = null)
@@ -62,12 +63,13 @@ namespace NhaTro.Services
 
             var meter = await _meterRepo.GetByContractAndMonthAsync(contract.ContractId, billingMonth);
 
+            var pricing = await _pricingSettingsService.GetAsync();
             var electricity = meter?.Amount ?? 0;
             var (fromDate, toDate) = GetInvoiceCoveragePeriod(contract, billingMonth);
             var roomFee = CalculateRoomFeeForBillingMonth(contract, billingMonth, fromDate, toDate);
-            var water = contract.OccupantCount * WATER_PER_PERSON;
-            var trash = TRASH_FEE;
-            var extraChargeInfo = await GetPendingExtraChargeInfoAsync(dto.RoomId, billingMonth);
+            var water = contract.OccupantCount * pricing.WaterFeePerPerson;
+            var trash = pricing.TrashFee;
+            var extraChargeInfo = await GetInvoiceExtraChargeInfoAsync(dto.RoomId, billingMonth, contract, pricing);
             var discount = dto.DiscountAmount;
             var carryOver = await GetCarryOverInfoAsync(contract.ContractId, billingMonth);
             var debt = dto.DebtAmount + carryOver.Amount;
@@ -120,7 +122,7 @@ namespace NhaTro.Services
                 TotalAmount = preview.TotalAmount,
                 Status = "unpaid",
                 PaymentCode = await GeneratePaymentCodeAsync("monthly", billingMonth, dto.RoomId),
-                ExtraFeeNote = (await GetPendingExtraChargeInfoAsync(dto.RoomId, billingMonth)).Note,
+                ExtraFeeNote = (await GetInvoiceExtraChargeInfoAsync(dto.RoomId, billingMonth, preview.ContractId, await _pricingSettingsService.GetAsync())).Note,
                 Note = carryOver.Note,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -261,12 +263,13 @@ namespace NhaTro.Services
 
                 var meter = await _meterRepo.GetByContractAndMonthAsync(contract.ContractId, billingMonth);
 
+                var pricing = await _pricingSettingsService.GetAsync();
                 var electricity = meter?.Amount ?? 0;
                 var (fromDate, toDate) = GetInvoiceCoveragePeriod(contract, billingMonth);
                 var roomFee = CalculateRoomFeeForBillingMonth(contract, billingMonth, fromDate, toDate);
-                var water = contract.OccupantCount * WATER_PER_PERSON;
-                var trash = TRASH_FEE;
-                var extraChargeInfo = await GetPendingExtraChargeInfoAsync(contract.RoomId, billingMonth);
+                var water = contract.OccupantCount * pricing.WaterFeePerPerson;
+                var trash = pricing.TrashFee;
+                var extraChargeInfo = await GetInvoiceExtraChargeInfoAsync(contract.RoomId, billingMonth, contract, pricing);
                 var discount = dto.DefaultDiscountAmount;
                 var carryOver = await GetCarryOverInfoAsync(contract.ContractId, billingMonth);
                 var debt = dto.DefaultDebtAmount + carryOver.Amount;
@@ -325,7 +328,7 @@ namespace NhaTro.Services
                     TotalAmount = item.TotalAmount,
                     Status = "unpaid",
                     PaymentCode = await GeneratePaymentCodeAsync("monthly", billingMonth, item.RoomId),
-                    ExtraFeeNote = (await GetPendingExtraChargeInfoAsync(item.RoomId, billingMonth)).Note,
+                    ExtraFeeNote = (await GetInvoiceExtraChargeInfoAsync(item.RoomId, billingMonth, item.ContractId, await _pricingSettingsService.GetAsync())).Note,
                     Note = (await GetCarryOverInfoAsync(item.ContractId, billingMonth)).Note,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -613,6 +616,73 @@ namespace NhaTro.Services
             return (
                 pendingTransactions.Sum(x => x.Amount),
                 TransactionService.BuildExtraFeeNote(pendingTransactions));
+        }
+
+        private async Task<(decimal Amount, string? Note)> GetInvoiceExtraChargeInfoAsync(
+            int roomId,
+            DateOnly billingMonth,
+            int contractId,
+            PricingSettingsDto pricing)
+        {
+            var contract = await _contractRepo.GetByIdAsync(contractId)
+                ?? throw new InvalidOperationException("Khong tim thay hop dong de tinh phi dich vu.");
+
+            return await GetInvoiceExtraChargeInfoAsync(roomId, billingMonth, contract, pricing);
+        }
+
+        private async Task<(decimal Amount, string? Note)> GetInvoiceExtraChargeInfoAsync(
+            int roomId,
+            DateOnly billingMonth,
+            Contract contract,
+            PricingSettingsDto pricing)
+        {
+            var pending = await GetPendingExtraChargeInfoAsync(roomId, billingMonth);
+            var recurring = GetRecurringServiceChargeInfo(contract, pricing);
+            var notes = new[] { recurring.Note, pending.Note }
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+
+            return (
+                pending.Amount + recurring.Amount,
+                notes.Count == 0 ? null : string.Join("; ", notes));
+        }
+
+        private static (decimal Amount, string? Note) GetRecurringServiceChargeInfo(Contract contract, PricingSettingsDto pricing)
+        {
+            if (pricing.CustomServices == null || pricing.CustomServices.Count == 0)
+            {
+                return (0, null);
+            }
+
+            var total = 0m;
+            var notes = new List<string>();
+
+            foreach (var service in pricing.CustomServices)
+            {
+                var name = service.Name.Trim();
+                if (string.IsNullOrWhiteSpace(name) || service.Amount <= 0)
+                {
+                    continue;
+                }
+
+                var unit = (service.ChargeUnit ?? "month").Trim().ToLowerInvariant();
+                var amount = unit switch
+                {
+                    "person" => service.Amount * Math.Max(0, contract.OccupantCount),
+                    "month" or "room" => service.Amount,
+                    _ => 0m
+                };
+
+                if (amount <= 0)
+                {
+                    continue;
+                }
+
+                total += amount;
+                notes.Add($"{name}: {amount:N0} dong");
+            }
+
+            return (total, notes.Count == 0 ? null : string.Join("; ", notes));
         }
 
         private async Task AttachPendingTransactionsToInvoiceAsync(Invoice invoice)

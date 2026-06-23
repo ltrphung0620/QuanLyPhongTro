@@ -92,12 +92,29 @@
   border: 1.5px solid var(--bg-secondary);
 }
 
+.header-divider {
+  width: 1px;
+  height: 24px;
+  background-color: var(--border-color);
+  margin: 0 4px;
+}
+
 .header-profile {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding-left: 20px;
-  border-left: 1px solid var(--border-color);
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  transition: all var(--transition-fast);
+}
+
+.header-profile:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--border-color);
 }
 
 .profile-avatar {
@@ -133,12 +150,262 @@
     padding: 0 20px;
   }
   
+  .header-divider {
+    display: none;
+  }
+  
   .header-profile {
-    border-left: none;
-    padding-left: 0;
+    padding: 4px 8px;
   }
   
   .profile-info {
     display: none;
   }
 }
+
+/* Notification Badge */
+.notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background-color: var(--danger, #ef4444);
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--bg-secondary, #ffffff);
+  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
+  animation: badge-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes badge-pop {
+  0% {
+    transform: scale(0);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Notification Dropdown Container */
+.notification-dropdown {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: 320px;
+  background: var(--bg-secondary, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  z-index: 100;
+  overflow: hidden;
+  animation: dropdown-fade-in 0.2s ease-out;
+}
+
+@keyframes dropdown-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.notification-dropdown-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.notification-dropdown-header h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary, #1e293b);
+  margin: 0;
+}
+
+.mark-all-read-btn {
+  background: none;
+  border: none;
+  color: var(--primary-color, #3b82f6);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 0.2s;
+}
+
+.mark-all-read-btn:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.notification-dropdown-body {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.no-notifications {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.85rem;
+}
+
+.notification-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  cursor: pointer;
+  transition: background-color 0.2s;
+  position: relative;
+}
+
+.notification-item:last-child {
+  border-bottom: none;
+}
+
+.notification-item:hover {
+  background-color: var(--bg-hover, rgba(0, 0, 0, 0.02));
+}
+
+.notification-item.unread {
+  background-color: var(--accent-light, rgba(59, 130, 246, 0.03));
+}
+
+.notification-item.unread:hover {
+  background-color: var(--accent-light-hover, rgba(59, 130, 246, 0.06));
+}
+
+.notification-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: var(--accent-light, rgba(59, 130, 246, 0.1));
+  color: var(--primary-color, #3b82f6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.notification-item.unread .notification-item-icon {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--danger, #ef4444);
+}
+
+.notification-item-content {
+  flex: 1;
+}
+
+.notification-message {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-primary, #1e293b);
+  margin: 0 0 4px 0;
+  font-weight: 500;
+}
+
+.notification-item.unread .notification-message {
+  font-weight: 600;
+}
+
+.notification-time {
+  font-size: 0.72rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.unread-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--danger, #ef4444);
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+/* Profile Dropdown Container */
+.profile-dropdown {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: 180px;
+  background: var(--bg-secondary, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 1000;
+  animation: dropdown-fade-in 0.15s ease-out;
+}
+
+.profile-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+  text-decoration: none;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-dropdown-item:hover {
+  background-color: var(--bg-primary);
+  color: var(--accent);
+}
+
+.profile-dropdown-item .dropdown-icon {
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
+}
+
+.profile-dropdown-item:hover .dropdown-icon {
+  color: var(--accent);
+}
+
+/* Logout button styling in dropdown */
+.profile-dropdown-item.btn-logout-item {
+  color: var(--danger);
+  border-top: 1px solid var(--border-color);
+  margin-top: 4px;
+  border-radius: 0 0 var(--radius-sm, 6px) var(--radius-sm, 6px);
+}
+
+.profile-dropdown-item.btn-logout-item:hover {
+  background-color: var(--danger-light);
+  color: var(--danger-hover);
+}
+
+.profile-dropdown-item.btn-logout-item .dropdown-icon {
+  color: var(--danger);
+}
+
+/* Profile active state when dropdown is open */
+.header-profile.active {
+  background-color: var(--bg-hover);
+  border-color: var(--border-color);
+}
+

@@ -7,5 +7,6 @@ namespace NhaTro.Interfaces.Services
         Task<bool> RegisterAsync(RegisterDto dto);
         Task<bool> VerifyOtpAsync(VerifyOtpDto dto);
         Task<AuthResponseDto?> LoginAsync(LoginDto dto);
+        Task<bool> ChangePasswordAsync(int userId, string oldPassword, string newPassword);
     }
 }

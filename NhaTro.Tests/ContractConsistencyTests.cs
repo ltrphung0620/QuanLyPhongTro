@@ -1,6 +1,8 @@
 using Moq;
 using NhaTro.Dtos.Contracts;
 using NhaTro.Interfaces.Repositories;
+using NhaTro.Interfaces.Services;
+using NhaTro.Dtos.Pricing;
 using NhaTro.Models;
 using NhaTro.Services;
 
@@ -66,6 +68,58 @@ namespace NhaTro.Tests
             fixture.MeterRepository.Verify(x => x.GetLatestByRoomAsync(It.IsAny<int>()), Times.Never);
         }
 
+        [Fact]
+        public async Task Update_ShouldAllowRoomPriceChangeWithoutTouchingExistingInvoices()
+        {
+            var fixture = CreateFixture();
+            fixture.ContractRepository.Setup(x => x.GetByIdAsync(7)).ReturnsAsync(new Contract
+            {
+                ContractId = 7,
+                RoomId = 2,
+                TenantId = 3,
+                StartDate = new DateOnly(2026, 1, 1),
+                ExpectedEndDate = null,
+                DepositAmount = 2_200_000m,
+                DepositPaidAmount = 2_200_000m,
+                ActualRoomPrice = 2_200_000m,
+                OccupantCount = 1,
+                Status = "active",
+                Room = new Room { RoomId = 2, RoomCode = "A2" },
+                Tenant = new Tenant { TenantId = 3, FullName = "Hung" }
+            });
+            fixture.InvoiceRepository.Setup(x => x.GetByContractIdAsync(7)).ReturnsAsync(new List<Invoice>
+            {
+                new()
+                {
+                    InvoiceId = 11,
+                    ContractId = 7,
+                    BillingMonth = new DateOnly(2026, 1, 1),
+                    RoomFee = 2_200_000m,
+                    TotalAmount = 2_200_000m,
+                    Status = "paid"
+                }
+            });
+            fixture.ContractRepository.Setup(x => x.SaveChangesAsync()).ReturnsAsync(true);
+
+            var result = await fixture.Service.UpdateAsync(7, new UpdateContractDto
+            {
+                StartDate = new DateOnly(2026, 1, 1),
+                ExpectedEndDate = null,
+                DepositAmount = 2_200_000m,
+                DepositPaidAmount = 2_200_000m,
+                OccupantCount = 1,
+                ActualRoomPrice = 2_300_000m
+            });
+
+            Assert.NotNull(result);
+            Assert.Equal(2_300_000m, result.ActualRoomPrice);
+            fixture.ContractRepository.Verify(x => x.Update(It.Is<Contract>(contract =>
+                contract.ContractId == 7 &&
+                contract.ActualRoomPrice == 2_300_000m)), Times.Once);
+            fixture.InvoiceRepository.Verify(x => x.Update(It.IsAny<Invoice>()), Times.Never);
+            fixture.InvoiceRepository.Verify(x => x.SaveChangesAsync(), Times.Never);
+        }
+
         private static Fixture CreateFixture()
         {
             var contracts = new Mock<IContractRepository>();
@@ -79,10 +133,24 @@ namespace NhaTro.Tests
                     meters.Object,
                     invoices.Object,
                     new Mock<IDepositSettlementRepository>().Object,
-                    new Mock<ITransactionRepository>().Object),
+                    new Mock<ITransactionRepository>().Object,
+                    new Mock<ITenantRoomAccountService>().Object,
+                    CreatePricingService().Object),
                 contracts,
                 meters,
                 invoices);
+        }
+
+        private static Mock<IPricingSettingsService> CreatePricingService()
+        {
+            var pricing = new Mock<IPricingSettingsService>();
+            pricing.Setup(x => x.GetAsync()).ReturnsAsync(new PricingSettingsDto
+            {
+                ElectricityUnitPrice = 3500m,
+                WaterFeePerPerson = 50000m,
+                TrashFee = 30000m
+            });
+            return pricing;
         }
 
         private sealed record Fixture(

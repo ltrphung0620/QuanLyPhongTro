@@ -26,43 +26,72 @@ namespace NhaTro.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasColumnName("id");
+                        .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("created_at");
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)")
-                        .HasColumnName("email");
+                        .HasColumnType("nvarchar(255)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit")
-                        .HasColumnName("is_active");
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastLoginAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("MustChangePassword")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("OrganizationId")
+                        .HasColumnType("int");
 
                     b.Property<string>("OtpCode")
                         .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)")
-                        .HasColumnName("otp_code");
+                        .HasColumnType("nvarchar(6)");
 
                     b.Property<DateTime?>("OtpExpiryTime")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("otp_expiry_time");
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)")
-                        .HasColumnName("password_hash");
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasFilter("[TenantId] IS NOT NULL");
+
+                    b.HasIndex("Username")
                         .IsUnique();
 
                     b.ToTable("users", (string)null);
@@ -124,6 +153,9 @@ namespace NhaTro.Migrations
                         .HasColumnType("int")
                         .HasColumnName("occupant_count");
 
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
                     b.Property<int>("RoomId")
                         .HasColumnType("int")
                         .HasColumnName("room_id");
@@ -149,6 +181,8 @@ namespace NhaTro.Migrations
                     b.HasKey("ContractId");
 
                     b.HasIndex("AppUserId");
+
+                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("TenantId");
 
@@ -212,6 +246,9 @@ namespace NhaTro.Migrations
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("note");
 
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("RefundedAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)")
@@ -228,6 +265,8 @@ namespace NhaTro.Migrations
                     b.HasIndex("ContractId")
                         .IsUnique()
                         .HasFilter("[contract_id] IS NOT NULL");
+
+                    b.HasIndex("OrganizationId");
 
                     b.ToTable("deposit_settlements", null, t =>
                         {
@@ -258,6 +297,9 @@ namespace NhaTro.Migrations
                         .HasColumnType("nvarchar(50)")
                         .HasColumnName("notification_type");
 
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
                     b.Property<string>("PayloadJson")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("payload_json");
@@ -284,6 +326,8 @@ namespace NhaTro.Migrations
                     b.HasKey("EmailNotificationId");
 
                     b.HasIndex("AppUserId");
+
+                    b.HasIndex("OrganizationId");
 
                     b.ToTable("email_notifications", (string)null);
                 });
@@ -359,6 +403,9 @@ namespace NhaTro.Migrations
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("note");
 
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
                     b.Property<decimal?>("PaidAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)")
@@ -431,6 +478,8 @@ namespace NhaTro.Migrations
 
                     b.HasIndex("ContractId");
 
+                    b.HasIndex("OrganizationId");
+
                     b.HasIndex("PaymentCode")
                         .IsUnique()
                         .HasFilter("[payment_code] IS NOT NULL");
@@ -496,6 +545,9 @@ namespace NhaTro.Migrations
                         .HasColumnType("nvarchar(500)")
                         .HasColumnName("meter_image_path");
 
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
                     b.Property<int>("PreviousReading")
                         .HasColumnType("int")
                         .HasColumnName("previous_reading");
@@ -515,6 +567,8 @@ namespace NhaTro.Migrations
 
                     b.HasIndex("ContractId");
 
+                    b.HasIndex("OrganizationId");
+
                     b.HasIndex("RoomId", "BillingMonth")
                         .IsUnique();
 
@@ -524,6 +578,64 @@ namespace NhaTro.Migrations
 
                             t.HasCheckConstraint("CK_meter_readings_current_vs_previous", "current_reading >= previous_reading");
                         });
+                });
+
+            modelBuilder.Entity("NhaTro.Models.Organization", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("address");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("email");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("OwnerName")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("owner_name");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("phone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("organizations", (string)null);
                 });
 
             modelBuilder.Entity("NhaTro.Models.PaymentTransaction", b =>
@@ -554,6 +666,9 @@ namespace NhaTro.Migrations
                     b.Property<int?>("MatchedInvoiceId")
                         .HasColumnType("int")
                         .HasColumnName("matched_invoice_id");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
 
                     b.Property<string>("PaymentCode")
                         .HasMaxLength(100)
@@ -610,6 +725,8 @@ namespace NhaTro.Migrations
 
                     b.HasIndex("MatchedInvoiceId");
 
+                    b.HasIndex("OrganizationId");
+
                     b.HasIndex("ProviderTransactionId")
                         .IsUnique();
 
@@ -640,6 +757,9 @@ namespace NhaTro.Migrations
                         .HasColumnType("decimal(18,2)")
                         .HasColumnName("listed_price");
 
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
                     b.Property<string>("RoomCode")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -660,7 +780,7 @@ namespace NhaTro.Migrations
 
                     b.HasIndex("AppUserId");
 
-                    b.HasIndex("RoomCode")
+                    b.HasIndex("OrganizationId", "RoomCode")
                         .IsUnique();
 
                     b.ToTable("rooms", null, t =>
@@ -671,6 +791,9 @@ namespace NhaTro.Migrations
 
             modelBuilder.Entity("NhaTro.Models.SystemSetting", b =>
                 {
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
                     b.Property<string>("SettingKey")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)")
@@ -694,7 +817,7 @@ namespace NhaTro.Migrations
                         .HasColumnType("datetime2")
                         .HasColumnName("updated_at");
 
-                    b.HasKey("SettingKey");
+                    b.HasKey("OrganizationId", "SettingKey");
 
                     b.HasIndex("AppUserId");
 
@@ -728,6 +851,9 @@ namespace NhaTro.Migrations
                         .HasColumnType("nvarchar(255)")
                         .HasColumnName("full_name");
 
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Phone")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)")
@@ -741,7 +867,74 @@ namespace NhaTro.Migrations
 
                     b.HasIndex("AppUserId");
 
+                    b.HasIndex("OrganizationId");
+
                     b.ToTable("tenants", (string)null);
+                });
+
+            modelBuilder.Entity("NhaTro.Models.TenantDeviceToken", b =>
+                {
+                    b.Property<int>("TenantDeviceTokenId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("tenant_device_token_id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("TenantDeviceTokenId"));
+
+                    b.Property<int>("AppUserId")
+                        .HasColumnType("int")
+                        .HasColumnName("app_user_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DeviceName")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)")
+                        .HasColumnName("device_name");
+
+                    b.Property<string>("ExpoPushToken")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("expo_push_token");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_active");
+
+                    b.Property<DateTime?>("LastSeenAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("Platform")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("platform");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("TenantDeviceTokenId");
+
+                    b.HasIndex("AppUserId");
+
+                    b.HasIndex("OrganizationId", "ExpoPushToken")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "IsActive");
+
+                    b.ToTable("tenant_device_tokens", (string)null);
                 });
 
             modelBuilder.Entity("NhaTro.Models.Transaction", b =>
@@ -780,6 +973,9 @@ namespace NhaTro.Migrations
                         .HasColumnType("nvarchar(255)")
                         .HasColumnName("item_name");
 
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
                     b.Property<int?>("RelatedInvoiceId")
                         .HasColumnType("int")
                         .HasColumnName("related_invoice_id");
@@ -802,6 +998,8 @@ namespace NhaTro.Migrations
 
                     b.HasIndex("AppUserId");
 
+                    b.HasIndex("OrganizationId");
+
                     b.HasIndex("RelatedInvoiceId");
 
                     b.HasIndex("RelatedRoomId");
@@ -816,11 +1014,34 @@ namespace NhaTro.Migrations
                         });
                 });
 
+            modelBuilder.Entity("NhaTro.Models.AppUser", b =>
+                {
+                    b.HasOne("NhaTro.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("NhaTro.Models.Tenant", "Tenant")
+                        .WithOne()
+                        .HasForeignKey("NhaTro.Models.AppUser", "TenantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("NhaTro.Models.Contract", b =>
                 {
                     b.HasOne("NhaTro.Models.AppUser", "AppUser")
                         .WithMany("Contracts")
                         .HasForeignKey("AppUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("NhaTro.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -837,6 +1058,8 @@ namespace NhaTro.Migrations
                         .IsRequired();
 
                     b.Navigation("AppUser");
+
+                    b.Navigation("Organization");
 
                     b.Navigation("Room");
 
@@ -856,9 +1079,17 @@ namespace NhaTro.Migrations
                         .HasForeignKey("NhaTro.Models.DepositSettlement", "ContractId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("NhaTro.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("AppUser");
 
                     b.Navigation("Contract");
+
+                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("NhaTro.Models.EmailNotification", b =>
@@ -869,7 +1100,15 @@ namespace NhaTro.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("NhaTro.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("AppUser");
+
+                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("NhaTro.Models.Invoice", b =>
@@ -885,6 +1124,12 @@ namespace NhaTro.Migrations
                         .HasForeignKey("ContractId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("NhaTro.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("NhaTro.Models.Invoice", "ReplacedByInvoice")
                         .WithMany("ReplacingInvoices")
                         .HasForeignKey("ReplacedByInvoiceId")
@@ -899,6 +1144,8 @@ namespace NhaTro.Migrations
                     b.Navigation("AppUser");
 
                     b.Navigation("Contract");
+
+                    b.Navigation("Organization");
 
                     b.Navigation("ReplacedByInvoice");
 
@@ -918,6 +1165,12 @@ namespace NhaTro.Migrations
                         .HasForeignKey("ContractId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("NhaTro.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("NhaTro.Models.Room", "Room")
                         .WithMany("MeterReadings")
                         .HasForeignKey("RoomId")
@@ -927,6 +1180,8 @@ namespace NhaTro.Migrations
                     b.Navigation("AppUser");
 
                     b.Navigation("Contract");
+
+                    b.Navigation("Organization");
 
                     b.Navigation("Room");
                 });
@@ -944,9 +1199,17 @@ namespace NhaTro.Migrations
                         .HasForeignKey("MatchedInvoiceId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("NhaTro.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("AppUser");
 
                     b.Navigation("MatchedInvoice");
+
+                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("NhaTro.Models.Room", b =>
@@ -957,7 +1220,15 @@ namespace NhaTro.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("NhaTro.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("AppUser");
+
+                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("NhaTro.Models.SystemSetting", b =>
@@ -968,7 +1239,15 @@ namespace NhaTro.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("NhaTro.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("AppUser");
+
+                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("NhaTro.Models.Tenant", b =>
@@ -979,7 +1258,42 @@ namespace NhaTro.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("NhaTro.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("AppUser");
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("NhaTro.Models.TenantDeviceToken", b =>
+                {
+                    b.HasOne("NhaTro.Models.AppUser", "AppUser")
+                        .WithMany()
+                        .HasForeignKey("AppUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("NhaTro.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("NhaTro.Models.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AppUser");
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("NhaTro.Models.Transaction", b =>
@@ -987,6 +1301,12 @@ namespace NhaTro.Migrations
                     b.HasOne("NhaTro.Models.AppUser", "AppUser")
                         .WithMany("Transactions")
                         .HasForeignKey("AppUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("NhaTro.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -1001,6 +1321,8 @@ namespace NhaTro.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("AppUser");
+
+                    b.Navigation("Organization");
 
                     b.Navigation("RelatedInvoice");
 

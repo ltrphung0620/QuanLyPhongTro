@@ -8,6 +8,7 @@ using NhaTro.Interfaces.Repositories;
 using NhaTro.Interfaces.Services;
 using NhaTro.Repositories;
 using NhaTro.Services;
+using NhaTro.Hubs;
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("secrets.json", optional: true, reloadOnChange: true);
 
@@ -36,7 +37,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             {
                 var accessToken = context.Request.Query["access_token"];
                 var path = context.Request.Path;
-                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/api/Realtime/stream"))
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    (path.StartsWithSegments("/api/Realtime/stream") || path.StartsWithSegments("/hubs/realtime")))
                 {
                     context.Token = accessToken;
                 }
@@ -45,7 +47,16 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("SuperAdminOnly", policy => policy.RequireRole("SuperAdmin"));
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("TenantOnly", policy => policy.RequireRole("Tenant"));
+    options.AddPolicy("AdminOrTenant", policy => policy.RequireRole("Admin", "Tenant"));
+});
 
+
+builder.Services.AddSignalR();
 builder.Services.AddDbContext<NhaTroDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<IRoomRepository, RoomRepository>();
@@ -56,7 +67,8 @@ builder.Services.AddScoped<IContractRepository, ContractRepository>();
 builder.Services.AddScoped<ContractService>();
 builder.Services.AddScoped<IContractService, SafeDeleteContractService>();
 builder.Services.AddScoped<IMeterReadingRepository, MeterReadingRepository>();
-builder.Services.AddScoped<IMeterReadingService, MeterReadingService>();
+builder.Services.AddHttpClient<IMeterReadingService, MeterReadingService>();
+builder.Services.AddHttpClient<IGeminiMeterReadingOcrService, GeminiMeterReadingOcrService>();
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddHttpClient<IInvoicePdfService, InvoicePdfService>();
@@ -69,6 +81,11 @@ builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddSingleton<IRealtimeService, RealtimeService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<ITenantRoomAccountService, TenantRoomAccountService>();
+builder.Services.AddScoped<IPricingSettingsService, PricingSettingsService>();
+builder.Services.AddScoped<ITenantDeviceTokenService, TenantDeviceTokenService>();
+builder.Services.AddHttpClient<IExpoPushNotificationService, ExpoPushNotificationService>();
+builder.Services.AddScoped<ITenantInvoiceNotificationService, TenantInvoiceNotificationService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddSingleton<AssistantCommandStore>();
@@ -95,7 +112,9 @@ app.UseSwaggerUI();
 
 app.UseStaticFiles();
 app.UseAuthentication();
+app.UseMiddleware<NhaTro.Middlewares.TenantStatusMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<RealtimeHub>("/hubs/realtime");
 
 app.Run();

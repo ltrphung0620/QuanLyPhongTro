@@ -12,7 +12,9 @@ import {
   Layers,
   Edit3,
   Info,
-  Eye
+  Eye,
+  MoreVertical,
+  DollarSign
 } from 'lucide-react'
 import { 
   layHoaDonThang, 
@@ -43,6 +45,14 @@ export default function Invoices() {
   const [error, setError] = useState(null)
   
   const [invoices, setInvoices] = useState([])
+  const [openMenuInvoiceId, setOpenMenuInvoiceId] = useState(null)
+  
+  useEffect(() => {
+    const handleCloseMenu = () => setOpenMenuInvoiceId(null)
+    window.addEventListener('click', handleCloseMenu)
+    return () => window.removeEventListener('click', handleCloseMenu)
+  }, [])
+
   const [activeContracts, setActiveContracts] = useState([])
   
   // Filtering & Search
@@ -497,7 +507,7 @@ export default function Invoices() {
             </div>
           ) : (
             <div className="table-container">
-              <table className="custom-table">
+              <table className="custom-table invoices-page-table">
                 <thead>
                   <tr>
                     <th>Phòng</th>
@@ -516,14 +526,16 @@ export default function Invoices() {
                     <tr key={inv.invoiceId}>
                       <td>
                         <strong>{inv.roomCode}</strong>
-                        {inv.invoiceType === 'end' && <span className="type-badge-mini">Quyết toán</span>}
+                        {inv.invoiceType === 'end' && <span className="type-badge-mini" style={{ marginLeft: '4px' }}>Quyết toán</span>}
                       </td>
                       <td>{dinhDangTien(inv.roomFee)}</td>
                       <td>
                         <div className="details-cell-mini">
                           <span>{dinhDangTien(inv.electricityFee)}</span>
                           {inv.consumedUnits !== null && (
-                            <span className="subtext">{inv.consumedUnits} kWh ({inv.previousReading}→{inv.currentReading})</span>
+                            <span className="subtext" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              {inv.consumedUnits} kWh ({inv.previousReading}→{inv.currentReading})
+                            </span>
                           )}
                         </div>
                       </td>
@@ -532,7 +544,7 @@ export default function Invoices() {
                         <div className="details-cell-mini">
                           {inv.discountAmount > 0 && <span className="text-success">Giảm: -{dinhDangTien(inv.discountAmount)}</span>}
                           {inv.debtAmount > 0 && <span className="text-danger">Nợ cũ: +{dinhDangTien(inv.debtAmount)}</span>}
-                          {inv.depositDebtAmount > 0 && <span className="text-danger">Nợ tiền cọc: +{dinhDangTien(inv.depositDebtAmount)}</span>}
+                          {inv.depositDebtAmount > 0 && <span className="text-danger">Nợ cọc: +{dinhDangTien(inv.depositDebtAmount)}</span>}
                           {inv.discountAmount === 0 && inv.debtAmount === 0 && inv.depositDebtAmount === 0 && <span className="text-muted">—</span>}
                         </div>
                       </td>
@@ -548,65 +560,61 @@ export default function Invoices() {
                         <span className="payment-code-lbl">{inv.paymentCode || 'N/A'}</span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <div className="invoice-actions-flex">
+                        <div className="invoice-actions-flex" style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                          {(inv.status || '').toLowerCase() === 'unpaid' ? (
+                            <button 
+                              className="btn btn-success btn-xs btn-collect-money"
+                              onClick={() => handleOpenPay(inv)}
+                            >
+                              <DollarSign size={13} />
+                              <span>Thu tiền</span>
+                            </button>
+                          ) : (
+                            <button 
+                              className="btn btn-secondary btn-xs btn-cancel-collect"
+                              onClick={() => handleMarkUnpaid(inv.invoiceId)}
+                              title="Hủy thanh toán"
+                            >
+                              <span>Hủy thu</span>
+                            </button>
+                          )}
+
                           <button 
                             className="btn-card-edit"
                             onClick={() => handleDownloadPdf(inv.invoiceId, inv.roomCode)}
                             title="Tải hóa đơn PDF"
+                            style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
-                            <Download size={15} />
+                            <Download size={14} />
                           </button>
 
                           {(inv.status || '').toLowerCase() === 'unpaid' && (
-                            <>
-                              <button 
-                                className="btn btn-success btn-xs"
-                                onClick={() => handleOpenPay(inv)}
-                              >
-                                Thu tiền
-                              </button>
-                              <button 
-                                className="btn-card-edit"
-                                onClick={() => handleOpenEditModal(inv)}
-                                title="Chỉnh sửa hóa đơn"
-                              >
-                                <Edit3 size={15} />
-                              </button>
-                              <button 
-                                className="btn-card-edit"
-                                onClick={() => handleOpenDetail(inv)}
-                                title="Xem chi tiết hóa đơn"
-                              >
-                                <Eye size={15} />
-                              </button>
-                            </>
+                            <button 
+                              className="btn-card-edit"
+                              onClick={() => handleOpenEditModal(inv)}
+                              title="Chỉnh sửa hóa đơn"
+                              style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <Edit3 size={14} />
+                            </button>
                           )}
 
-                          {(inv.status || '').toLowerCase() === 'paid' && (
-                            <>
-                              <button 
-                                className="btn btn-secondary btn-xs"
-                                onClick={() => handleMarkUnpaid(inv.invoiceId)}
-                                title="Hủy thanh toán"
-                              >
-                                Hủy thu
-                              </button>
-                              <button 
-                                className="btn-card-edit"
-                                onClick={() => handleOpenDetail(inv)}
-                                title="Xem chi tiết hóa đơn"
-                              >
-                                <Eye size={15} />
-                              </button>
-                            </>
-                          )}
+                          <button 
+                            className="btn-card-edit"
+                            onClick={() => handleOpenDetail(inv)}
+                            title="Xem chi tiết hóa đơn"
+                            style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Eye size={14} />
+                          </button>
 
                           <button 
                             className="btn-card-edit btn-danger-icon"
                             onClick={() => handleDeleteInvoice(inv.invoiceId)}
                             title="Xóa hóa đơn"
+                            style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
-                            <Trash2 size={15} />
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       </td>

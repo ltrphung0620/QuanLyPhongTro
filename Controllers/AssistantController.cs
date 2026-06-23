@@ -6,7 +6,7 @@ using NhaTro.Services;
 
 namespace NhaTro.Controllers
 {
-    [Authorize]
+    [Authorize(Policy = "AdminOrTenant")]
     [ApiController]
     [Route("api/[controller]")]
     public class AssistantController : ControllerBase

@@ -468,7 +468,7 @@ You parse Vietnamese room-rental management requests into one JSON command.
 Today's date is {today}.
 {contextText}
 Supported tool catalog:
-{_toolRegistry.BuildPromptCatalog()}
+{_toolRegistry.BuildPromptCatalog(_currentUserService.Role)}
 
 User-specific correction history:
 {_learningStore.BuildPromptLessons(_currentUserService.UserId)}
@@ -576,10 +576,27 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
                 return followUpCommand;
             }
 
+            if (normalized.Contains("so doanh thu") || normalized.Contains("so ban hang"))
+            {
+                return BuildRuleCommand(
+                    normalized.Contains("pdf") || normalized.Contains("xuat") || normalized.Contains("tai")
+                        ? AssistantActionRegistry.ReportsSalesLedgerPdf
+                        : AssistantActionRegistry.ReportsSalesLedger,
+                    rawMessage,
+                    normalized,
+                    requiresConfirmation: false);
+            }
+
             var extendedCommand = ParseExtendedManagementCommand(rawMessage, normalized);
             if (extendedCommand != null)
             {
                 return extendedCommand;
+            }
+
+            if ((normalized.Contains("danh sach") || normalized.Contains("lich su"))
+                && (normalized.Contains("so dien") || normalized.Contains("chi so dien")))
+            {
+                return BuildRuleCommand(AssistantActionRegistry.MeterReadingsFindAll, rawMessage, normalized, requiresConfirmation: false);
             }
 
             if (LooksLikeMeterReadingQuery(normalized))
@@ -663,7 +680,7 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
             FillCommonParams(command, rawMessage, normalized);
             FillIntentSpecificParams(command, normalized, intent);
             FillLabeledParams(command, rawMessage);
-            if (intent is AssistantActionRegistry.ContractsCreate or AssistantActionRegistry.TenantsCreate)
+            if (intent is AssistantActionRegistry.ContractsCreate or AssistantActionRegistry.TenantsCreate or AssistantActionRegistry.TenantsFind)
             {
                 SetParam(command, "tenantName", ExtractTenantName(rawMessage));
             }
@@ -680,11 +697,19 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
                     ? AssistantActionRegistry.PaymentsDelete
                     : normalized.Contains("doi soat") || normalized.Contains("khop")
                         ? AssistantActionRegistry.PaymentsReconcile
-                        : AssistantActionRegistry.PaymentsFind;
+                        : normalized.Contains("id") || Regex.IsMatch(normalized, @"\b#?\d+\b")
+                            ? AssistantActionRegistry.PaymentsFindById
+                            : AssistantActionRegistry.PaymentsFind;
             }
             else if (normalized.Contains("hoa don"))
             {
-                intent = normalized.Contains("pdf") || normalized.Contains("tai") || normalized.Contains("xuat file")
+                intent = normalized.Contains("ma thanh toan") && (normalized.Contains("tim") || normalized.Contains("tra") || normalized.Contains("xem"))
+                    ? AssistantActionRegistry.InvoicesFindByPaymentCode
+                    : (normalized.Contains("xem") || normalized.Contains("chi tiet")) && normalized.Contains("id")
+                        ? AssistantActionRegistry.InvoicesFindById
+                    : normalized.Contains("tao") && !normalized.Contains("tao lai") && !normalized.Contains("tat ca") && !normalized.Contains("hang loat")
+                        ? AssistantActionRegistry.InvoicesCreate
+                    : normalized.Contains("pdf") || normalized.Contains("tai") || normalized.Contains("xuat file")
                     ? AssistantActionRegistry.InvoicesDownloadPdf
                     : normalized.Contains("xoa") || normalized.Contains("huy hoa don")
                         ? AssistantActionRegistry.InvoicesDelete
@@ -692,6 +717,8 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
                             ? AssistantActionRegistry.InvoicesReplace
                             : normalized.Contains("chua thanh toan") || normalized.Contains("huy thanh toan") || normalized.Contains("mark unpaid")
                                 ? AssistantActionRegistry.InvoicesMarkUnpaid
+                                : normalized.Contains("da thanh toan") || normalized.Contains("ghi nhan thanh toan") || normalized.Contains("thu tien")
+                                    ? AssistantActionRegistry.InvoicesMarkPaid
                                 : normalized.Contains("tien dien") && (normalized.Contains("sua") || normalized.Contains("cap nhat"))
                                     ? AssistantActionRegistry.InvoicesUpdateElectricity
                                     : (normalized.Contains("giam gia") || normalized.Contains("no cu") || normalized.Contains("ghi chu"))
@@ -701,12 +728,19 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
             }
             else if ((normalized.Contains("so dien") || normalized.Contains("chi so dien")) && normalized.Contains("xoa"))
             {
-                intent = AssistantActionRegistry.MeterReadingsDelete;
+                intent = normalized.Contains("hop dong") && (normalized.Contains("toan bo") || normalized.Contains("tat ca"))
+                    ? AssistantActionRegistry.MeterReadingsDeleteByEndedContract
+                    : AssistantActionRegistry.MeterReadingsDelete;
             }
             else if ((normalized.Contains("so dien") || normalized.Contains("chi so dien"))
                 && (normalized.Contains("sua") || normalized.Contains("cap nhat")))
             {
                 intent = AssistantActionRegistry.MeterReadingsUpdate;
+            }
+            else if ((normalized.Contains("so dien") || normalized.Contains("chi so dien"))
+                && (normalized.Contains("xem") || normalized.Contains("chi tiet")) && normalized.Contains("id"))
+            {
+                intent = AssistantActionRegistry.MeterReadingsFindById;
             }
             else if (normalized.Contains("hop dong"))
             {
@@ -716,12 +750,19 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
                         ? AssistantActionRegistry.ContractsCancel
                         : normalized.Contains("sua") || normalized.Contains("cap nhat") || normalized.Contains("doi")
                             ? AssistantActionRegistry.ContractsUpdate
+                            : (normalized.Contains("xem") || normalized.Contains("chi tiet")) && normalized.Contains("id")
+                                ? AssistantActionRegistry.ContractsFindById
                             : null;
             }
             else if ((normalized.Contains("khach") || normalized.Contains("nguoi thue"))
                 && (normalized.Contains("sua") || normalized.Contains("cap nhat") || normalized.Contains("doi")))
             {
                 intent = AssistantActionRegistry.TenantsUpdate;
+            }
+            else if ((normalized.Contains("khach") || normalized.Contains("nguoi thue"))
+                && (normalized.Contains("xem") || normalized.Contains("tim") || normalized.Contains("thong tin")))
+            {
+                intent = AssistantActionRegistry.TenantsFind;
             }
             else if (normalized.Contains("phong") && (normalized.Contains("sua") || normalized.Contains("cap nhat") || normalized.Contains("doi")))
             {
@@ -731,6 +772,11 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
                         ? AssistantActionRegistry.RoomsUpdate
                         : null;
             }
+            else if (normalized.Contains("phong") && normalized.Contains("id")
+                && (normalized.Contains("xem") || normalized.Contains("chi tiet")))
+            {
+                intent = AssistantActionRegistry.RoomsFindById;
+            }
             else if (normalized.Contains("giao dich") && normalized.Contains("xoa"))
             {
                 intent = AssistantActionRegistry.TransactionsDelete;
@@ -738,6 +784,11 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
             else if (normalized.Contains("giao dich") && (normalized.Contains("sua") || normalized.Contains("cap nhat")))
             {
                 intent = AssistantActionRegistry.TransactionsUpdate;
+            }
+            else if (normalized.Contains("giao dich") && (normalized.Contains("xem") || normalized.Contains("chi tiet"))
+                && (normalized.Contains("id") || Regex.IsMatch(normalized, @"\b#?\d+\b")))
+            {
+                intent = AssistantActionRegistry.TransactionsFindById;
             }
 
             if (intent == null)
@@ -753,10 +804,12 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
         private static void FillExtendedManagementParams(AssistantCommandDto command, string rawMessage, string normalized)
         {
             SetParam(command, "contractId", ExtractIdAfterKeywords(normalized, "hop dong", "contract", "id")?.ToString(CultureInfo.InvariantCulture));
+            SetParam(command, "roomId", ExtractIdAfterKeywords(normalized, "phong", "room")?.ToString(CultureInfo.InvariantCulture));
             SetParam(command, "invoiceId", ExtractIdAfterKeywords(normalized, "hoa don", "invoice")?.ToString(CultureInfo.InvariantCulture));
             SetParam(command, "meterReadingId", ExtractIdAfterKeywords(normalized, "chi so", "so dien", "meter")?.ToString(CultureInfo.InvariantCulture));
             SetParam(command, "transactionId", ExtractIdAfterKeywords(normalized, "giao dich", "transaction")?.ToString(CultureInfo.InvariantCulture));
-            SetParam(command, "paymentTransactionId", ExtractIdAfterKeywords(normalized, "giao dich ngan hang", "chuyen khoan", "transaction")?.ToString(CultureInfo.InvariantCulture));
+            SetParam(command, "paymentTransactionId", ExtractIdAfterKeywords(normalized, "giao dich ngan hang", "chuyen khoan ngan hang", "chuyen khoan", "transaction")?.ToString(CultureInfo.InvariantCulture));
+            SetParam(command, "paymentCode", ExtractPaymentCode(rawMessage));
 
             SetParam(command, "listedPrice", ExtractMoneyAfterKeywords(normalized, "gia phong", "gia")?.ToString(CultureInfo.InvariantCulture));
             SetParam(command, "depositAmount", ExtractMoneyAfterKeywords(normalized, "tien coc", "coc")?.ToString(CultureInfo.InvariantCulture));
@@ -860,11 +913,16 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
             switch (command.Intent)
             {
                 case AssistantActionRegistry.TenantsUpdate:
-                    RequireIdOr("tenantId", "tenantName");
+                case AssistantActionRegistry.TenantsFind:
+                    if (!Has(command, "tenantId") && !Has(command, "tenantName") && !Has(command, "phone") && !Has(command, "cccd"))
+                    {
+                        AddMissing(command, "tenantName");
+                    }
                     break;
                 case AssistantActionRegistry.ContractsUpdate:
                 case AssistantActionRegistry.ContractsCancel:
                 case AssistantActionRegistry.ContractsDeleteEnded:
+                case AssistantActionRegistry.MeterReadingsDeleteByEndedContract:
                     RequireIdOr("contractId", "roomCode");
                     break;
                 case AssistantActionRegistry.MeterReadingsUpdate:
@@ -872,6 +930,7 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
                     RequireIdOr("meterReadingId", "roomCode", "billingMonth");
                     break;
                 case AssistantActionRegistry.InvoicesMarkUnpaid:
+                case AssistantActionRegistry.InvoicesMarkPaid:
                 case AssistantActionRegistry.InvoicesReplace:
                 case AssistantActionRegistry.InvoicesUpdate:
                 case AssistantActionRegistry.InvoicesDelete:
@@ -926,6 +985,13 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
                 SetParam(command, "billingMonth", month.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
                 SetParam(command, "fromMonth", month.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
                 SetParam(command, "toMonth", month.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            }
+
+            var monthRange = ExtractMonthRange(normalized);
+            if (monthRange.HasValue)
+            {
+                SetParam(command, "fromMonth", monthRange.Value.From.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                SetParam(command, "toMonth", monthRange.Value.To.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
             }
 
             var explicitDate = ExtractExplicitDate(normalized);
@@ -990,7 +1056,8 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
             if (label is "no" or "no cu" or "cong no") return "debtAmount";
             if (label is "so tien" or "tien" or "amount") return "amount";
             if (label is "phuong thuc thanh toan" or "thanh toan bang") return "paymentMethod";
-            if (label is "ma thanh toan" or "tham chieu thanh toan") return "paymentReference";
+            if (label is "ma thanh toan") return "paymentCode";
+            if (label is "tham chieu thanh toan") return "paymentReference";
             if (label is "ghi chu" or "ly do") return "note";
             if (label is "loai thu chi" or "loai giao dich" or "thu chi") return "transactionDirection";
             if (label is "danh muc" or "nhom giao dich") return "category";
@@ -1581,6 +1648,25 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
             return new DateOnly(year, month, 1);
         }
 
+        private static (DateOnly From, DateOnly To)? ExtractMonthRange(string normalized)
+        {
+            var match = Regex.Match(
+                normalized,
+                @"tu\s+thang\s+(\d{1,2})(?:\s*(?:nam|/|-)\s*(\d{4}))?.*?den\s+thang\s+(\d{1,2})(?:\s*(?:nam|/|-)\s*(\d{4}))?");
+            if (!match.Success
+                || !int.TryParse(match.Groups[1].Value, out var fromMonth)
+                || !int.TryParse(match.Groups[3].Value, out var toMonth)
+                || fromMonth is < 1 or > 12
+                || toMonth is < 1 or > 12)
+            {
+                return null;
+            }
+
+            var fallbackYear = int.TryParse(match.Groups[4].Value, out var toYear) ? toYear : DateTime.Now.Year;
+            var fromYear = int.TryParse(match.Groups[2].Value, out var parsedFromYear) ? parsedFromYear : fallbackYear;
+            return (new DateOnly(fromYear, fromMonth, 1), new DateOnly(fallbackYear, toMonth, 1));
+        }
+
         private static DateOnly? ExtractExplicitDate(string normalized)
         {
             var dateMatch = Regex.Match(normalized, @"\b(\d{1,2})/(\d{1,2})(?:/(\d{4}))?\b");
@@ -1692,6 +1778,15 @@ Never invent IDs, room codes, tenant names, readings, or amounts.
         {
             var match = Regex.Match(rawMessage, @"(?<!\d)(0\d{8,10})(?!\d)");
             return match.Success ? match.Groups[1].Value : null;
+        }
+
+        private static string? ExtractPaymentCode(string rawMessage)
+        {
+            var match = Regex.Match(
+                rawMessage,
+                @"(?:mã\s+thanh\s+toán|ma\s+thanh\s+toan)\s*(?:là|la|:|=|#)?\s*([A-Za-z0-9][A-Za-z0-9._-]*)",
+                RegexOptions.IgnoreCase);
+            return match.Success ? match.Groups[1].Value.Trim() : null;
         }
 
         private static string? ExtractTenantName(string rawMessage)

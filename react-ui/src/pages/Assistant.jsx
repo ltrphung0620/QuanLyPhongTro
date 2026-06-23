@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Bot, Send, Loader2, Check, MessageSquare, Sparkles, HelpCircle, ArrowRight, Zap, Info, Calendar, Download, RotateCw } from 'lucide-react'
-import { downloadInvoicePdf, guiTinNhanAssistant, resetAssistantSession, thucThiLenhAssistant } from '../api'
+import { downloadAssistantFile, downloadInvoicePdf, guiTinNhanAssistant, resetAssistantSession, thucThiLenhAssistant } from '../api'
 import { useNotification } from '../context/NotificationContext'
 import AssistantProgress, { layNoiDungTraLoi } from '../components/AssistantProgress'
 import './Assistant.css'
@@ -162,6 +162,24 @@ export default function Assistant() {
     }
   }
 
+  const taiTepTroLy = async (downloadUrl, fileName = 'bao-cao.pdf') => {
+    if (!downloadUrl || loading) return
+    setLoading(true)
+    try {
+      const blob = await downloadAssistantFile(downloadUrl)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      toast.error(error.message || 'Không thể tải tệp.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="page-body">
       <header className="page-header" style={{ marginBottom: '24px' }}>
@@ -281,6 +299,20 @@ export default function Assistant() {
                     >
                       <Download size={16} />
                       Tải PDF hóa đơn
+                    </button>
+                  </div>
+                )}
+
+                {message.result?.downloadUrl && message.result?.reportType === 'salesLedger' && (
+                  <div className="assistant-confirm-actions">
+                    <button
+                      type="button"
+                      className="assistant-confirm-btn"
+                      onClick={() => taiTepTroLy(message.result.downloadUrl, 'SoDoanhThu.pdf')}
+                      disabled={loading}
+                    >
+                      <Download size={16} />
+                      Tải PDF sổ doanh thu
                     </button>
                   </div>
                 )}

@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -9,6 +11,10 @@ namespace NhaTro.Models
         public int Id { get; set; }
 
         [Required]
+        [MaxLength(255)]
+        public string Username { get; set; } = string.Empty;
+
+        [Required]
         [EmailAddress]
         [MaxLength(255)]
         public string Email { get; set; } = string.Empty;
@@ -17,7 +23,23 @@ namespace NhaTro.Models
         [MaxLength(255)]
         public string PasswordHash { get; set; } = string.Empty;
 
+        [Required]
+        [MaxLength(255)]
+        public string DisplayName { get; set; } = string.Empty;
+
+        [Required]
+        [MaxLength(50)]
+        public string Role { get; set; } = string.Empty; // SuperAdmin, Admin, Tenant
+
+        public int? OrganizationId { get; set; }
+        public Organization? Organization { get; set; }
+
+        public int? TenantId { get; set; }
+        public Tenant? Tenant { get; set; }
+
         public bool IsActive { get; set; } = false;
+
+        public bool MustChangePassword { get; set; } = false;
 
         [MaxLength(6)]
         public string? OtpCode { get; set; }
@@ -25,6 +47,8 @@ namespace NhaTro.Models
         public DateTime? OtpExpiryTime { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        public DateTime? LastLoginAt { get; set; }
 
         // Navigation properties for Multi-tenancy
         public ICollection<Room> Rooms { get; set; } = new List<Room>();

@@ -45,6 +45,43 @@ namespace NhaTro.Tests
             Assert.Equal(2_000_000m, decimal.Parse(command.Params["depositPaidAmount"]!, CultureInfo.InvariantCulture));
         }
 
+        [Theory]
+        [InlineData("tạo hóa đơn tháng 10 cho phòng A1", AssistantActionRegistry.InvoicesCreate)]
+        [InlineData("xem thông tin khách Hùng", AssistantActionRegistry.TenantsFind)]
+        [InlineData("danh sách chỉ số điện tháng 10", AssistantActionRegistry.MeterReadingsFindAll)]
+        [InlineData("xem giao dịch ID 15", AssistantActionRegistry.TransactionsFindById)]
+        [InlineData("xem chuyển khoản ngân hàng ID 5", AssistantActionRegistry.PaymentsFindById)]
+        [InlineData("xem phòng ID 3", AssistantActionRegistry.RoomsFindById)]
+        [InlineData("xem hợp đồng ID 5", AssistantActionRegistry.ContractsFindById)]
+        [InlineData("xem hóa đơn ID 12", AssistantActionRegistry.InvoicesFindById)]
+        [InlineData("xem chỉ số điện ID 8", AssistantActionRegistry.MeterReadingsFindById)]
+        [InlineData("xóa toàn bộ chỉ số điện hợp đồng đã kết thúc phòng A1", AssistantActionRegistry.MeterReadingsDeleteByEndedContract)]
+        public void ExtendedBusinessParser_ShouldRecognizeNewActions(string message, string expectedIntent)
+        {
+            var command = AssistantCommandParser.ParseWithRules(message);
+
+            Assert.Equal(expectedIntent, command.Intent);
+        }
+
+        [Fact]
+        public void SalesLedgerParser_ShouldExtractMonthRange()
+        {
+            var command = AssistantCommandParser.ParseWithRules("xem sổ doanh thu từ tháng 1 đến tháng 6 năm 2026");
+
+            Assert.Equal(AssistantActionRegistry.ReportsSalesLedger, command.Intent);
+            Assert.Equal("2026-01-01", command.Params["fromMonth"]);
+            Assert.Equal("2026-06-01", command.Params["toMonth"]);
+        }
+
+        [Fact]
+        public void InvoicePaymentCodeParser_ShouldExtractCode()
+        {
+            var command = AssistantCommandParser.ParseWithRules("tra hóa đơn mã thanh toán HD-A1-202610");
+
+            Assert.Equal(AssistantActionRegistry.InvoicesFindByPaymentCode, command.Intent);
+            Assert.Equal("HD-A1-202610", command.Params["paymentCode"]);
+        }
+
         [Fact]
         public void TenantMatcher_ShouldMatchShortNameWithoutAccentsOrRolePrefix()
         {
@@ -348,7 +385,8 @@ namespace NhaTro.Tests
                 Mock.Of<ILogger<AssistantAgentPlanner>>(),
                 tools,
                 parser.Object,
-                new AssistantLearningStore(environment.Object));
+                new AssistantLearningStore(environment.Object),
+                Mock.Of<ICurrentUserService>());
 
             var plan = await planner.PlanAsync("phong nao con trong", userId: 7);
 
@@ -385,7 +423,8 @@ namespace NhaTro.Tests
                 Mock.Of<ILogger<AssistantAgentPlanner>>(),
                 tools,
                 parser.Object,
-                new AssistantLearningStore(environment.Object));
+                new AssistantLearningStore(environment.Object),
+                Mock.Of<ICurrentUserService>());
 
             var plan = await planner.PlanAsync("một yêu cầu hoàn toàn không thuộc hệ thống", userId: 7);
 

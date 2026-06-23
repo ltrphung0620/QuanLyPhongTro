@@ -133,7 +133,8 @@ namespace NhaTro.Tests
                 new Mock<ILogger<AssistantAgentPlanner>>().Object,
                 toolRegistry,
                 mockParser.Object,
-                _learningStore
+                _learningStore,
+                mockCurrentUserService.Object
             );
 
             var assistantService = new AssistantService(

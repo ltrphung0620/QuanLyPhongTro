@@ -1,8 +1,6 @@
 namespace NhaTro.Interfaces.Services
 {
-    public interface ICurrentUserService
+    public interface ICurrentUserService : ICurrentUserContext
     {
-        int UserId { get; }
-        bool IsAuthenticated { get; }
     }
 }

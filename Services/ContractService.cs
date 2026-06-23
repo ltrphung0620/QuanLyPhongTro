@@ -15,10 +15,8 @@ namespace NhaTro.Services
         private readonly IInvoiceRepository _invoiceRepository;
         private readonly IDepositSettlementRepository _depositSettlementRepository;
         private readonly ITransactionRepository _transactionRepository;
-
-        private const decimal WATER_PER_PERSON = 50000m;
-        private const decimal TRASH_FEE = 30000m;
-        private const decimal ELECTRIC_PRICE = 3500m;
+        private readonly ITenantRoomAccountService _tenantRoomAccountService;
+        private readonly IPricingSettingsService _pricingSettingsService;
 
         private static readonly HashSet<string> AllowedStatuses = new()
         {
@@ -34,7 +32,9 @@ namespace NhaTro.Services
             IMeterReadingRepository meterReadingRepository,
             IInvoiceRepository invoiceRepository,
             IDepositSettlementRepository depositSettlementRepository,
-            ITransactionRepository transactionRepository)
+            ITransactionRepository transactionRepository,
+            ITenantRoomAccountService tenantRoomAccountService,
+            IPricingSettingsService pricingSettingsService)
         {
             _contractRepository = contractRepository;
             _roomRepository = roomRepository;
@@ -43,6 +43,8 @@ namespace NhaTro.Services
             _invoiceRepository = invoiceRepository;
             _depositSettlementRepository = depositSettlementRepository;
             _transactionRepository = transactionRepository;
+            _tenantRoomAccountService = tenantRoomAccountService;
+            _pricingSettingsService = pricingSettingsService;
         }
 
         public async Task<List<ContractDto>> GetAllAsync(string? status = null, int? roomId = null, bool includeArchived = false)
@@ -119,6 +121,12 @@ namespace NhaTro.Services
             await _contractRepository.SaveChangesAsync();
 
             var createdContract = await _contractRepository.GetByIdAsync(contract.ContractId);
+            if (createdContract != null)
+            {
+                await _tenantRoomAccountService.EnsureRoomAccountAsync(createdContract);
+                await _contractRepository.SaveChangesAsync();
+            }
+
             return MapToDto(createdContract!);
         }
 
@@ -217,6 +225,7 @@ namespace NhaTro.Services
                 : dto.Reason.Trim();
             contract.UpdatedAt = DateTime.UtcNow;
             _contractRepository.Update(contract);
+            await _tenantRoomAccountService.DisableRoomAccountAsync(contract);
 
             var room = await _roomRepository.GetByIdAsync(contract.RoomId);
             if (room != null)
@@ -260,6 +269,7 @@ namespace NhaTro.Services
 
             var daysInMonth = DateTime.DaysInMonth(dto.ActualEndDate.Year, dto.ActualEndDate.Month);
             var roomFee = Math.Round((contract.ActualRoomPrice / daysInMonth) * numberOfDays, 2);
+            var pricing = await _pricingSettingsService.GetAsync();
 
             decimal electricityFee = 0;
             if (dto.CurrentReading.HasValue)
@@ -273,11 +283,11 @@ namespace NhaTro.Services
                 }
 
                 var consumed = dto.CurrentReading.Value - previousReading;
-                electricityFee = consumed * ELECTRIC_PRICE;
+                electricityFee = consumed * pricing.ElectricityUnitPrice;
             }
 
-            var waterFee = Math.Round((WATER_PER_PERSON / daysInMonth) * numberOfDays * contract.OccupantCount, 2);
-            var trashFee = TRASH_FEE;
+            var waterFee = Math.Round((pricing.WaterFeePerPerson / daysInMonth) * numberOfDays * contract.OccupantCount, 2);
+            var trashFee = pricing.TrashFee;
 
             var finalInvoiceAmount = roomFee + electricityFee + waterFee + trashFee;
 
@@ -330,6 +340,7 @@ namespace NhaTro.Services
 
             if (dto.CurrentReading.HasValue)
             {
+                var electricPrice = (await _pricingSettingsService.GetAsync()).ElectricityUnitPrice;
                 var existingMeter = await _meterReadingRepository.GetByContractAndMonthAsync(contract.ContractId, dto.ActualEndDate);
                 var latestReading = await _meterReadingRepository.GetLatestBeforeDateAsync(contract.RoomId, dto.ActualEndDate);
                 var previousReading = latestReading?.CurrentReading ?? 0;
@@ -350,8 +361,8 @@ namespace NhaTro.Services
                         PreviousReading = previousReading,
                         CurrentReading = dto.CurrentReading.Value,
                         ConsumedUnits = consumedUnits,
-                        UnitPrice = ELECTRIC_PRICE,
-                        Amount = consumedUnits * ELECTRIC_PRICE,
+                        UnitPrice = electricPrice,
+                        Amount = consumedUnits * electricPrice,
                         CreatedAt = DateTime.UtcNow
                     });
                 }
@@ -361,8 +372,8 @@ namespace NhaTro.Services
                     existingMeter.PreviousReading = previousReading;
                     existingMeter.CurrentReading = dto.CurrentReading.Value;
                     existingMeter.ConsumedUnits = consumedUnits;
-                    existingMeter.UnitPrice = ELECTRIC_PRICE;
-                    existingMeter.Amount = consumedUnits * ELECTRIC_PRICE;
+                    existingMeter.UnitPrice = electricPrice;
+                    existingMeter.Amount = consumedUnits * electricPrice;
                 }
             }
 
@@ -437,6 +448,7 @@ namespace NhaTro.Services
             contract.Status = "ended";
             contract.UpdatedAt = DateTime.UtcNow;
             _contractRepository.Update(contract);
+            await _tenantRoomAccountService.DisableRoomAccountAsync(contract);
 
             var room = await _roomRepository.GetByIdAsync(contract.RoomId);
             if (room != null)

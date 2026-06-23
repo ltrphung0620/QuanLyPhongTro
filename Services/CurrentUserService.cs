@@ -16,12 +16,42 @@ namespace NhaTro.Services
         {
             get
             {
-                var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+                var userIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier)
+                                  ?? _httpContextAccessor.HttpContext?.User?.FindFirstValue("userId");
                 if (int.TryParse(userIdClaim, out int userId))
                 {
                     return userId;
                 }
-                return 0; // Or throw an exception depending on requirements. 0 means unauthenticated or system context.
+                return 0;
+            }
+        }
+
+        public string? Role => _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.Role)
+                               ?? _httpContextAccessor.HttpContext?.User?.FindFirstValue("role");
+
+        public int? OrganizationId
+        {
+            get
+            {
+                var orgIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirstValue("organizationId");
+                if (int.TryParse(orgIdClaim, out int orgId))
+                {
+                    return orgId;
+                }
+                return null;
+            }
+        }
+
+        public int? TenantId
+        {
+            get
+            {
+                var tenantIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirstValue("tenantId");
+                if (int.TryParse(tenantIdClaim, out int tenantId))
+                {
+                    return tenantId;
+                }
+                return null;
             }
         }
 

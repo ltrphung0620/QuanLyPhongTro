@@ -258,6 +258,15 @@ export async function downloadInvoicePdf(id) {
   return response.blob()
 }
 
+export async function downloadAssistantFile(downloadUrl) {
+  const token = localStorage.getItem('token')
+  const response = await fetch(`${gocApi.replace(/\/api$/, '')}${downloadUrl}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  })
+  if (!response.ok) throw new Error('Không thể tải tệp')
+  return response.blob()
+}
+
 // ===================================================================
 // PAYMENTS & TRANSACTIONS APIs
 // ===================================================================
@@ -322,6 +331,59 @@ export async function uploadAnhChiSoOriginal(id, file) {
   return response.json()
 }
 
+export async function quetOcrCongToDien(file) {
+  const token = localStorage.getItem('token')
+  const formData = new FormData()
+  formData.append('image', file)
+  
+  const response = await fetch(`${gocApi}/MeterReadings/ocr`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: formData
+  })
+  
+  if (!response.ok) {
+    let message = 'Không thể quét chỉ số điện từ ảnh'
+    try {
+      const error = await response.json()
+      message = error.message || message
+    } catch {}
+    throw new Error(message)
+  }
+  
+  return response.json()
+}
+
+export async function docAnhCongToDien(file, previousReading = null) {
+  const token = localStorage.getItem('token')
+  const formData = new FormData()
+  formData.append('image', file)
+  if (previousReading !== null && previousReading !== undefined) {
+    formData.append('previousReading', previousReading)
+  }
+  
+  const response = await fetch(`${gocApi}/MeterReadings/read-image`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: formData
+  })
+  
+  if (!response.ok) {
+    let message = 'Không thể nhận dạng chỉ số điện từ ảnh'
+    try {
+      const error = await response.json()
+      message = error.message || message
+    } catch {}
+    throw new Error(message)
+  }
+  
+  return response.json()
+}
+
 export function thayTheHoaDon(id, dto) {
   return goiApi(`/Invoices/${id}/replace`, {}, { method: 'POST', body: JSON.stringify(dto) })
 }
@@ -366,4 +428,108 @@ export async function downloadSalesLedgerPdf(fromMonth, toMonth, reportTitle = '
   })
   if (!response.ok) throw new Error('Không thể tải PDF báo cáo sổ quỹ')
   return response.blob()
+}
+
+// ===================================================================
+// SAAS MULTI-TENANT APIs
+// ===================================================================
+
+export function layMe() {
+  return goiApi('/Auth/me')
+}
+
+export function doiMatKhau(oldPassword, newPassword) {
+  return goiApi('/Auth/change-password', {}, {
+    method: 'POST',
+    body: JSON.stringify({ oldPassword, newPassword })
+  })
+}
+
+export function layCauHinhGia() {
+  return goiApi('/pricing-settings')
+}
+
+export function capNhatCauHinhGia(data) {
+  return goiApi('/pricing-settings', {}, {
+    method: 'PUT',
+    body: JSON.stringify(data)
+  })
+}
+
+// SuperAdmin APIs
+export function layDanhSachToChuc() {
+  return goiApi('/super-admin/organizations')
+}
+
+export function taoToChuc(data) {
+  return goiApi('/super-admin/organizations', {}, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  })
+}
+
+export function toggleToChuc(id, makeActive) {
+  const endpoint = makeActive ? `/super-admin/organizations/${id}/enable` : `/super-admin/organizations/${id}/disable`
+  return goiApi(endpoint, {}, {
+    method: 'POST'
+  })
+}
+
+export function layAdminsToChuc(orgId) {
+  return goiApi(`/super-admin/organizations/${orgId}/admins`)
+}
+
+export function taoTaiKhoanAdmin(orgId, data) {
+  return goiApi(`/super-admin/organizations/${orgId}/admins`, {}, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  })
+}
+
+export function resetMatKhauAdmin(id, newPassword) {
+  return goiApi(`/super-admin/users/${id}/reset-password`, {}, {
+    method: 'POST',
+    body: JSON.stringify({ newPassword })
+  })
+}
+
+// Tenant APIs
+export function layHoaDonTenant() {
+  return goiApi('/tenant/invoices')
+}
+
+export function taiPdfHoaDonTenant(id) {
+  return goiApi(`/tenant/invoices/${id}/pdf`, {}, {
+    headers: { Accept: 'application/pdf' }
+  })
+}
+
+export function layChiSoDienTenant() {
+  return goiApi('/tenant/meter-readings')
+}
+
+// Admin managing Tenant Login accounts
+export function layTaiKhoanTenant(tenantId) {
+  return goiApi(`/admin/tenants/${tenantId}/account`)
+}
+
+export function taoTaiKhoanTenant(tenantId, username, email, password, displayName) {
+  return goiApi(`/admin/tenants/${tenantId}/account`, {}, {
+    method: 'POST',
+    body: JSON.stringify({ username, email, password, displayName })
+  })
+}
+
+export function resetMatKhauTenant(userId, newPassword) {
+  return goiApi(`/admin/tenant-accounts/${userId}/reset-password`, {}, {
+    method: 'POST',
+    body: JSON.stringify({ newPassword })
+  })
+}
+
+export function toggleTaiKhoanTenant(userId, makeActive) {
+  const endpoint = makeActive ? `/admin/tenant-accounts/${userId}/enable` : `/admin/tenant-accounts/${userId}/disable`
+  return goiApi(endpoint, {}, {
+    method: 'POST'
+  })
 }

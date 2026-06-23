@@ -3,6 +3,8 @@ using Moq;
 using NhaTro.Services;
 using NhaTro.Dtos.MeterReadings;
 using NhaTro.Interfaces.Repositories;
+using NhaTro.Interfaces.Services;
+using NhaTro.Dtos.Pricing;
 using NhaTro.Models;
 using Microsoft.AspNetCore.Hosting;
 using System.Collections.Generic;
@@ -28,7 +30,11 @@ namespace NhaTro.Tests
                 mockContractRepo.Object,
                 mockRoomRepo.Object,
                 mockInvoiceRepo.Object,
-                mockEnv.Object
+                mockEnv.Object,
+                null!,
+                new Mock<Microsoft.Extensions.Configuration.IConfiguration>().Object,
+                new Mock<Microsoft.Extensions.Logging.ILogger<MeterReadingService>>().Object,
+                CreatePricingService().Object
             );
 
             var activeContract = new Contract
@@ -104,7 +110,11 @@ namespace NhaTro.Tests
                 contractRepo.Object,
                 new Mock<IRoomRepository>().Object,
                 new Mock<IInvoiceRepository>().Object,
-                new Mock<IWebHostEnvironment>().Object);
+                new Mock<IWebHostEnvironment>().Object,
+                null!,
+                new Mock<Microsoft.Extensions.Configuration.IConfiguration>().Object,
+                new Mock<Microsoft.Extensions.Logging.ILogger<MeterReadingService>>().Object,
+                CreatePricingService().Object);
 
             var preview = await service.PreviewAsync(new CreateMeterReadingDto
             {
@@ -149,7 +159,11 @@ namespace NhaTro.Tests
                 contractRepo.Object,
                 new Mock<IRoomRepository>().Object,
                 new Mock<IInvoiceRepository>().Object,
-                new Mock<IWebHostEnvironment>().Object);
+                new Mock<IWebHostEnvironment>().Object,
+                null!,
+                new Mock<Microsoft.Extensions.Configuration.IConfiguration>().Object,
+                new Mock<Microsoft.Extensions.Logging.ILogger<MeterReadingService>>().Object,
+                CreatePricingService().Object);
 
             var preview = await service.PreviewAsync(new CreateMeterReadingDto
             {
@@ -180,7 +194,11 @@ namespace NhaTro.Tests
                 contractRepo.Object,
                 new Mock<IRoomRepository>().Object,
                 new Mock<IInvoiceRepository>().Object,
-                new Mock<IWebHostEnvironment>().Object);
+                new Mock<IWebHostEnvironment>().Object,
+                null!,
+                new Mock<Microsoft.Extensions.Configuration.IConfiguration>().Object,
+                new Mock<Microsoft.Extensions.Logging.ILogger<MeterReadingService>>().Object,
+                CreatePricingService().Object);
 
             var error = await Assert.ThrowsAsync<InvalidOperationException>(() => service.PreviewAsync(new CreateMeterReadingDto
             {
@@ -192,6 +210,18 @@ namespace NhaTro.Tests
 
             Assert.Contains("không có hiệu lực", error.Message);
             meterRepo.Verify(x => x.AddAsync(It.IsAny<MeterReading>()), Times.Never);
+        }
+
+        private static Mock<IPricingSettingsService> CreatePricingService()
+        {
+            var pricing = new Mock<IPricingSettingsService>();
+            pricing.Setup(x => x.GetAsync()).ReturnsAsync(new PricingSettingsDto
+            {
+                ElectricityUnitPrice = 3500m,
+                WaterFeePerPerson = 50000m,
+                TrashFee = 30000m
+            });
+            return pricing;
         }
     }
 }
