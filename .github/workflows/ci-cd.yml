@@ -159,6 +159,18 @@ jobs:
           $ErrorActionPreference = "Stop"
           Import-Module WebAdministration
 
+          function Start-AppPoolWithRetry($name) {
+            for ($attempt = 1; $attempt -le 6; $attempt++) {
+              try {
+                Start-WebAppPool -Name $name
+                return
+              } catch {
+                if ($attempt -eq 6) { throw }
+                Start-Sleep -Seconds 5
+              }
+            }
+          }
+
           New-Item -ItemType Directory -Force -Path $env:BACKEND_PATH | Out-Null
           if (-not (Test-Path "$env:BACKEND_PATH\logs")) {
             New-Item -ItemType Directory -Force -Path "$env:BACKEND_PATH\logs" | Out-Null
@@ -170,7 +182,7 @@ jobs:
           robocopy "release\backend" $env:BACKEND_PATH /MIR /XD logs /XF appsettings.Production.json appsettings.Development.json /R:3 /W:5
           if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
 
-          Start-WebAppPool -Name $env:BACKEND_APP_POOL
+          Start-AppPoolWithRetry $env:BACKEND_APP_POOL
 
       - name: Deploy frontend to IIS
         shell: powershell
@@ -178,12 +190,24 @@ jobs:
           $ErrorActionPreference = "Stop"
           Import-Module WebAdministration
 
+          function Start-AppPoolWithRetry($name) {
+            for ($attempt = 1; $attempt -le 6; $attempt++) {
+              try {
+                Start-WebAppPool -Name $name
+                return
+              } catch {
+                if ($attempt -eq 6) { throw }
+                Start-Sleep -Seconds 5
+              }
+            }
+          }
+
           New-Item -ItemType Directory -Force -Path $env:FRONTEND_PATH | Out-Null
 
           Stop-WebAppPool -Name $env:FRONTEND_APP_POOL
-          Start-Sleep -Seconds 1
+          Start-Sleep -Seconds 5
 
           robocopy "release\frontend" $env:FRONTEND_PATH /MIR /R:3 /W:5
           if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
 
-          Start-WebAppPool -Name $env:FRONTEND_APP_POOL
+          Start-AppPoolWithRetry $env:FRONTEND_APP_POOL
