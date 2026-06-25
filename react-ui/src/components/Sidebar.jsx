@@ -1,52 +1,29 @@
-import React from 'react'
 import { NavLink } from 'react-router-dom'
-import { 
-  LayoutDashboard, 
-  Home, 
-  Users, 
-  FileText, 
-  Zap, 
-  Receipt, 
-  History,
-  LogOut,
-  FileSpreadsheet,
-  Bot,
-  Key,
-  Settings
-} from 'lucide-react'
+import { Home, Receipt, Users, Zap } from 'lucide-react'
 import './Sidebar.css'
 import { useAuth } from '../context/AuthContext'
+import { getVisibleAdminMenuItems } from '../adminPermissions'
 
 export default function Sidebar({ isOpen }) {
   const { user } = useAuth()
 
-  // Dynamic menu items based on roles
-  let menuItems = []
-  if (user?.role === 'SuperAdmin') {
-    menuItems = [
+  const menuItems = (() => {
+    if (user?.role === 'SuperAdmin') {
+      return [
       { path: '/organizations', label: 'Quản lý Tổ chức', icon: Home },
       { path: '/admins', label: 'Tài khoản Admin', icon: Users },
     ]
-  } else if (user?.role === 'Tenant') {
-    menuItems = [
+    }
+
+    if (user?.role === 'Tenant') {
+      return [
       { path: '/invoices', label: 'Hóa đơn của tôi', icon: Receipt },
       { path: '/meter-readings', label: 'Chỉ số điện nước', icon: Zap },
     ]
-  } else {
-    // Default Admin
-    menuItems = [
-      { path: '/', label: 'Tổng Quan', icon: LayoutDashboard },
-      { path: '/rooms', label: 'Quản Lý Phòng', icon: Home },
-      { path: '/tenants', label: 'Khách Thuê', icon: Users },
-      { path: '/contracts', label: 'Hợp Đồng', icon: FileText },
-      { path: '/meter-readings', label: 'Chỉ Số Điện Nước', icon: Zap },
-      { path: '/invoices', label: 'Hóa Đơn', icon: Receipt },
-      { path: '/payments', label: 'Thu Chi Tháng', icon: History },
-      { path: '/reports', label: 'Báo Cáo Sổ Quỹ', icon: FileSpreadsheet },
-      { path: '/pricing-settings', label: 'Bảng Giá', icon: Settings },
-      { path: '/assistant', label: 'Trợ Lý AI', icon: Bot },
-    ]
-  }
+    }
+
+    return getVisibleAdminMenuItems(user)
+  })()
 
   const getRoleLabel = () => {
     if (user?.role === 'SuperAdmin') return 'Super Admin'
@@ -73,8 +50,8 @@ export default function Sidebar({ isOpen }) {
             const IconComponent = item.icon
             return (
               <li key={item.path}>
-                <NavLink 
-                  to={item.path} 
+                <NavLink
+                  to={item.path}
                   className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
                   end={item.path === '/'}
                 >

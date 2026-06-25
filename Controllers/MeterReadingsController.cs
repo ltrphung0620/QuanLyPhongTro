@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using NhaTro.Authorization;
 using NhaTro.Dtos.MeterReadings;
 using NhaTro.Interfaces.Services;
 
 namespace NhaTro.Controllers
 {
     [Authorize(Policy = "AdminOnly")]
+    [RequireAdminPagePermission("meter-readings")]
     [ApiController]
     [Route("api/[controller]")]
     public class MeterReadingsController : ControllerBase

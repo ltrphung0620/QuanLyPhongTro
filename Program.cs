@@ -15,6 +15,29 @@ builder.Configuration.AddJsonFile("secrets.json", optional: true, reloadOnChange
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+var allowedCorsOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>()
+    ?? new[]
+    {
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://171.244.37.116:18088"
+    };
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FrontendCors", policy =>
+    {
+        policy
+            .WithOrigins(allowedCorsOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
 
 var keyStr = builder.Configuration["Jwt:Key"] ?? "fallback_secret_key_for_dev_only_123!@#";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -111,7 +134,9 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseStaticFiles();
+app.UseCors("FrontendCors");
 app.UseAuthentication();
+app.UseMiddleware<NhaTro.Middlewares.OrganizationContextMiddleware>();
 app.UseMiddleware<NhaTro.Middlewares.TenantStatusMiddleware>();
 app.UseAuthorization();
 app.MapControllers();

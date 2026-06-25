@@ -4,6 +4,7 @@ import { login } from '../api'
 import { User, Lock, ArrowRight, AlertCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
+import { getAdminHomePath } from '../adminPermissions'
 import '../Auth.css'
 
 export default function Login() {
@@ -25,7 +26,7 @@ export default function Login() {
     } else if (user.role === 'Tenant') {
       navigate('/invoices', { replace: true })
     } else {
-      navigate('/', { replace: true })
+      navigate(getAdminHomePath(user), { replace: true })
     }
   }, [loading, navigate, user])
 
@@ -47,7 +48,7 @@ export default function Login() {
           } else if (u.role === 'Tenant') {
             navigate('/invoices')
           } else {
-            navigate('/')
+            navigate(getAdminHomePath(u))
           }
         } else {
           throw new Error('Không thể tải thông tin tài khoản sau khi đăng nhập.')

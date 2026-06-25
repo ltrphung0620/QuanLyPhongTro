@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NhaTro.Data;
 
@@ -11,9 +12,11 @@ using NhaTro.Data;
 namespace NhaTro.Migrations
 {
     [DbContext(typeof(NhaTroDbContext))]
-    partial class NhaTroDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260623144837_AddAdminPagePermissions")]
+    partial class AddAdminPagePermissions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,92 +24,6 @@ namespace NhaTro.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
-
-            modelBuilder.Entity("NhaTro.Models.AdminOrganizationMembership", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasColumnName("id");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<bool>("CanAccessAllPages")
-                        .HasColumnType("bit")
-                        .HasColumnName("can_access_all_pages");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("created_at");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit")
-                        .HasColumnName("is_active");
-
-                    b.Property<int>("OrganizationId")
-                        .HasColumnType("int")
-                        .HasColumnName("organization_id");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("updated_at");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("int")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrganizationId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("admin_organization_memberships", (string)null);
-                });
-
-            modelBuilder.Entity("NhaTro.Models.AdminOrganizationPagePermission", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasColumnName("id");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<bool>("CanAccess")
-                        .HasColumnType("bit")
-                        .HasColumnName("can_access");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("created_at");
-
-                    b.Property<int>("OrganizationId")
-                        .HasColumnType("int")
-                        .HasColumnName("organization_id");
-
-                    b.Property<string>("PageKey")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasColumnName("page_key");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2")
-                        .HasColumnName("updated_at");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("int")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrganizationId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("admin_organization_page_permissions", (string)null);
-                });
 
             modelBuilder.Entity("NhaTro.Models.AppUser", b =>
                 {
@@ -1106,44 +1023,6 @@ namespace NhaTro.Migrations
 
                             t.HasCheckConstraint("CK_transactions_direction", "transaction_direction IN ('income', 'expense')");
                         });
-                });
-
-            modelBuilder.Entity("NhaTro.Models.AdminOrganizationMembership", b =>
-                {
-                    b.HasOne("NhaTro.Models.Organization", "Organization")
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("NhaTro.Models.AppUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Organization");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("NhaTro.Models.AdminOrganizationPagePermission", b =>
-                {
-                    b.HasOne("NhaTro.Models.Organization", "Organization")
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("NhaTro.Models.AppUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Organization");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("NhaTro.Models.AppUser", b =>

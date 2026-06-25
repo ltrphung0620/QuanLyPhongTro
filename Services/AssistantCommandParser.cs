@@ -374,7 +374,7 @@ namespace NhaTro.Services
 
         private async Task<float[]> EmbedTextAsync(string apiKey, string text)
         {
-            var model = _configuration["Gemini:EmbeddingModel"] ?? "gemini-embedding-001";
+            var model = _configuration["Gemini:EmbeddingModel"] ?? "gemini-embedding-2";
             var requestUrl = $"https://generativelanguage.googleapis.com/v1beta/models/{Uri.EscapeDataString(model)}:embedContent";
             using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
             request.Headers.Add("x-goog-api-key", apiKey);

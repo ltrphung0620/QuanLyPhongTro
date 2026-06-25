@@ -43,6 +43,84 @@ namespace NhaTro.Tests
         }
 
         [Fact]
+        public async Task Preview_ShouldCarryUnpaidPreviousInvoiceIntoNextInvoiceDebt()
+        {
+            var fixture = CreateFixture(
+                existingDepositDebt: 500_000m,
+                previousInvoice: new Invoice
+                {
+                    InvoiceId = 6,
+                    ContractId = 10,
+                    BillingMonth = new DateOnly(2026, 6, 1),
+                    TotalAmount = 2_000_000m,
+                    PaidAmount = 0,
+                    Status = "unpaid"
+                });
+
+            var preview = await fixture.Service.PreviewAsync(new CreateInvoiceDto
+            {
+                RoomId = 1,
+                ContractId = 10,
+                BillingMonth = new DateOnly(2026, 7, 1)
+            });
+
+            Assert.Equal(2_000_000m, preview.DebtAmount);
+            Assert.Equal(4_580_000m, preview.TotalAmount);
+        }
+
+        [Fact]
+        public async Task MonthlyRevenue_ShouldExcludeCarryOverDebtFromRecognizedRevenue()
+        {
+            var invoiceRepository = new Mock<IInvoiceRepository>();
+            invoiceRepository
+                .Setup(x => x.GetAllAsync(null, new DateOnly(2026, 6, 1), null))
+                .ReturnsAsync(new List<Invoice>
+                {
+                    new()
+                    {
+                        InvoiceId = 6,
+                        BillingMonth = new DateOnly(2026, 6, 1),
+                        TotalAmount = 2_000_000m,
+                        DebtAmount = 0,
+                        Status = "unpaid"
+                    }
+                });
+            invoiceRepository
+                .Setup(x => x.GetAllAsync(null, new DateOnly(2026, 7, 1), null))
+                .ReturnsAsync(new List<Invoice>
+                {
+                    new()
+                    {
+                        InvoiceId = 7,
+                        BillingMonth = new DateOnly(2026, 7, 1),
+                        RoomFee = 2_500_000m,
+                        WaterFee = 50_000m,
+                        TrashFee = 30_000m,
+                        DebtAmount = 2_000_000m,
+                        TotalAmount = 4_580_000m,
+                        Status = "unpaid"
+                    }
+                });
+
+            var transactionRepository = new Mock<ITransactionRepository>();
+            transactionRepository
+                .Setup(x => x.GetAllAsync(It.IsAny<DateOnly?>(), "income"))
+                .ReturnsAsync(new List<Transaction>());
+
+            var service = new ReportService(
+                invoiceRepository.Object,
+                new Mock<IPaymentTransactionRepository>().Object,
+                transactionRepository.Object);
+
+            var june = await service.GetMonthlyRevenueAsync(new DateOnly(2026, 6, 1));
+            var july = await service.GetMonthlyRevenueAsync(new DateOnly(2026, 7, 1));
+
+            Assert.Equal(2_000_000m, june.PaidInvoicesRevenue);
+            Assert.Equal(2_580_000m, july.PaidInvoicesRevenue);
+            Assert.Equal(2_580_000m, july.TotalRevenue);
+        }
+
+        [Fact]
         public async Task Preview_ShouldRejectMismatchedContractId()
         {
             var fixture = CreateFixture(existingDepositDebt: 0);
@@ -57,13 +135,15 @@ namespace NhaTro.Tests
             Assert.Contains("không khớp", error.Message);
         }
 
-        private static Fixture CreateFixture(decimal existingDepositDebt)
+        private static Fixture CreateFixture(decimal existingDepositDebt, Invoice? previousInvoice = null)
         {
             var invoiceRepository = new Mock<IInvoiceRepository>();
             invoiceRepository.Setup(x => x.GetByRoomAndMonthAsync(1, It.IsAny<DateOnly>()))
                 .ReturnsAsync((Invoice?)null);
             invoiceRepository.Setup(x => x.GetLatestBeforeMonthAsync(1, It.IsAny<DateOnly>()))
                 .ReturnsAsync((Invoice?)null);
+            invoiceRepository.Setup(x => x.GetLatestBeforeMonthByContractAsync(10, It.IsAny<DateOnly>()))
+                .ReturnsAsync(previousInvoice);
             invoiceRepository.Setup(x => x.GetByContractIdAsync(10))
                 .ReturnsAsync(existingDepositDebt == 0
                     ? new List<Invoice>()

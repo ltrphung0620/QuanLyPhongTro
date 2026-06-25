@@ -309,7 +309,6 @@ export default function Tenants() {
                           </div>
                           <div className="tenant-info">
                             <span className="tenant-name">{tenant.fullName}</span>
-                            <span className="tenant-id-badge">ID: #{tenant.tenantId}</span>
                           </div>
                         </div>
                       </td>

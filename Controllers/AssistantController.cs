@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using NhaTro.Authorization;
 using NhaTro.Dtos.Assistant;
 using NhaTro.Interfaces.Services;
 using NhaTro.Services;
@@ -7,6 +8,7 @@ using NhaTro.Services;
 namespace NhaTro.Controllers
 {
     [Authorize(Policy = "AdminOrTenant")]
+    [RequireAdminPagePermission("assistant")]
     [ApiController]
     [Route("api/[controller]")]
     public class AssistantController : ControllerBase

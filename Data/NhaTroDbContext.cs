@@ -26,6 +26,8 @@ namespace NhaTro.Data
         public DbSet<EmailNotification> EmailNotifications { get; set; }
         public DbSet<SystemSetting> SystemSettings { get; set; }
         public DbSet<TenantDeviceToken> TenantDeviceTokens { get; set; }
+        public DbSet<AdminOrganizationMembership> AdminOrganizationMemberships { get; set; }
+        public DbSet<AdminOrganizationPagePermission> AdminOrganizationPagePermissions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -41,6 +43,11 @@ namespace NhaTro.Data
                 entity.ToTable("users");
                 entity.HasIndex(u => u.Username).IsUnique();
                 entity.HasIndex(u => u.Email).IsUnique();
+
+                entity.Property(u => u.PagePermissions)
+                    .HasColumnName("page_permissions")
+                    .HasMaxLength(1000)
+                    .HasDefaultValue("*");
                 
                 // Tenant user login account relationship (1-to-1)
                 entity.HasOne(u => u.Tenant)
@@ -904,6 +911,54 @@ namespace NhaTro.Data
                 entity.HasIndex(e => new { e.TenantId, e.IsActive });
 
                 entity.HasQueryFilter(e => _currentUserService.Role == "SuperAdmin" || e.OrganizationId == _currentUserService.OrganizationId);
+            });
+
+            // AdminOrganizationMembership configuration
+            modelBuilder.Entity<AdminOrganizationMembership>(entity =>
+            {
+                entity.ToTable("admin_organization_memberships");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+                entity.Property(e => e.OrganizationId).HasColumnName("organization_id");
+                entity.Property(e => e.IsActive).HasColumnName("is_active");
+                entity.Property(e => e.CanAccessAllPages).HasColumnName("can_access_all_pages");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.Organization)
+                    .WithMany()
+                    .HasForeignKey(e => e.OrganizationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // AdminOrganizationPagePermission configuration
+            modelBuilder.Entity<AdminOrganizationPagePermission>(entity =>
+            {
+                entity.ToTable("admin_organization_page_permissions");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+                entity.Property(e => e.OrganizationId).HasColumnName("organization_id");
+                entity.Property(e => e.PageKey).HasColumnName("page_key").HasMaxLength(100).IsRequired();
+                entity.Property(e => e.CanAccess).HasColumnName("can_access");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.Organization)
+                    .WithMany()
+                    .HasForeignKey(e => e.OrganizationId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
         }
 

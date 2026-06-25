@@ -60,7 +60,7 @@ export default function Dashboard() {
       
       // Calculate room occupancy
       const tongPhong = DSPhong.length
-      const phongDaThue = DSPhong.filter(p => p.status === 'Occupied' || p.isOccupied === true).length
+      const phongDaThue = DSPhong.filter(p => (p.status || '').toLowerCase() === 'occupied' || p.isOccupied === true).length
       const tileLapDay = tongPhong > 0 ? Math.round((phongDaThue / tongPhong) * 100) : 0
       
       // Process payment status items

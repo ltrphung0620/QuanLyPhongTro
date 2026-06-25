@@ -41,6 +41,9 @@ namespace NhaTro.Models
 
         public bool MustChangePassword { get; set; } = false;
 
+        [MaxLength(1000)]
+        public string PagePermissions { get; set; } = "*";
+
         [MaxLength(6)]
         public string? OtpCode { get; set; }
 

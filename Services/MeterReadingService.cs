@@ -584,12 +584,13 @@ namespace NhaTro.Services
 
             try
             {
-                var model = _configuration["Gemini:Model"] ?? "gemini-1.5-flash";
+                var model = (_configuration["Gemini:OcrFallbackModels"] ?? string.Empty)
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .FirstOrDefault()
+                    ?? _configuration["Gemini:Model"]
+                    ?? "gemini-3.5-flash";
                 var requestUrl = $"https://generativelanguage.googleapis.com/v1beta/models/{Uri.EscapeDataString(model)}:generateContent";
                 
-                using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
-                request.Headers.Add("x-goog-api-key", apiKey);
-
                 using var ms = new MemoryStream();
                 await image.CopyToAsync(ms);
                 var imageBytes = ms.ToArray();
@@ -624,8 +625,39 @@ namespace NhaTro.Services
                     }
                 };
 
-                request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-                using var response = await _httpClient.SendAsync(request);
+                var requestBody = JsonSerializer.Serialize(body);
+                HttpResponseMessage response = null!;
+                var maxRetries = 4;
+                var delayMs = 1500;
+
+                for (var attempt = 1; attempt <= maxRetries; attempt++)
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
+                    request.Headers.Add("x-goog-api-key", apiKey);
+                    request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+
+                    response = await _httpClient.SendAsync(request);
+
+                    if (IsTransientGeminiStatus(response.StatusCode) && attempt < maxRetries)
+                    {
+                        var retryError = await response.Content.ReadAsStringAsync();
+                        _logger.LogWarning(
+                            "Gemini OCR request returned transient status {StatusCode}. Attempt {Attempt}/{MaxRetries}. Retrying after {Delay}ms. Error: {Error}",
+                            response.StatusCode,
+                            attempt,
+                            maxRetries,
+                            delayMs,
+                            retryError);
+                        response.Dispose();
+                        await Task.Delay(delayMs);
+                        delayMs *= 2;
+                        continue;
+                    }
+
+                    break;
+                }
+
+                using var responseToDispose = response;
                 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -670,6 +702,16 @@ namespace NhaTro.Services
                 _logger.LogError(ex, "Gemini OCR execution failed.");
             }
             return null;
+        }
+
+        private static bool IsTransientGeminiStatus(System.Net.HttpStatusCode statusCode)
+        {
+            return statusCode == System.Net.HttpStatusCode.TooManyRequests
+                || statusCode == System.Net.HttpStatusCode.RequestTimeout
+                || statusCode == System.Net.HttpStatusCode.InternalServerError
+                || statusCode == System.Net.HttpStatusCode.BadGateway
+                || statusCode == System.Net.HttpStatusCode.ServiceUnavailable
+                || statusCode == System.Net.HttpStatusCode.GatewayTimeout;
         }
     }
 }

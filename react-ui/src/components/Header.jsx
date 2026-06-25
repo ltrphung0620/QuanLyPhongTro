@@ -8,7 +8,7 @@ import { layHoaDonTenant } from '../api'
 export default function Header({ toggleSidebar, theme, toggleTheme }) {
   const location = useLocation()
   const navigate = useNavigate()
-  const { user, logoutUser } = useAuth()
+  const { user, logoutUser, changeActiveOrg } = useAuth()
 
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -17,6 +17,9 @@ export default function Header({ toggleSidebar, theme, toggleTheme }) {
 
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const profileMenuRef = useRef(null)
+
+  const [showOrgDropdown, setShowOrgDropdown] = useState(false)
+  const orgDropdownRef = useRef(null)
 
   const formatMonth = (monthStr) => {
     if (!monthStr) return 'N/A'
@@ -128,6 +131,9 @@ export default function Header({ toggleSidebar, theme, toggleTheme }) {
       if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
         setShowProfileMenu(false)
       }
+      if (orgDropdownRef.current && !orgDropdownRef.current.contains(event.target)) {
+        setShowOrgDropdown(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => {
@@ -226,6 +232,78 @@ export default function Header({ toggleSidebar, theme, toggleTheme }) {
     return 'Chủ trọ / Admin'
   }
 
+  const renderOrgSwitcher = () => {
+    if (user?.role !== 'Admin') return null
+    const orgs = user.organizations || []
+    const activeOrg = user.activeOrganization
+
+    if (orgs.length > 1) {
+      return (
+        <div className="header-org-switcher" ref={orgDropdownRef}>
+          <button 
+            className="org-switcher-btn"
+            onClick={() => setShowOrgDropdown(!showOrgDropdown)}
+            title="Đổi tổ chức làm việc"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="org-icon">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+            </svg>
+            <span className="org-name-text">{activeOrg?.name || 'Chọn tổ chức'}</span>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="chevron">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+
+          {showOrgDropdown && (
+            <div className="org-switcher-dropdown">
+              <div className="dropdown-header-title">Chọn tổ chức làm việc</div>
+              <div className="org-list-scroll">
+                {orgs.map((org) => {
+                  const isActive = org.id === activeOrg?.id
+                  return (
+                    <button
+                      key={org.id}
+                      className={`org-dropdown-item ${isActive ? 'active' : ''}`}
+                      onClick={() => {
+                        if (!isActive) {
+                          changeActiveOrg(org.id)
+                        }
+                        setShowOrgDropdown(false)
+                      }}
+                    >
+                      <span className="dot"></span>
+                      <div className="org-item-info">
+                        <span className="org-item-name">{org.name}</span>
+                        <span className="org-item-code">Mã: {org.code || `ORG${org.id}`}</span>
+                      </div>
+                      {isActive && (
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="check-icon">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    } else if (activeOrg) {
+      return (
+        <div className="header-org-badge">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="badge-icon">
+            <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+          </svg>
+          <span>{activeOrg.name}</span>
+        </div>
+      )
+    }
+    return null
+  }
+
   return (
     <header className="header">
       <div className="header-left">
@@ -239,6 +317,7 @@ export default function Header({ toggleSidebar, theme, toggleTheme }) {
             <span>{getTodayDateString()}</span>
           </div>
         </div>
+        {renderOrgSwitcher()}
       </div>
 
       <div className="header-right">

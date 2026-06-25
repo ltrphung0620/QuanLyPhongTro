@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NhaTro.Authorization;
 using NhaTro.Data;
 using NhaTro.Dtos.Payments;
 using NhaTro.Interfaces.Services;
@@ -8,6 +9,7 @@ using NhaTro.Interfaces.Services;
 namespace NhaTro.Controllers
 {
     [Authorize(Policy = "AdminOnly")]
+    [RequireAdminPagePermission("payments")]
     [ApiController]
     [Route("api/[controller]")]
     public class PaymentsController : ControllerBase

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NhaTro.Authorization;
 using NhaTro.Data;
 using NhaTro.Dtos.Invoices;
 using NhaTro.Interfaces.Services;
@@ -8,6 +9,7 @@ using NhaTro.Interfaces.Services;
 namespace NhaTro.Controllers
 {
     [Authorize]
+    [RequireAdminPagePermission("invoices")]
     [ApiController]
     [Route("api/[controller]")]
     public class InvoicesController : ControllerBase

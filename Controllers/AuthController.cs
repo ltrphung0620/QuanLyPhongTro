@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using NhaTro.Data;
 using NhaTro.Dtos;
 using NhaTro.Interfaces.Services;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace NhaTro.Controllers
@@ -68,6 +69,53 @@ namespace NhaTro.Controllers
 
             if (user == null) return NotFound(new { message = "Không tìm thấy người dùng." });
 
+            var orgs = new List<UserOrganizationDto>();
+            UserOrganizationDto? activeOrg = null;
+
+            if (user.Role == "Admin")
+            {
+                var memberships = await _context.AdminOrganizationMemberships
+                    .IgnoreQueryFilters()
+                    .Include(m => m.Organization)
+                    .Where(m => m.UserId == userId && m.IsActive && m.Organization.IsActive)
+                    .ToListAsync();
+
+                var permissions = await _context.AdminOrganizationPagePermissions
+                    .IgnoreQueryFilters()
+                    .Where(p => p.UserId == userId && p.CanAccess)
+                    .ToListAsync();
+
+                orgs = memberships.Select(m => new UserOrganizationDto
+                {
+                    Id = m.OrganizationId,
+                    Name = m.Organization.Name,
+                    Code = m.Organization.Code,
+                    IsActive = m.Organization.IsActive,
+                    HasFullAccess = m.CanAccessAllPages,
+                    PagePermissions = permissions
+                        .Where(p => p.OrganizationId == m.OrganizationId)
+                        .Select(p => p.PageKey)
+                        .ToList()
+                }).ToList();
+
+                int? headerOrgId = null;
+                if (Request.Headers.TryGetValue("X-Organization-Id", out var values) &&
+                    int.TryParse(values.FirstOrDefault(), out var parsedId))
+                {
+                    headerOrgId = parsedId;
+                }
+
+                if (headerOrgId.HasValue)
+                {
+                    activeOrg = orgs.FirstOrDefault(o => o.Id == headerOrgId.Value);
+                }
+
+                if (activeOrg == null && orgs.Count == 1)
+                {
+                    activeOrg = orgs[0];
+                }
+            }
+
             return Ok(new UserProfileDto
             {
                 Id = user.Id,
@@ -75,11 +123,15 @@ namespace NhaTro.Controllers
                 Email = user.Email,
                 DisplayName = user.DisplayName,
                 Role = user.Role,
-                OrganizationId = user.OrganizationId,
+                OrganizationId = activeOrg?.Id ?? user.OrganizationId,
                 TenantId = user.TenantId,
                 MustChangePassword = user.MustChangePassword,
                 IsActive = user.IsActive,
-                LastLoginAt = user.LastLoginAt
+                LastLoginAt = user.LastLoginAt,
+                HasFullAccess = user.Role == "Admin" ? (activeOrg?.HasFullAccess ?? false) : (user.PagePermissions == "*"),
+                PagePermissions = user.Role == "Admin" ? (activeOrg?.PagePermissions ?? new List<string>()) : ParsePagePermissions(user.PagePermissions),
+                Organizations = orgs,
+                ActiveOrganization = activeOrg
             });
         }
 
@@ -95,6 +147,18 @@ namespace NhaTro.Controllers
             if (!result) return BadRequest(new { message = "Mật khẩu cũ không chính xác hoặc thay đổi mật khẩu thất bại." });
 
             return Ok(new { message = "Đổi mật khẩu thành công." });
+        }
+        private static System.Collections.Generic.List<string> ParsePagePermissions(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || value == "*")
+            {
+                return new System.Collections.Generic.List<string>();
+            }
+
+            return value
+                .Split(',', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries)
+                .Distinct(System.StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
     }
 }
