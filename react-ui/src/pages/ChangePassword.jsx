@@ -4,6 +4,7 @@ import { Lock, ShieldCheck, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { doiMatKhau } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
+import { getAdminHomePath } from '../adminPermissions'
 
 export default function ChangePassword() {
   const { user, refreshUser } = useAuth()
@@ -51,7 +52,7 @@ export default function ChangePassword() {
       } else if (user?.role === 'Tenant') {
         navigate('/invoices')
       } else {
-        navigate('/')
+        navigate(getAdminHomePath(user))
       }
     } catch (err) {
       setError(err.message || 'Có lỗi xảy ra khi đổi mật khẩu')

@@ -3,12 +3,16 @@
 # =========================
 bin/
 obj/
+publish/
+artifacts/
+*.nupkg
 
 # =========================
 # User / IDE files
 # =========================
 .vscode/
 .vs/
+.idea/
 *.user
 *.suo
 *.userosscache
@@ -18,6 +22,7 @@ obj/
 # Logs
 # =========================
 *.log
+logs/
 App_Data/assistant-learning.json
 App_Data/assistant-semantic-memory.json
 App_Data/assistant-audit-log.json
@@ -32,29 +37,50 @@ Thumbs.db
 # ASP.NET secrets
 # =========================
 appsettings.Development.json
+appsettings.Local.json
+appsettings.Production.json
 secrets.json
+*.pfx
+*.pem
+*.key
 
 # =========================
-# Node / React (react-ui)
+# Node / React
 # =========================
-react-ui/node_modules/
-
-# Nếu package ở root thì mở dòng dưới
 node_modules/
+react-ui/node_modules/
+react-ui/dist/
+.env
+.env.*
+!.env.example
 
 # =========================
 # Test / coverage
 # =========================
 coverage/
+react-ui/coverage/
 TestResults/
+*.trx
+*.coverage
+*.coveragexml
 
 # =========================
 # Temporary
 # =========================
+.dev-server/
+.agents/
 *.tmp
 *.temp
+*.bak
+*.orig
 
 # =========================
-# EF Migration snapshot cache (không phải migration thật)
+# EF migration/model cache, not real migrations
 # =========================
 *.dbmdl
+
+# =========================
+# Runtime uploads and generated local data
+# =========================
+wwwroot/uploads/
+wwwroot/ocr-uploads/

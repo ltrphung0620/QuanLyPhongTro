@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace NhaTro.Dtos
@@ -75,6 +76,14 @@ namespace NhaTro.Dtos
         public string? Address { get; set; }
     }
 
+    public class AdminOrganizationInputDto
+    {
+        [Required]
+        public int OrganizationId { get; set; }
+        public bool HasFullAccess { get; set; } = true;
+        public List<string> PagePermissions { get; set; } = new();
+    }
+
     public class CreateAdminDto
     {
         [Required]
@@ -94,6 +103,39 @@ namespace NhaTro.Dtos
         [Required]
         [MaxLength(255)]
         public string DisplayName { get; set; } = string.Empty;
+
+        public bool HasFullAccess { get; set; } = true;
+
+        public List<string> PagePermissions { get; set; } = new();
+
+        public List<AdminOrganizationInputDto> Memberships { get; set; } = new();
+    }
+
+    public class UpdateAdminPermissionsDto
+    {
+        public bool HasFullAccess { get; set; } = true;
+
+        public List<string> PagePermissions { get; set; } = new();
+    }
+
+    public class UpdateAdminProfileDto
+    {
+        [Required]
+        [MaxLength(255)]
+        public string Username { get; set; } = string.Empty;
+
+        [Required]
+        [EmailAddress]
+        [MaxLength(255)]
+        public string Email { get; set; } = string.Empty;
+
+        [Required]
+        [MaxLength(255)]
+        public string DisplayName { get; set; } = string.Empty;
+
+        public bool IsActive { get; set; }
+
+        public List<AdminOrganizationInputDto> Memberships { get; set; } = new();
     }
 
     public class ResetPasswordDto
@@ -101,6 +143,16 @@ namespace NhaTro.Dtos
         [Required]
         [MinLength(6)]
         public string NewPassword { get; set; } = string.Empty;
+    }
+
+    public class UserOrganizationDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Code { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+        public bool HasFullAccess { get; set; }
+        public List<string> PagePermissions { get; set; } = new();
     }
 
     public class UserProfileDto
@@ -115,5 +167,9 @@ namespace NhaTro.Dtos
         public bool MustChangePassword { get; set; }
         public bool IsActive { get; set; }
         public DateTime? LastLoginAt { get; set; }
+        public bool HasFullAccess { get; set; }
+        public List<string> PagePermissions { get; set; } = new();
+        public List<UserOrganizationDto> Organizations { get; set; } = new();
+        public UserOrganizationDto? ActiveOrganization { get; set; }
     }
 }

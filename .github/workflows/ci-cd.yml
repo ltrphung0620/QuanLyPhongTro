@@ -1,0 +1,189 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: 9.0.x
+  NODE_VERSION: 22
+  BACKEND_PROJECT: NhaTro.csproj
+  FRONTEND_DIR: react-ui
+
+jobs:
+  backend-ci:
+    name: Backend CI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore NhaTro.sln
+
+      - name: Build
+        run: dotnet build NhaTro.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test NhaTro.Tests/NhaTro.Tests.csproj --configuration Release --no-build --verbosity normal
+
+  frontend-ci:
+    name: Frontend CI
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ${{ env.FRONTEND_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.FRONTEND_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  package:
+    name: Package Release
+    runs-on: ubuntu-latest
+    needs:
+      - backend-ci
+      - frontend-ci
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.FRONTEND_DIR }}/package-lock.json
+
+      - name: Publish backend
+        run: dotnet publish ${{ env.BACKEND_PROJECT }} --configuration Release --output ./artifacts/backend
+
+      - name: Build frontend
+        working-directory: ${{ env.FRONTEND_DIR }}
+        env:
+          VITE_API_BASE_URL: ${{ secrets.FRONTEND_API_BASE_URL || 'http://171.244.37.116:18089/api' }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Copy frontend build into artifact
+        run: |
+          mkdir -p ./artifacts/frontend
+          cp -R ${{ env.FRONTEND_DIR }}/dist/. ./artifacts/frontend/
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-release
+          path: artifacts/backend
+          if-no-files-found: error
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-release
+          path: artifacts/frontend
+          if-no-files-found: error
+
+  deploy:
+    name: CD Deploy Main To IIS
+    runs-on:
+      - self-hosted
+      - windows
+      - nhatro
+    needs: package
+    if: github.ref == 'refs/heads/main'
+
+    env:
+      BACKEND_PATH: D:\NhaTro\backend
+      FRONTEND_PATH: D:\NhaTro\frontend
+      BACKEND_APP_POOL: NhaTroApi
+      FRONTEND_APP_POOL: NhaTroWeb
+
+    steps:
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-release
+          path: release\backend
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-release
+          path: release\frontend
+
+      - name: Deploy backend to IIS
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          Import-Module WebAdministration
+
+          New-Item -ItemType Directory -Force -Path $env:BACKEND_PATH | Out-Null
+          if (-not (Test-Path "$env:BACKEND_PATH\logs")) {
+            New-Item -ItemType Directory -Force -Path "$env:BACKEND_PATH\logs" | Out-Null
+          }
+
+          Stop-WebAppPool -Name $env:BACKEND_APP_POOL
+          Start-Sleep -Seconds 3
+
+          robocopy "release\backend" $env:BACKEND_PATH /MIR /XD logs /XF appsettings.Production.json appsettings.Development.json /R:3 /W:5
+          if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
+
+          Start-WebAppPool -Name $env:BACKEND_APP_POOL
+
+      - name: Deploy frontend to IIS
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          Import-Module WebAdministration
+
+          New-Item -ItemType Directory -Force -Path $env:FRONTEND_PATH | Out-Null
+
+          Stop-WebAppPool -Name $env:FRONTEND_APP_POOL
+          Start-Sleep -Seconds 1
+
+          robocopy "release\frontend" $env:FRONTEND_PATH /MIR /R:3 /W:5
+          if ($LASTEXITCODE -le 7) { $global:LASTEXITCODE = 0 }
+
+          Start-WebAppPool -Name $env:FRONTEND_APP_POOL

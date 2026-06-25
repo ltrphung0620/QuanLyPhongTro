@@ -203,6 +203,32 @@ namespace NhaTro.Tests
         }
 
         [Fact]
+        public async Task ReadMeterImageAsync_WhenDecimalDigitStillIncluded_NormalizesReading()
+        {
+            var responseJson = CreateGeminiResponseJson(true, "72833", 72833, 5, "3", 0.95, false, "Decimal wheel excluded");
+            var httpResponse = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseJson)
+            };
+
+            var service = new GeminiMeterReadingOcrService(
+                CreateMockHttpClient(httpResponse),
+                CreateMockConfig().Object,
+                CreateMockLogger().Object
+            );
+
+            var file = CreateMockFile("meter.jpg", 1024);
+
+            var result = await service.ReadMeterImageAsync(file);
+
+            Assert.True(result.Success);
+            Assert.Equal("7283", result.RawDigits);
+            Assert.Equal(7283, result.Reading);
+            Assert.Equal(4, result.IntegerWheelCount);
+            Assert.Equal("3", result.DecimalDigitExcluded);
+        }
+
+        [Fact]
         public async Task ReadMeterImageAsync_ConfidenceLow_ForcesManualConfirmation()
         {
             var responseJson = CreateGeminiResponseJson(true, "07009", 7009, 5, "6", 0.65, false, "OK");

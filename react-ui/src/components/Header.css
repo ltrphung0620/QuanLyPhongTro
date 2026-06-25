@@ -409,3 +409,161 @@
   border-color: var(--border-color);
 }
 
+/* Organization Switcher & Badge in Header */
+.header-org-switcher {
+  position: relative;
+  margin-left: 8px;
+}
+
+.org-switcher-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.88rem;
+  transition: all var(--transition-normal);
+}
+
+.org-switcher-btn:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.org-switcher-btn .org-icon {
+  color: var(--accent);
+}
+
+.org-switcher-btn .chevron {
+  color: var(--text-muted);
+  transition: transform var(--transition-fast);
+}
+
+.org-switcher-btn:hover .chevron {
+  color: var(--text-primary);
+}
+
+.org-switcher-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 260px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 8px 0;
+  z-index: 1000;
+  animation: dropdown-fade-in 0.15s ease-out;
+}
+
+.dropdown-header-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  padding: 6px 16px;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 6px;
+}
+
+.org-list-scroll {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.org-dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.org-dropdown-item:hover {
+  background-color: var(--bg-hover);
+}
+
+.org-dropdown-item.active {
+  background-color: var(--accent-glow);
+}
+
+.org-dropdown-item .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: transparent;
+  flex-shrink: 0;
+}
+
+.org-dropdown-item.active .dot {
+  background-color: var(--accent);
+}
+
+.org-item-info {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.org-item-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.org-item-code {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.org-dropdown-item .check-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* Header Organization Badge (when only 1 org) */
+.header-org-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: var(--accent-glow);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.82rem;
+  margin-left: 8px;
+}
+
+.header-org-badge .badge-icon {
+  color: var(--accent);
+}
+
+@media (max-width: 768px) {
+  .org-switcher-btn .org-name-text {
+    display: none;
+  }
+  .org-switcher-btn {
+    padding: 8px;
+  }
+}
+
+

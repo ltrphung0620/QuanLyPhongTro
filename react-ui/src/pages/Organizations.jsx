@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Building, Edit3, Mail, Phone, Plus, RefreshCw, Search, ToggleLeft, ToggleRight, User } from 'lucide-react'
 import { layDanhSachToChuc, suaToChuc, taoToChuc, toggleToChuc } from '../api'
 import { useNotification } from '../context/NotificationContext'
+import './Organizations.css'
 
 const emptyForm = {
   name: '',
@@ -20,6 +21,7 @@ export default function Organizations() {
   const [editingOrg, setEditingOrg] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [submitLoading, setSubmitLoading] = useState(false)
+  const [selectedStatus, setSelectedStatus] = useState('active')
 
   const fetchOrgs = async () => {
     setLoading(true)
@@ -188,23 +190,37 @@ export default function Organizations() {
         />
       </div>
 
+      {/* Filter Toolbar */}
+      {!loading && (
+        <div style={{ marginBottom: 20 }}>
+          <div className="filter-tabs">
+            <button 
+              type="button"
+              className={`filter-tab ${selectedStatus === 'active' ? 'active' : ''}`}
+              onClick={() => setSelectedStatus('active')}
+            >
+              Đang hoạt động ({orgs.filter(o => o.isActive).length})
+            </button>
+            <button 
+              type="button"
+              className={`filter-tab ${selectedStatus === 'locked' ? 'active' : ''}`}
+              onClick={() => setSelectedStatus('locked')}
+            >
+              Đã khóa ({orgs.filter(o => !o.isActive).length})
+            </button>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60 }}>Đang tải danh sách tổ chức...</div>
       ) : (
         <div style={{ display: 'grid', gap: 24 }}>
           <OrganizationSection
-            title="Đang hoạt động"
-            count={activeOrgs.length}
-            orgs={activeOrgs}
-            emptyText="Không có tổ chức đang hoạt động"
-            onEdit={openEdit}
-            onToggle={handleToggleActive}
-          />
-          <OrganizationSection
-            title="Đã khóa"
-            count={lockedOrgs.length}
-            orgs={lockedOrgs}
-            emptyText="Không có tổ chức đã khóa"
+            title={selectedStatus === 'active' ? 'Đang hoạt động' : 'Đã khóa'}
+            count={selectedStatus === 'active' ? activeOrgs.length : lockedOrgs.length}
+            orgs={selectedStatus === 'active' ? activeOrgs : lockedOrgs}
+            emptyText={selectedStatus === 'active' ? 'Không có tổ chức đang hoạt động' : 'Không có tổ chức đã khóa'}
             onEdit={openEdit}
             onToggle={handleToggleActive}
           />

@@ -19,13 +19,22 @@ import Admins from './pages/Admins'
 import TenantInvoices from './pages/TenantInvoices'
 import TenantMeterReadings from './pages/TenantMeterReadings'
 import { useAuth } from './context/AuthContext'
+import { canAccessAdminPage, getAdminHomePath } from './adminPermissions'
+import OrganizationSelector from './components/OrganizationSelector'
 import './App.css'
 import { useNotification } from './context/NotificationContext'
+
+function AdminPageRoute({ permission, children }) {
+  const { user } = useAuth()
+  return canAccessAdminPage(user, permission)
+    ? children
+    : <Navigate to={getAdminHomePath(user)} replace />
+}
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { toast: notify } = useNotification()
-  const { user } = useAuth()
+  const { user, changeActiveOrg, logoutUser } = useAuth()
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('theme') || 'light'
   })
@@ -113,6 +122,16 @@ export default function App() {
     }
   }, [user?.role])
 
+  if (user?.role === 'Admin' && !user?.activeOrganization) {
+    return (
+      <OrganizationSelector 
+        organizations={user.organizations || []}
+        onSelect={changeActiveOrg}
+        onLogout={logoutUser}
+      />
+    )
+  }
+
   return (
     <div className="app-container">
       {/* Mobile sidebar overlay */}
@@ -143,18 +162,18 @@ export default function App() {
         ) : (
           /* Default Admin */
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/rooms" element={<Rooms />} />
-            <Route path="/tenants" element={<Tenants />} />
-            <Route path="/contracts" element={<Contracts />} />
-            <Route path="/meter-readings" element={<MeterReadings />} />
-            <Route path="/invoices" element={<Invoices />} />
-            <Route path="/payments" element={<Payments />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/pricing-settings" element={<PricingSettings />} />
-            <Route path="/assistant" element={<Assistant />} />
+            <Route path="/" element={<AdminPageRoute permission="dashboard"><Dashboard /></AdminPageRoute>} />
+            <Route path="/rooms" element={<AdminPageRoute permission="rooms"><Rooms /></AdminPageRoute>} />
+            <Route path="/tenants" element={<AdminPageRoute permission="tenants"><Tenants /></AdminPageRoute>} />
+            <Route path="/contracts" element={<AdminPageRoute permission="contracts"><Contracts /></AdminPageRoute>} />
+            <Route path="/meter-readings" element={<AdminPageRoute permission="meter-readings"><MeterReadings /></AdminPageRoute>} />
+            <Route path="/invoices" element={<AdminPageRoute permission="invoices"><Invoices /></AdminPageRoute>} />
+            <Route path="/payments" element={<AdminPageRoute permission="payments"><Payments /></AdminPageRoute>} />
+            <Route path="/reports" element={<AdminPageRoute permission="reports"><Reports /></AdminPageRoute>} />
+            <Route path="/pricing-settings" element={<AdminPageRoute permission="pricing-settings"><PricingSettings /></AdminPageRoute>} />
+            <Route path="/assistant" element={<AdminPageRoute permission="assistant"><Assistant /></AdminPageRoute>} />
             <Route path="/change-password" element={<ChangePassword />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to={getAdminHomePath(user)} replace />} />
           </Routes>
         )}
       </div>

@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using NhaTro.Authorization;
 using NhaTro.Dtos.Rooms;
 using NhaTro.Interfaces.Services;
 
 namespace NhaTro.Controllers
 {
     [Authorize(Policy = "AdminOnly")]
+    [RequireAdminPagePermission("rooms")]
     [ApiController]
     [Route("api/[controller]")]
     public class RoomsController : ControllerBase

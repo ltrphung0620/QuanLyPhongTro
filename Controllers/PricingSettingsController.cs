@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using NhaTro.Authorization;
 using NhaTro.Dtos.Pricing;
 using NhaTro.Interfaces.Services;
 
 namespace NhaTro.Controllers
 {
     [Authorize(Policy = "AdminOnly")]
+    [RequireAdminPagePermission("pricing-settings")]
     [ApiController]
     [Route("api/pricing-settings")]
     public class PricingSettingsController : ControllerBase

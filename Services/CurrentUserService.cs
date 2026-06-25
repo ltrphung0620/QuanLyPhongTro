@@ -33,7 +33,20 @@ namespace NhaTro.Services
         {
             get
             {
-                var orgIdClaim = _httpContextAccessor.HttpContext?.User?.FindFirstValue("organizationId");
+                var httpContext = _httpContextAccessor.HttpContext;
+                if (httpContext == null) return null;
+
+                var role = Role;
+                if (role == "Admin" || role == "SuperAdmin")
+                {
+                    if (httpContext.Items.TryGetValue("ActiveOrganizationId", out var activeIdObj) && activeIdObj is int activeId)
+                    {
+                        return activeId;
+                    }
+                    return null;
+                }
+
+                var orgIdClaim = httpContext.User?.FindFirstValue("organizationId");
                 if (int.TryParse(orgIdClaim, out int orgId))
                 {
                     return orgId;

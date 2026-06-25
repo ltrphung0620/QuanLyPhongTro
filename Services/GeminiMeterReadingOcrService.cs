@@ -30,7 +30,7 @@ namespace NhaTro.Services
             _httpClient = httpClient;
             _configuration = configuration;
             _logger = logger;
-            _httpClient.Timeout = TimeSpan.FromSeconds(15);
+            _httpClient.Timeout = TimeSpan.FromSeconds(60);
         }
 
         public async Task<OcrResultDto> ReadMeterImageAsync(IFormFile image, int? previousReading = null)
@@ -58,8 +58,7 @@ namespace NhaTro.Services
                 throw new InvalidOperationException("Chưa cấu hình API Key cho dịch vụ Gemini.");
             }
 
-            var model = _configuration["Gemini:Model"] ?? "gemini-3.5-flash";
-            var requestUrl = $"https://generativelanguage.googleapis.com/v1beta/models/{Uri.EscapeDataString(model)}:generateContent";
+            var modelCandidates = GetOcrModelCandidates();
 
             byte[] imageBytes;
             using (var ms = new MemoryStream())
@@ -69,44 +68,47 @@ namespace NhaTro.Services
             }
             var base64Data = Convert.ToBase64String(imageBytes);
 
-            var systemPrompt = @"Bạn đọc chỉ số công tơ điện cơ từ ảnh.
+            var systemPrompt = @"You read Vietnamese mechanical electricity meters from photos.
 
-QUY TẮC BẮT BUỘC:
+MANDATORY RULES:
 
-1. Phóng to và chỉ tập trung vào cửa sổ chứa các bánh số công tơ.
-2. Đọc riêng từng bánh số từ trái sang phải.
-3. Công tơ trong hệ thống thường có:
-   - 5 bánh số nguyên nền đen/chữ trắng.
-   - Có thể có thêm 1 bánh thập phân ngoài cùng bên phải, thường màu đỏ,
-     có khung/màu khác hoặc ký hiệu 1/10.
-4. Phải giữ đủ 5 chữ số nguyên, kể cả chữ số 0 ở đầu hoặc cuối.
-5. Chỉ loại bánh thập phân có đặc điểm khác với 5 bánh số nguyên.
-6. Tuyệt đối không được loại chữ số cuối chỉ vì nó là số 0.
-7. Không đọc số serial, tem kiểm định, năm sản xuất, nhãn phòng hoặc
-   thông số kỹ thuật.
-8. previousReading chỉ dùng để kiểm tra tính hợp lý, không dùng để tự ý
-   sửa chữ số trong ảnh.
-9. Nếu không nhìn rõ đủ 5 bánh số nguyên, phải yêu cầu xác nhận thủ công,
-   không được trả một kết quả có 4 chữ số với độ tin cậy cao.
+1. Focus only on the odometer-style digit window. Ignore room labels, serial numbers,
+   inspection stickers, manufacturing years, brand/model text, voltage/current specs,
+   and all other printed numbers.
+2. Read the wheel digits from left to right.
+3. Do not assume every meter has exactly 5 integer wheels. Some meters have:
+   - 5 integer wheels and then an optional decimal wheel.
+   - 4 integer wheels and then an optional decimal wheel.
+   The final answer must include only integer kWh wheels.
+4. The decimal wheel is usually the rightmost wheel and may be visually different:
+   smaller, red/yellow/tinted, separated by a frame, marked 1/10, or placed after
+   the integer scale labels. Exclude that wheel from rawDigits and put it in
+   decimalDigitExcluded.
+5. If the meter shows integer wheels 7,2,8,3 and the rightmost 3 is the decimal
+   wheel, return rawDigits=""7283"", reading=7283, integerWheelCount=4,
+   decimalDigitExcluded=""3"". Do not return 72833.
+6. If the meter shows integer wheels 1,3,7,8,0 and there is no separate decimal
+   wheel after them, return rawDigits=""13780"", reading=13780. Do not drop a final
+   zero just because it is the last digit.
+7. If there is an extra decimal wheel after 1,3,7,8,0, keep rawDigits=""13780"" and
+   put only the extra wheel in decimalDigitExcluded.
+8. previousReading is only for plausibility checking. Never modify a visible digit
+   just to make it larger than previousReading.
+9. If you cannot confidently separate integer wheels from the decimal wheel, return
+   requiresManualConfirmation=true and confidence below 0.85 instead of guessing.
+10. rawDigits must contain only the integer wheels after excluding the decimal wheel.
 
-Ví dụ bắt buộc:
-- Năm bánh số nguyên hiển thị 1, 3, 7, 8, 0
-  => rawDigits=""13780"", reading=13780.
-- Số 0 cuối thuộc nhóm 5 bánh số nguyên nên phải giữ lại.
-- Nếu có thêm bánh đỏ sau số 0 thì chỉ loại bánh đỏ đó.
-- Không được trả 1378 hoặc 1379.
-
-Chỉ trả JSON:
+Return only JSON:
 
 {
   ""success"": true,
-  ""rawDigits"": ""13780"",
-  ""reading"": 13780,
-  ""integerWheelCount"": 5,
-  ""decimalDigitExcluded"": null,
+  ""rawDigits"": ""7283"",
+  ""reading"": 7283,
+  ""integerWheelCount"": 4,
+  ""decimalDigitExcluded"": ""3"",
   ""confidence"": 0.95,
   ""requiresManualConfirmation"": false,
-  ""reason"": ""Đã đọc đủ 5 bánh số nguyên, bao gồm số 0 cuối""
+  ""reason"": ""Read 4 integer wheels and excluded the rightmost decimal wheel""
 }";
 
             var mimeType = image.ContentType;
@@ -133,7 +135,7 @@ Chỉ trả JSON:
                             },
                             new
                             {
-                                text = $"SYSTEM INSTRUCTIONS: {systemPrompt}\n\nUSER REQUEST: Extract the meter reading from this image and return a JSON object exactly matching this schema when successful:\n{{\n  \"success\": true,\n  \"rawDigits\": \"13780\",\n  \"reading\": 13780,\n  \"integerWheelCount\": 5,\n  \"decimalDigitExcluded\": null,\n  \"confidence\": 0.95,\n  \"requiresManualConfirmation\": false,\n  \"reason\": \"Đã đọc đủ 5 bánh số nguyên, bao gồm số 0 cuối\"\n}}\n\nAnd when failed:\n{{\n  \"success\": false,\n  \"rawDigits\": null,\n  \"reading\": null,\n  \"integerWheelCount\": 0,\n  \"decimalDigitExcluded\": null,\n  \"confidence\": 0.0,\n  \"requiresManualConfirmation\": true,\n  \"reason\": \"Lý do lỗi\"\n}}"
+                                text = $"SYSTEM INSTRUCTIONS: {systemPrompt}\n\nUSER REQUEST: Extract the meter reading from this image and return a JSON object exactly matching this schema when successful:\n{{\n  \"success\": true,\n  \"rawDigits\": \"7283\",\n  \"reading\": 7283,\n  \"integerWheelCount\": 4,\n  \"decimalDigitExcluded\": \"3\",\n  \"confidence\": 0.95,\n  \"requiresManualConfirmation\": false,\n  \"reason\": \"Read integer wheels only and excluded the decimal wheel if present\"\n}}\n\nAnd when failed:\n{{\n  \"success\": false,\n  \"rawDigits\": null,\n  \"reading\": null,\n  \"integerWheelCount\": 0,\n  \"decimalDigitExcluded\": null,\n  \"confidence\": 0.0,\n  \"requiresManualConfirmation\": true,\n  \"reason\": \"Lý do lỗi\"\n}}"
                             }
                         }
                     }
@@ -150,27 +152,50 @@ Chỉ trả JSON:
             try
             {
                 HttpResponseMessage response = null!;
-                int maxRetries = 3;
-                int delayMs = 2000;
+                string activeModel = modelCandidates[0];
+                var maxRetries = 4;
 
-                for (int attempt = 1; attempt <= maxRetries; attempt++)
+                foreach (var model in modelCandidates)
                 {
-                    var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
-                    request.Headers.Add("x-goog-api-key", apiKey);
-                    request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+                    activeModel = model;
+                    var requestUrl = $"https://generativelanguage.googleapis.com/v1beta/models/{Uri.EscapeDataString(model)}:generateContent";
+                    var delayMs = 1500;
 
-                    response = await _httpClient.SendAsync(request);
-
-                    if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests && attempt < maxRetries)
+                    for (int attempt = 1; attempt <= maxRetries; attempt++)
                     {
-                        _logger.LogWarning("Gemini API returned 429 (TooManyRequests). Retrying attempt {Attempt} after {Delay}ms...", attempt, delayMs);
-                        response.Dispose();
-                        await Task.Delay(delayMs);
-                        delayMs *= 2;
-                        continue;
+                        using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
+                        request.Headers.Add("x-goog-api-key", apiKey);
+                        request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+                        response = await _httpClient.SendAsync(request);
+
+                        if (IsTransientGeminiStatus(response.StatusCode) && attempt < maxRetries)
+                        {
+                            var retryError = await response.Content.ReadAsStringAsync();
+                            _logger.LogWarning(
+                                "Gemini OCR API model {Model} returned transient status {StatusCode}. Attempt {Attempt}/{MaxRetries}. Retrying after {Delay}ms. Error: {Error}",
+                                model,
+                                response.StatusCode,
+                                attempt,
+                                maxRetries,
+                                delayMs,
+                                retryError);
+                            response.Dispose();
+                            await Task.Delay(delayMs);
+                            delayMs *= 2;
+                            continue;
+                        }
+
+                        break;
                     }
 
-                    break;
+                    if (response.IsSuccessStatusCode || !IsTransientGeminiStatus(response.StatusCode))
+                    {
+                        break;
+                    }
+
+                    var finalError = await response.Content.ReadAsStringAsync();
+                    _logger.LogWarning("Gemini OCR API model {Model} failed after retries with transient status {StatusCode}. Trying fallback model if available. Error: {Error}", model, response.StatusCode, finalError);
                 }
 
                 using var responseToDispose = response;
@@ -237,6 +262,8 @@ Chỉ trả JSON:
                                     throw new InvalidOperationException("Chỉ số đọc được chứa ký tự không phải là số.");
                                 }
 
+                                NormalizeExcludedDecimalWheel(geminiResult);
+
                                 if (previousReading.HasValue && geminiResult.Reading.HasValue && geminiResult.Reading.Value < previousReading.Value)
                                 {
                                     throw new InvalidOperationException($"Chỉ số điện mới đọc được ({geminiResult.Reading.Value}) nhỏ hơn chỉ số cũ ({previousReading.Value}).");
@@ -269,6 +296,67 @@ Chỉ trả JSON:
                 _logger.LogError(ex, "Lỗi không xác định khi gọi Gemini OCR.");
                 return new OcrResultDto { Success = false, Reason = $"Lỗi không xác định: {ex.Message}" };
             }
+        }
+
+        private static void NormalizeExcludedDecimalWheel(OcrResultDto result)
+        {
+            if (!result.Success
+                || string.IsNullOrWhiteSpace(result.RawDigits)
+                || string.IsNullOrWhiteSpace(result.DecimalDigitExcluded))
+            {
+                return;
+            }
+
+            var rawDigits = new string(result.RawDigits.Where(char.IsDigit).ToArray());
+            var decimalDigits = new string(result.DecimalDigitExcluded.Where(char.IsDigit).ToArray());
+            if (rawDigits.Length == 0 || decimalDigits.Length == 0)
+            {
+                return;
+            }
+
+            if (!rawDigits.EndsWith(decimalDigits, StringComparison.Ordinal)
+                || rawDigits.Length <= decimalDigits.Length)
+            {
+                return;
+            }
+
+            var integerDigits = rawDigits[..^decimalDigits.Length];
+            if (integerDigits.Length == 0 || !int.TryParse(integerDigits, out var normalizedReading))
+            {
+                return;
+            }
+
+            result.RawDigits = integerDigits;
+            result.Reading = normalizedReading;
+            result.IntegerWheelCount = integerDigits.Length;
+
+            const string note = "Da loai banh so thap phan khoi gia tri luu.";
+            result.Reason = string.IsNullOrWhiteSpace(result.Reason)
+                ? note
+                : $"{result.Reason} {note}";
+        }
+
+        private string[] GetOcrModelCandidates()
+        {
+            var primary = _configuration["Gemini:OcrModel"] ?? _configuration["Gemini:Model"] ?? "gemini-3.5-flash";
+            var configuredFallbacks = (_configuration["Gemini:OcrFallbackModels"] ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            return new[] { primary }
+                .Concat(configuredFallbacks)
+                .Where(model => !string.IsNullOrWhiteSpace(model))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private static bool IsTransientGeminiStatus(System.Net.HttpStatusCode statusCode)
+        {
+            return statusCode == System.Net.HttpStatusCode.TooManyRequests
+                || statusCode == System.Net.HttpStatusCode.RequestTimeout
+                || statusCode == System.Net.HttpStatusCode.InternalServerError
+                || statusCode == System.Net.HttpStatusCode.BadGateway
+                || statusCode == System.Net.HttpStatusCode.ServiceUnavailable
+                || statusCode == System.Net.HttpStatusCode.GatewayTimeout;
         }
     }
 }

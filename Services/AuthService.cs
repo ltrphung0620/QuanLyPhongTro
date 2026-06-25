@@ -83,6 +83,11 @@ namespace NhaTro.Services
                 new Claim("role", user.Role)
             };
 
+            if (user.Role == "Admin")
+            {
+                claims.Add(new Claim("pagePermissions", user.PagePermissions));
+            }
+
             if (user.OrganizationId.HasValue)
             {
                 claims.Add(new Claim("organizationId", user.OrganizationId.Value.ToString()));

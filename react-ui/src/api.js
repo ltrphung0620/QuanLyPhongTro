@@ -26,6 +26,11 @@ async function goiApi(path, params = {}, options = {}) {
     headers['Authorization'] = `Bearer ${token}`
   }
 
+  const activeOrgId = localStorage.getItem('activeOrganizationId')
+  if (activeOrgId) {
+    headers['X-Organization-Id'] = activeOrgId
+  }
+
   const response = await fetch(`${gocApi}${path}${taoQuery(params)}`, {
     ...options,
     headers,
@@ -486,9 +491,27 @@ export function layAdminsToChuc(orgId) {
   return goiApi(`/super-admin/organizations/${orgId}/admins`)
 }
 
+export function layDanhSachAdminsAll() {
+  return goiApi('/super-admin/admins')
+}
+
+export function taoTaiKhoanAdminAll(data) {
+  return goiApi('/super-admin/admins', {}, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  })
+}
+
 export function taoTaiKhoanAdmin(orgId, data) {
   return goiApi(`/super-admin/organizations/${orgId}/admins`, {}, {
     method: 'POST',
+    body: JSON.stringify(data)
+  })
+}
+
+export function capNhatQuyenAdmin(id, data) {
+  return goiApi(`/super-admin/users/${id}/permissions`, {}, {
+    method: 'PUT',
     body: JSON.stringify(data)
   })
 }
@@ -498,6 +521,17 @@ export function resetMatKhauAdmin(id, newPassword) {
     method: 'POST',
     body: JSON.stringify({ newPassword })
   })
+}
+
+export function suaThongTinAdmin(id, data) {
+  return goiApi(`/super-admin/users/${id}`, {}, {
+    method: 'PUT',
+    body: JSON.stringify(data)
+  })
+}
+
+export function layOrganizationsAdmin() {
+  return goiApi('/admin/organizations')
 }
 
 // Tenant APIs
