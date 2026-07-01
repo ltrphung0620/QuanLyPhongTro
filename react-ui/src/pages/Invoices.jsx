@@ -31,15 +31,11 @@ import {
 } from '../api'
 import './Invoices.css'
 import { useNotification } from '../context/NotificationContext'
+import { getPreviousMonthValue } from '../utils/month'
 
 export default function Invoices() {
   const { toast, confirm } = useNotification()
-  const [thang, setThang] = useState(() => {
-    const today = new Date()
-    const yyyy = today.getFullYear()
-    const mm = String(today.getMonth() + 1).padStart(2, '0')
-    return `${yyyy}-${mm}`
-  })
+  const [thang, setThang] = useState(getPreviousMonthValue)
   
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
