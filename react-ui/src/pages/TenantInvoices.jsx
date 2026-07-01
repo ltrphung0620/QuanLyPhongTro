@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { FileText, Download, Eye, Calendar, DollarSign, RefreshCw, AlertCircle, Info } from 'lucide-react'
 import { layHoaDonTenant, taiPdfHoaDonTenant } from '../api'
 import { useNotification } from '../context/NotificationContext'
+import { buildInvoiceQrUrl } from '../utils/bankQr'
 
 export default function TenantInvoices() {
   const [invoices, setInvoices] = useState([])
@@ -332,7 +333,7 @@ export default function TenantInvoices() {
                     display: 'inline-flex'
                   }}>
                     <img 
-                      src={`https://img.vietqr.io/image/mbbank-556062006-compact2.jpg?amount=${Math.max(0, Math.round(selectedInvoice.totalAmount))}&addInfo=${encodeURIComponent(selectedInvoice.paymentCode.trim())}&accountName=LaiTrinhPhuocHung`}
+                      src={buildInvoiceQrUrl(selectedInvoice)}
                       alt="VietQR Payment Code"
                       style={{ width: '220px', height: 'auto', display: 'block' }}
                     />

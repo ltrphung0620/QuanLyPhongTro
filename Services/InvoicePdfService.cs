@@ -10,8 +10,21 @@ namespace NhaTro.Services
 {
     public class InvoicePdfService : IInvoicePdfService
     {
-        private const string BankAccount = "556062006";
-        private const string AccountName = "LaiTrinhPhuocHung";
+        private const string BankCode = "acb";
+        private static readonly BankQrAccount KimLoanAccount = new("226448", "Trinh Thi Kim Loan");
+        private static readonly BankQrAccount PhamSaiAccount = new("194218449", "Pham Thi Sai");
+        private static readonly HashSet<string> KimLoanRoomCodes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "A1",
+            "A2",
+            "A3",
+            "Kios 110/2A",
+            "B4",
+            "B5",
+            "B6",
+            "B7",
+            "B8"
+        };
         private static readonly object FontRegistrationLock = new();
         private static bool _fontsRegistered;
 
@@ -274,8 +287,17 @@ namespace NhaTro.Services
                 return string.Empty;
             }
 
-            var query = $"amount={amount.ToString("0", CultureInfo.InvariantCulture)}&addInfo={Uri.EscapeDataString(paymentCode)}&accountName={Uri.EscapeDataString(AccountName)}";
-            return $"https://img.vietqr.io/image/mbbank-{BankAccount}-compact2.jpg?{query}";
+            var account = ResolveBankQrAccount(invoice.RoomCode);
+            var query = $"amount={amount.ToString("0", CultureInfo.InvariantCulture)}&addInfo={Uri.EscapeDataString(paymentCode)}&accountName={Uri.EscapeDataString(account.AccountName)}";
+            return $"https://img.vietqr.io/image/{BankCode}-{account.AccountNumber}-compact2.jpg?{query}";
+        }
+
+        private static BankQrAccount ResolveBankQrAccount(string? roomCode)
+        {
+            var normalizedRoomCode = roomCode?.Trim();
+            return !string.IsNullOrWhiteSpace(normalizedRoomCode) && KimLoanRoomCodes.Contains(normalizedRoomCode)
+                ? KimLoanAccount
+                : PhamSaiAccount;
         }
 
         private static string GetPaymentCode(InvoiceDto invoice)
@@ -340,5 +362,7 @@ namespace NhaTro.Services
             var sanitized = new string(sanitizedChars);
             return string.IsNullOrWhiteSpace(sanitized) ? "HoaDon" : sanitized;
         }
+
+        private sealed record BankQrAccount(string AccountNumber, string AccountName);
     }
 }
