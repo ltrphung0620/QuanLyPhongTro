@@ -12,24 +12,14 @@ import {
 import { laySalesLedger, downloadSalesLedgerPdf } from '../api'
 import './Reports.css'
 import { useNotification } from '../context/NotificationContext'
+import { getPreviousMonthValue, getRelativeMonthValue } from '../utils/month'
+import { sortByRoomCode } from '../utils/roomSort'
 
 export default function Reports() {
   const { toast } = useNotification()
-  const [fromMonth, setFromMonth] = useState(() => {
-    const today = new Date()
-    // Default to current month minus 5 months (6 months total)
-    const prevDate = new Date(today.getFullYear(), today.getMonth() - 5, 1)
-    const prevY = prevDate.getFullYear()
-    const prevM = String(prevDate.getMonth() + 1).padStart(2, '0')
-    return `${prevY}-${prevM}`
-  })
+  const [fromMonth, setFromMonth] = useState(() => getRelativeMonthValue(-6))
   
-  const [toMonth, setToMonth] = useState(() => {
-    const today = new Date()
-    const yyyy = today.getFullYear()
-    const mm = String(today.getMonth() + 1).padStart(2, '0')
-    return `${yyyy}-${mm}`
-  })
+  const [toMonth, setToMonth] = useState(getPreviousMonthValue)
   
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -84,7 +74,7 @@ export default function Reports() {
   }
 
   // Filter rows based on search
-  const filteredRows = ledger?.rows?.filter(r => {
+  const filteredRows = sortByRoomCode(ledger?.rows?.filter(r => {
     const query = searchQuery.toLowerCase().trim()
     if (!query) return true
     return (
@@ -92,7 +82,7 @@ export default function Reports() {
       (r.description || '').toLowerCase().includes(query) ||
       String(r.amount).includes(query)
     )
-  }) || []
+  }) || [], r => r.roomCode)
 
   const transferRows = filteredRows.filter(r => r.paymentMethod === 'Chuyển khoản')
   const cashRows = filteredRows.filter(r => r.paymentMethod === 'Tiền mặt')

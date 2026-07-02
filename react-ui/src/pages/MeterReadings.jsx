@@ -30,15 +30,12 @@ import {
 } from '../api'
 import './MeterReadings.css'
 import { useNotification } from '../context/NotificationContext'
+import { getPreviousMonthValue } from '../utils/month'
+import { sortByRoomCode } from '../utils/roomSort'
 
 export default function MeterReadings() {
   const { toast, confirm } = useNotification()
-  const [thang, setThang] = useState(() => {
-    const today = new Date()
-    const yyyy = today.getFullYear()
-    const mm = String(today.getMonth() + 1).padStart(2, '0')
-    return `${yyyy}-${mm}`
-  })
+  const [thang, setThang] = useState(getPreviousMonthValue)
   
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -96,9 +93,9 @@ export default function MeterReadings() {
         layCauHinhGia()
       ])
       
-      setRecordedReadings(readings)
-      setMissingRooms(missing)
-      setActiveContracts(contracts)
+      setRecordedReadings(sortByRoomCode(readings))
+      setMissingRooms(sortByRoomCode(missing))
+      setActiveContracts(sortByRoomCode(contracts))
       setPricing(pricingData)
     } catch (err) {
       console.error(err)
@@ -208,7 +205,7 @@ export default function MeterReadings() {
   // Handle open bulk modal
   const handleOpenBulkModal = () => {
     // Filter rooms that have active contracts (or contractId since we populated it)
-    const roomsWithContracts = missingRooms.filter(r => r.contractId > 0 || timHopDongPhong(r.roomId) !== undefined)
+    const roomsWithContracts = sortByRoomCode(missingRooms.filter(r => r.contractId > 0 || timHopDongPhong(r.roomId) !== undefined))
     if (roomsWithContracts.length === 0) {
       toast.error('Không có phòng nào có hợp đồng hiệu lực để nhập hàng loạt.')
       return
@@ -238,7 +235,7 @@ export default function MeterReadings() {
     setBulkSubmitting(true)
 
     const readingsList = []
-    const roomsWithContracts = missingRooms.filter(r => r.contractId > 0 || timHopDongPhong(r.roomId) !== undefined)
+    const roomsWithContracts = sortByRoomCode(missingRooms.filter(r => r.contractId > 0 || timHopDongPhong(r.roomId) !== undefined))
 
     for (const room of roomsWithContracts) {
       const inputVal = bulkInputs[room.roomId]
@@ -441,13 +438,13 @@ export default function MeterReadings() {
   }
 
   // Filter lists based on search query
-  const filteredMissing = missingRooms.filter(r => 
+  const filteredMissing = sortByRoomCode(missingRooms.filter(r => 
     (r.roomCode || '').toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  ))
 
-  const filteredRecorded = recordedReadings.filter(r => 
+  const filteredRecorded = sortByRoomCode(recordedReadings.filter(r => 
     (r.roomCode || '').toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  ))
 
   const inputReading = parseInt(currentReadingInput) || 0
   const consumedUnits = inputReading >= previousReading ? inputReading - previousReading : 0
@@ -1004,7 +1001,7 @@ export default function MeterReadings() {
                       </tr>
                     </thead>
                     <tbody>
-                      {missingRooms.filter(r => r.contractId > 0 || timHopDongPhong(r.roomId) !== undefined).map(room => {
+                      {sortByRoomCode(missingRooms.filter(r => r.contractId > 0 || timHopDongPhong(r.roomId) !== undefined)).map(room => {
                         const prevReading = room.previousReading || 0
                         const currentInput = bulkInputs[room.roomId] || ''
                         const currentVal = parseInt(currentInput)

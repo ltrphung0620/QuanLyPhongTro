@@ -7,20 +7,23 @@ import { getVisibleAdminMenuItems } from '../adminPermissions'
 export default function Sidebar({ isOpen }) {
   const { user } = useAuth()
 
-  let menuItems = []
-  if (user?.role === 'SuperAdmin') {
-    menuItems = [
+  const menuItems = (() => {
+    if (user?.role === 'SuperAdmin') {
+      return [
       { path: '/organizations', label: 'Quản lý Tổ chức', icon: Home },
       { path: '/admins', label: 'Tài khoản Admin', icon: Users },
     ]
-  } else if (user?.role === 'Tenant') {
-    menuItems = [
+    }
+
+    if (user?.role === 'Tenant') {
+      return [
       { path: '/invoices', label: 'Hóa đơn của tôi', icon: Receipt },
       { path: '/meter-readings', label: 'Chỉ số điện nước', icon: Zap },
     ]
-  } else {
-    menuItems = getVisibleAdminMenuItems(user)
-  }
+    }
+
+    return getVisibleAdminMenuItems(user)
+  })()
 
   const getRoleLabel = () => {
     if (user?.role === 'SuperAdmin') return 'Super Admin'

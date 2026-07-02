@@ -14,7 +14,8 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   RefreshCw,
-  Link2
+  Link2,
+  Clock
 } from 'lucide-react'
 import { 
   layDanhSachGiaoDich, 
@@ -29,15 +30,12 @@ import {
 } from '../api'
 import './Payments.css'
 import { useNotification } from '../context/NotificationContext'
+import { getPreviousMonthValue } from '../utils/month'
+import { sortByRoomCode } from '../utils/roomSort'
 
 export default function Payments() {
   const { toast, confirm } = useNotification()
-  const [thang, setThang] = useState(() => {
-    const today = new Date()
-    const yyyy = today.getFullYear()
-    const mm = String(today.getMonth() + 1).padStart(2, '0')
-    return `${yyyy}-${mm}`
-  })
+  const [thang, setThang] = useState(getPreviousMonthValue)
   
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -90,8 +88,8 @@ export default function Payments() {
       
       setLedgerTransactions(ledgerData)
       setBankTransactions(bankData)
-      setRooms(roomsData)
-      setUnpaidInvoices(unpaidData)
+      setRooms(sortByRoomCode(roomsData))
+      setUnpaidInvoices(sortByRoomCode(unpaidData))
     } catch (err) {
       console.error(err)
       setError(err.message || 'Không thể tải dữ liệu sổ thu chi & giao dịch')
@@ -268,14 +266,14 @@ export default function Payments() {
   }
 
   // Filter items
-  const filteredLedger = ledgerTransactions.filter(tx => {
+  const filteredLedger = sortByRoomCode(ledgerTransactions.filter(tx => {
     const query = searchQuery.toLowerCase()
     return (
       (tx.itemName && tx.itemName.toLowerCase().includes(query)) ||
       (tx.description && tx.description.toLowerCase().includes(query)) ||
       (tx.relatedRoomCode && tx.relatedRoomCode.toLowerCase().includes(query))
     )
-  })
+  }), tx => tx.relatedRoomCode)
 
   const filteredBank = bankTransactions.filter(tx => {
     const query = searchQuery.toLowerCase()

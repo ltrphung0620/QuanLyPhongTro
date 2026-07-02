@@ -31,6 +31,7 @@ import {
 } from '../api'
 import './Contracts.css'
 import { useNotification } from '../context/NotificationContext'
+import { sortByRoomCode } from '../utils/roomSort'
 
 export default function Contracts() {
   const { toast, confirm } = useNotification()
@@ -107,8 +108,8 @@ export default function Contracts() {
         layDanhSachPhong(),
         layDanhSachNguoiThue()
       ])
-      setContracts(contractsData)
-      setRooms(roomsData)
+      setContracts(sortByRoomCode(contractsData))
+      setRooms(sortByRoomCode(roomsData))
       setTenants(tenantsData)
     } catch (err) {
       console.error(err)
@@ -397,13 +398,13 @@ export default function Contracts() {
   }
 
   // Filtered contracts
-  const filteredContracts = contracts.filter(c => {
+  const filteredContracts = sortByRoomCode(contracts.filter(c => {
     if (selectedStatus === 'all') return true
     return (c.status || '').toLowerCase() === selectedStatus.toLowerCase()
-  })
+  }))
 
   // Get list of rooms that are vacant (plus the room already in editing if necessary, but here we only create new contracts for vacant rooms)
-  const vacantRooms = rooms.filter(r => r.status === 'vacant')
+  const vacantRooms = sortByRoomCode(rooms.filter(r => r.status === 'vacant'))
 
   return (
     <div className="page-body">
