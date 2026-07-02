@@ -1056,7 +1056,8 @@ ul {
   /* iOS Safe Area Support & Layout Padding */
   .header {
     padding-top: env(safe-area-inset-top) !important;
-    height: calc(72px + env(safe-area-inset-top)) !important;
+    min-height: calc(72px + env(safe-area-inset-top)) !important;
+    height: auto !important;
     padding-left: max(20px, env(safe-area-inset-left)) !important;
     padding-right: max(20px, env(safe-area-inset-right)) !important;
   }
@@ -1066,7 +1067,7 @@ ul {
   }
 
   .page-body {
-    padding: 16px !important;
+    padding: 20px 16px !important;
     padding-left: max(16px, env(safe-area-inset-left)) !important;
     padding-right: max(16px, env(safe-area-inset-right)) !important;
     padding-bottom: calc(32px + env(safe-area-inset-bottom)) !important;
@@ -1082,8 +1083,9 @@ ul {
     font-size: 1.4rem !important;
   }
   .header-title-section h1 {
-    font-size: 1.5rem !important;
+    font-size: 1.45rem !important;
     letter-spacing: -0.02em !important;
+    line-height: 1.12 !important;
   }
 
   /* Split Drawers (e.g. details panels) become full mobile views */
@@ -1125,11 +1127,41 @@ ul {
 
 @media (max-width: 576px) {
   /* Page headers stack vertically */
-  .page-header, .dashboard-header-bar, .rooms-header {
+  .page-header,
+  .dashboard-header-bar,
+  .rooms-header,
+  .invoices-header,
+  .meter-header,
+  .payments-header,
+  .contracts-header,
+  .tenants-header,
+  .reports-header {
     flex-direction: column !important;
     align-items: flex-start !important;
     gap: 12px !important;
-    margin-bottom: 20px !important;
+    margin-bottom: 24px !important;
+  }
+
+  .invoices-header-actions,
+  .payments-header-actions {
+    width: 100% !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .month-picker-container {
+    width: 100% !important;
+  }
+
+  .month-input {
+    width: 100% !important;
+    min-height: 48px !important;
+  }
+
+  .header {
+    padding-left: max(12px, env(safe-area-inset-left)) !important;
+    padding-right: max(12px, env(safe-area-inset-right)) !important;
   }
 
   /* Form row stacks */

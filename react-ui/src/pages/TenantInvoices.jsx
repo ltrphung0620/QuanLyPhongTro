@@ -3,6 +3,7 @@ import { FileText, Download, Eye, Calendar, DollarSign, RefreshCw, AlertCircle, 
 import { layHoaDonTenant, taiPdfHoaDonTenant } from '../api'
 import { useNotification } from '../context/NotificationContext'
 import { buildInvoiceQrUrl } from '../utils/bankQr'
+import { sortByRoomCode } from '../utils/roomSort'
 
 export default function TenantInvoices() {
   const [invoices, setInvoices] = useState([])
@@ -16,7 +17,7 @@ export default function TenantInvoices() {
     setLoading(true)
     try {
       const data = await layHoaDonTenant()
-      setInvoices(data)
+      setInvoices(sortByRoomCode(data))
     } catch (err) {
       toast.error('Không thể tải danh sách hóa đơn: ' + err.message)
     } finally {

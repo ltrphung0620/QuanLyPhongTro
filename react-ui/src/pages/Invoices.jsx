@@ -24,6 +24,7 @@ import {
   huyThanhToanHoaDon, 
   xoaHoaDon, 
   downloadInvoicePdf,
+  downloadInvoiceImagesZip,
   layDanhSachHopDong,
   thayTheHoaDon,
   suaHoaDon,
@@ -32,6 +33,7 @@ import {
 import './Invoices.css'
 import { useNotification } from '../context/NotificationContext'
 import { getPreviousMonthValue } from '../utils/month'
+import { sortByRoomCode } from '../utils/roomSort'
 
 export default function Invoices() {
   const { toast, confirm } = useNotification()
@@ -73,6 +75,7 @@ export default function Invoices() {
   })
   const [bulkError, setBulkError] = useState(null)
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
+  const [imagesDownloading, setImagesDownloading] = useState(false)
 
   // Pay Modal State
   const [payModalOpen, setPayModalOpen] = useState(false)
@@ -115,8 +118,8 @@ export default function Invoices() {
         layHoaDonThang(formattedMonth),
         layDanhSachHopDong('active')
       ])
-      setInvoices(invoicesData)
-      setActiveContracts(contractsData)
+      setInvoices(sortByRoomCode(invoicesData))
+      setActiveContracts(sortByRoomCode(contractsData))
     } catch (err) {
       console.error(err)
       setError(err.message || 'Không thể tải danh sách hóa đơn')
@@ -388,6 +391,28 @@ export default function Invoices() {
     }
   }
 
+  const handleDownloadAllImages = async () => {
+    setImagesDownloading(true)
+    try {
+      const status = selectedStatus === 'all' ? null : selectedStatus
+      const blob = await downloadInvoiceImagesZip(`${thang}-01`, status)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `AnhHoaDon-${thang}-${status || 'tat-ca'}.zip`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success('Đã tải file ZIP ảnh hóa đơn.')
+    } catch (err) {
+      console.error(err)
+      toast.error(err.message || 'Không thể tải ảnh hóa đơn')
+    } finally {
+      setImagesDownloading(false)
+    }
+  }
+
   const dinhDangTien = (so) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(so)
   }
@@ -411,11 +436,11 @@ export default function Invoices() {
   }
 
   // Filtered list
-  const filteredInvoices = invoices.filter(inv => {
+  const filteredInvoices = sortByRoomCode(invoices.filter(inv => {
     const matchesStatus = selectedStatus === 'all' || (inv.status || '').toLowerCase() === selectedStatus.toLowerCase()
     const matchesSearch = inv.roomCode ? inv.roomCode.toLowerCase().includes(searchQuery.toLowerCase()) : false
     return matchesStatus && matchesSearch
-  })
+  }))
 
   return (
     <div className="page-body">
@@ -438,6 +463,15 @@ export default function Invoices() {
           <button className="btn btn-secondary" onClick={() => setBulkModalOpen(true)}>
             <Layers size={18} />
             <span>Tạo đồng loạt</span>
+          </button>
+
+          <button
+            className="btn btn-secondary"
+            onClick={handleDownloadAllImages}
+            disabled={imagesDownloading || loading || filteredInvoices.length === 0}
+          >
+            {imagesDownloading ? <Loader2 className="spinner" size={18} /> : <Download size={18} />}
+            <span>{imagesDownloading ? 'Đang tải...' : 'Tải ảnh tất cả'}</span>
           </button>
 
           <button className="btn btn-primary" onClick={handleOpenCreateModal}>

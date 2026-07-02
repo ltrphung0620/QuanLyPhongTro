@@ -13,6 +13,7 @@ import { laySalesLedger, downloadSalesLedgerPdf } from '../api'
 import './Reports.css'
 import { useNotification } from '../context/NotificationContext'
 import { getPreviousMonthValue, getRelativeMonthValue } from '../utils/month'
+import { sortByRoomCode } from '../utils/roomSort'
 
 export default function Reports() {
   const { toast } = useNotification()
@@ -73,7 +74,7 @@ export default function Reports() {
   }
 
   // Filter rows based on search
-  const filteredRows = ledger?.rows?.filter(r => {
+  const filteredRows = sortByRoomCode(ledger?.rows?.filter(r => {
     const query = searchQuery.toLowerCase().trim()
     if (!query) return true
     return (
@@ -81,7 +82,7 @@ export default function Reports() {
       (r.description || '').toLowerCase().includes(query) ||
       String(r.amount).includes(query)
     )
-  }) || []
+  }) || [], r => r.roomCode)
 
   const transferRows = filteredRows.filter(r => r.paymentMethod === 'Chuyển khoản')
   const cashRows = filteredRows.filter(r => r.paymentMethod === 'Tiền mặt')

@@ -40,12 +40,43 @@ namespace NhaTro.Services
 
         public async Task<byte[]> GenerateInvoicePdfAsync(InvoiceDto invoice)
         {
+            using var stream = new MemoryStream();
+            var document = await CreateInvoiceDocumentAsync(invoice);
+            document.GeneratePdf(stream);
+
+            return stream.ToArray();
+        }
+
+        public async Task<IReadOnlyList<byte[]>> GenerateInvoiceImagesAsync(InvoiceDto invoice)
+        {
+            var document = await CreateInvoiceDocumentAsync(invoice);
+            return document.GenerateImages(new ImageGenerationSettings
+            {
+                RasterDpi = 144
+            }).ToList();
+        }
+
+        public string BuildInvoicePdfFileName(InvoiceDto invoice)
+        {
+            var paymentCode = SanitizeFilePart(GetPaymentCode(invoice));
+            var roomCode = SanitizeFilePart(invoice.RoomCode ?? $"Phong{invoice.RoomId}");
+            return $"HoaDon-{roomCode}-{paymentCode}.pdf";
+        }
+
+        public string BuildInvoiceImageFileName(InvoiceDto invoice, int? pageNumber = null)
+        {
+            var paymentCode = SanitizeFilePart(GetPaymentCode(invoice));
+            var roomCode = SanitizeFilePart(invoice.RoomCode ?? $"Phong{invoice.RoomId}");
+            var pageSuffix = pageNumber.HasValue ? $"-trang-{pageNumber.Value}" : string.Empty;
+            return $"HoaDon-{roomCode}-{paymentCode}{pageSuffix}.png";
+        }
+
+        private async Task<IDocument> CreateInvoiceDocumentAsync(InvoiceDto invoice)
+        {
             var qrBytes = await TryGetQrBytesAsync(invoice);
             var meterImageBytes = TryGetMeterImageBytes(invoice);
 
-            using var stream = new MemoryStream();
-
-            Document.Create(container =>
+            return Document.Create(container =>
             {
                 container.Page(page =>
                 {
@@ -156,18 +187,9 @@ namespace NhaTro.Services
                             .Text("PDF n\u00E0y \u0111\u01B0\u1EE3c t\u1EA1o t\u1EEB h\u1EC7 th\u1ED1ng qu\u1EA3n l\u00FD nh\u00E0 tr\u1ECD.")
                             .FontSize(9)
                             .FontColor(Colors.Grey.Darken1);
-                    });
+                        });
                 });
-            }).GeneratePdf(stream);
-
-            return stream.ToArray();
-        }
-
-        public string BuildInvoicePdfFileName(InvoiceDto invoice)
-        {
-            var paymentCode = SanitizeFilePart(GetPaymentCode(invoice));
-            var roomCode = SanitizeFilePart(invoice.RoomCode ?? $"Phong{invoice.RoomId}");
-            return $"HoaDon-{roomCode}-{paymentCode}.pdf";
+            });
         }
 
         private static IContainer Card(IContainer container)

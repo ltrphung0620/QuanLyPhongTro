@@ -17,6 +17,7 @@ import {
 import { layBaoCaoThang, layDanhSachPhong } from '../api'
 import './Dashboard.css'
 import { getPreviousMonthValue } from '../utils/month'
+import { sortByRoomCode } from '../utils/roomSort'
 
 export default function Dashboard() {
   const [thang, setThang] = useState(getPreviousMonthValue)
@@ -52,7 +53,7 @@ export default function Dashboard() {
         layDanhSachPhong()
       ])
       
-      setDanhSachPhong(DSPhong)
+      setDanhSachPhong(sortByRoomCode(DSPhong))
       
       // Calculate room occupancy
       const tongPhong = DSPhong.length
@@ -61,6 +62,7 @@ export default function Dashboard() {
       
       // Process payment status items
       const dsHoaDon = baoCao.trangThaiThanhToan || []
+      const resolveRoomCode = (roomId) => DSPhong.find(p => p.roomId === roomId)?.roomCode || `Phòng #${roomId}`
       const tongSoHoaDon = dsHoaDon.length
       const hoaDonDaThanhToan = dsHoaDon.filter(h => (h.status || '').toLowerCase() === 'paid').length
       const hoaDonChuaThanhToan = tongSoHoaDon - hoaDonDaThanhToan
@@ -73,7 +75,10 @@ export default function Dashboard() {
         .filter(h => (h.status || '').toLowerCase() !== 'paid')
         .reduce((sum, h) => sum + h.totalAmount, 0)
         
-      const danhSachChuaThu = dsHoaDon.filter(h => (h.status || '').toLowerCase() !== 'paid')
+      const danhSachChuaThu = sortByRoomCode(
+        dsHoaDon.filter(h => (h.status || '').toLowerCase() !== 'paid'),
+        h => h.roomCode || resolveRoomCode(h.roomId)
+      )
 
       setStats({
         doanhThu: baoCao.doanhThu?.totalRevenue || 0,

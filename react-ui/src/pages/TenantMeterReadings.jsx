@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Zap, Calendar, Image, RefreshCw, Eye } from 'lucide-react'
 import { layChiSoDienTenant } from '../api'
 import { useNotification } from '../context/NotificationContext'
+import { sortByRoomCode } from '../utils/roomSort'
 
 export default function TenantMeterReadings() {
   const [readings, setReadings] = useState([])
@@ -13,7 +14,7 @@ export default function TenantMeterReadings() {
     setLoading(true)
     try {
       const data = await layChiSoDienTenant()
-      setReadings(data)
+      setReadings(sortByRoomCode(data, item => item.roomCode || item.room?.roomCode))
     } catch (err) {
       toast.error('Không thể tải chỉ số điện nước: ' + err.message)
     } finally {
