@@ -3,6 +3,7 @@ using NhaTro.Interfaces.Repositories;
 using NhaTro.Interfaces.Services;
 using NhaTro.Models;
 using Microsoft.EntityFrameworkCore;
+using NhaTro.Utils;
 
 namespace NhaTro.Services
 {
@@ -55,7 +56,13 @@ namespace NhaTro.Services
             }
 
             var contracts = await _contractRepository.GetAllAsync(status, roomId, includeArchived);
-            return contracts.Select(MapToDto).ToList();
+            return contracts
+                .Select(MapToDto)
+                .OrderBy(x => RoomCodeSort.GetGroup(x.RoomCode))
+                .ThenBy(x => RoomCodeSort.GetNumber(x.RoomCode))
+                .ThenBy(x => x.RoomCode)
+                .ThenByDescending(x => x.CreatedAt)
+                .ToList();
         }
 
         public async Task<ContractDto?> GetByIdAsync(int contractId)

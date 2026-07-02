@@ -5,6 +5,7 @@ using NhaTro.Authorization;
 using NhaTro.Data;
 using NhaTro.Dtos.Invoices;
 using NhaTro.Interfaces.Services;
+using System.IO.Compression;
 
 namespace NhaTro.Controllers
 {
@@ -73,6 +74,50 @@ namespace NhaTro.Controllers
             catch
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Không tải được PDF hóa đơn." });
+            }
+        }
+
+        [HttpGet("images.zip")]
+        public async Task<IActionResult> DownloadImagesZip(
+            [FromQuery] DateOnly? month,
+            [FromQuery] string? status = null)
+        {
+            try
+            {
+                var invoices = await _service.GetAllAsync(null, month, status);
+                if (invoices.Count == 0)
+                {
+                    return NotFound(new { message = "Kh\u00F4ng c\u00F3 h\u00F3a \u0111\u01A1n \u0111\u1EC3 xu\u1EA5t \u1EA3nh." });
+                }
+
+                await using var zipStream = new MemoryStream();
+                using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: true))
+                {
+                    foreach (var invoice in invoices)
+                    {
+                        var images = await _pdfService.GenerateInvoiceImagesAsync(invoice);
+
+                        for (var index = 0; index < images.Count; index++)
+                        {
+                            var pageNumber = images.Count > 1 ? index + 1 : (int?)null;
+                            var entryName = _pdfService.BuildInvoiceImageFileName(invoice, pageNumber);
+                            var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+
+                            await using var entryStream = entry.Open();
+                            await entryStream.WriteAsync(images[index]);
+                        }
+                    }
+                }
+
+                var monthPart = month.HasValue ? month.Value.ToString("yyyy-MM") : "tat-ca";
+                var statusPart = string.IsNullOrWhiteSpace(status) ? "tat-ca" : status.Trim().ToLowerInvariant();
+                var fileName = $"AnhHoaDon-{monthPart}-{statusPart}.zip";
+
+                return File(zipStream.ToArray(), "application/zip", fileName);
+            }
+            catch
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Kh\u00F4ng t\u1EA3i \u0111\u01B0\u1EE3c \u1EA3nh h\u00F3a \u0111\u01A1n." });
             }
         }
 
