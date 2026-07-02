@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login } from '../api'
 import { User, Lock, ArrowRight, AlertCircle } from 'lucide-react'
@@ -129,11 +129,10 @@ export default function Login() {
         </div>
       </div>
 
-      {/* Right Pane: Large Logo Showcase */}
-      <div className="auth-right-pane">
-        <div className="auth-logo-showcase">
-          <img src="/logo-lph.jpg" alt="LPH Corporate Logo" />
-        </div>
+      <div className="auth-owner-footer">
+        <span>Hệ thống thuộc về: <strong>Lại Trình Phước Hưng</strong></span>
+        <span>Email: <a href="mailto:hungltp206@gmail.com">hungltp206@gmail.com</a></span>
+        <span>SĐT: <a href="tel:0909638206">0909638206</a></span>
       </div>
     </div>
   )
