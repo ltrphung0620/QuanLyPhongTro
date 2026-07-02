@@ -36,7 +36,14 @@ namespace NhaTro.Services
         {
             DateOnly? normalizedMonth = month.HasValue ? NormalizeMonth(month.Value) : null;
             var data = await _invoiceRepo.GetAllAsync(roomId, normalizedMonth, status);
-            return SortByRoomCode(data.Select(MapToDto), x => x.RoomCode)
+            var dtos = new List<InvoiceDto>();
+
+            foreach (var invoice in data)
+            {
+                dtos.Add(await MapToDtoWithMeterReadingAsync(invoice));
+            }
+
+            return SortByRoomCode(dtos, x => x.RoomCode)
                 .ThenByDescending(x => x.CreatedAt)
                 .ToList();
         }
