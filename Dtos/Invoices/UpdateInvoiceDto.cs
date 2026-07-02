@@ -17,6 +17,9 @@ namespace NhaTro.Dtos.Invoices
         public decimal? TrashFee { get; set; }
 
         [Range(0, double.MaxValue)]
+        public decimal? ExtraFee { get; set; }
+
+        [Range(0, double.MaxValue)]
         public decimal? DiscountAmount { get; set; }
 
         [Range(0, double.MaxValue)]
@@ -24,6 +27,8 @@ namespace NhaTro.Dtos.Invoices
 
         [Range(0, double.MaxValue)]
         public decimal? DepositDebtAmount { get; set; }
+
+        public string? ExtraFeeNote { get; set; }
 
         public string? Note { get; set; }
     }
