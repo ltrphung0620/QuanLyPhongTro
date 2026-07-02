@@ -105,7 +105,8 @@ namespace NhaTro.Services
                                 });
 
                                 AddMoneyRow(table, "Ti\u1EC1n ph\u00F2ng", invoice.RoomFee);
-                                AddMoneyRow(table, BuildElectricityLabel(invoice), invoice.ElectricityFee);
+                                AddMoneyRow(table, "Ti\u1EC1n \u0111i\u1EC7n", invoice.ElectricityFee);
+                                AddElectricityReadingRow(table, invoice);
                                 AddMoneyRow(table, "Ti\u1EC1n n\u01B0\u1EDBc", invoice.WaterFee);
                                 AddMoneyRow(table, "Ti\u1EC1n r\u00E1c", invoice.TrashFee);
                                 AddMoneyRow(table, "Ph\u00ED ph\u00E1t sinh", invoice.ExtraFee);
@@ -215,6 +216,21 @@ namespace NhaTro.Services
         {
             table.Cell().Element(CellLabel).Text(label).SemiBold().FontColor(Colors.Grey.Darken1);
             table.Cell().Element(CellValue).Text(FormatMoney(amount));
+        }
+
+        private static void AddElectricityReadingRow(TableDescriptor table, InvoiceDto invoice)
+        {
+            if (!invoice.PreviousReading.HasValue || !invoice.CurrentReading.HasValue)
+            {
+                return;
+            }
+
+            table.Cell()
+                .ColumnSpan(2)
+                .PaddingBottom(4)
+                .Text(BuildElectricityReadingText(invoice))
+                .FontSize(9)
+                .FontColor(Colors.Grey.Darken1);
         }
 
         private static void EnsurePdfFontsRegistered()
@@ -341,14 +357,9 @@ namespace NhaTro.Services
             return $"H\u00D3A \u0110\u01A0N TI\u1EC0N PH\u00D2NG {roomCode} {FormatBillingMonth(invoice.BillingMonth).ToUpperInvariant()}";
         }
 
-        private static string BuildElectricityLabel(InvoiceDto invoice)
+        private static string BuildElectricityReadingText(InvoiceDto invoice)
         {
-            if (invoice.PreviousReading.HasValue && invoice.CurrentReading.HasValue)
-            {
-                return $"Ti\u1EC1n \u0111i\u1EC7n\nS\u1ED1 \u0111i\u1EC7n th\u00E1ng tr\u01B0\u1EDBc: {invoice.PreviousReading.Value:N0} | S\u1ED1 \u0111i\u1EC7n th\u00E1ng n\u00E0y: {invoice.CurrentReading.Value:N0}";
-            }
-
-            return "Ti\u1EC1n \u0111i\u1EC7n";
+            return $"S\u1ED1 \u0111i\u1EC7n th\u00E1ng tr\u01B0\u1EDBc: {invoice.PreviousReading!.Value:N0} | S\u1ED1 \u0111i\u1EC7n th\u00E1ng n\u00E0y: {invoice.CurrentReading!.Value:N0}";
         }
 
         private static string FormatBillingMonth(DateOnly? value)
