@@ -197,6 +197,36 @@
 }
 
 /* Premium styling for "Thu tiền" button */
+.invoice-list-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-hover);
+}
+
+.invoice-list-total__label {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 750;
+  color: var(--text-primary);
+}
+
+.invoice-list-total__note {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.invoice-list-total strong {
+  flex-shrink: 0;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
 .btn-collect-money {
   display: inline-flex !important;
   align-items: center !important;

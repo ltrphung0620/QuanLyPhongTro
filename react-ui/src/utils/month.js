@@ -4,6 +4,10 @@ export function getMonthValue(date = new Date()) {
   return `${yyyy}-${mm}`
 }
 
+export function getCurrentMonthValue(date = new Date()) {
+  return getMonthValue(date)
+}
+
 export function getPreviousMonthValue(date = new Date()) {
   return getMonthValue(new Date(date.getFullYear(), date.getMonth() - 1, 1))
 }

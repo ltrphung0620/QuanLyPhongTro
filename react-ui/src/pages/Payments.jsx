@@ -30,12 +30,12 @@ import {
 } from '../api'
 import './Payments.css'
 import { useNotification } from '../context/NotificationContext'
-import { getPreviousMonthValue } from '../utils/month'
+import { getCurrentMonthValue } from '../utils/month'
 import { sortByRoomCode } from '../utils/roomSort'
 
 export default function Payments() {
   const { toast, confirm } = useNotification()
-  const [thang, setThang] = useState(getPreviousMonthValue)
+  const [thang, setThang] = useState(getCurrentMonthValue)
   
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)

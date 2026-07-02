@@ -32,12 +32,12 @@ import {
 } from '../api'
 import './Invoices.css'
 import { useNotification } from '../context/NotificationContext'
-import { getPreviousMonthValue } from '../utils/month'
+import { getCurrentMonthValue } from '../utils/month'
 import { sortByRoomCode } from '../utils/roomSort'
 
 export default function Invoices() {
   const { toast, confirm } = useNotification()
-  const [thang, setThang] = useState(getPreviousMonthValue)
+  const [thang, setThang] = useState(getCurrentMonthValue)
   
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -442,6 +442,10 @@ export default function Invoices() {
     return matchesStatus && matchesSearch
   }))
 
+  const visibleInvoiceCurrentMonthTotal = filteredInvoices.reduce((sum, inv) => {
+    return sum + (Number(inv.totalAmount || 0) - Number(inv.debtAmount || 0))
+  }, 0)
+
   return (
     <div className="page-body">
       <div className="invoices-header">
@@ -652,6 +656,13 @@ export default function Invoices() {
                   ))}
                 </tbody>
               </table>
+              <div className="invoice-list-total">
+                <div>
+                  <span className="invoice-list-total__label">Tổng tiền hóa đơn tháng này</span>
+                  <span className="invoice-list-total__note">Không tính nợ cũ chuyển kỳ</span>
+                </div>
+                <strong>{dinhDangTien(visibleInvoiceCurrentMonthTotal)}</strong>
+              </div>
             </div>
           )}
         </>
