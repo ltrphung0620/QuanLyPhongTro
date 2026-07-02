@@ -18,6 +18,8 @@ namespace NhaTro.Repositories
         {
             var query = _context.Invoices
                 .Include(x => x.Room)
+                .Include(x => x.Contract)
+                    .ThenInclude(x => x!.Tenant)
                 .Where(x => x.ReplacedByInvoiceId == null)
                 .AsQueryable();
 
@@ -42,6 +44,8 @@ namespace NhaTro.Repositories
         {
             return await _context.Invoices
                 .Include(x => x.Room)
+                .Include(x => x.Contract)
+                    .ThenInclude(x => x!.Tenant)
                 .Include(x => x.ReplacingInvoices)
                 .Include(x => x.Transactions)
                 .Include(x => x.PaymentTransactions)

@@ -897,6 +897,7 @@ namespace NhaTro.Services
                 RoomId = i.RoomId,
                 RoomCode = i.Room?.RoomCode,
                 ContractId = i.ContractId,
+                TenantName = i.Contract?.Tenant?.FullName,
                 InvoiceType = i.InvoiceType,
                 BillingMonth = i.BillingMonth,
                 FromDate = i.FromDate,
