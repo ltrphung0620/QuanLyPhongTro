@@ -3,6 +3,7 @@ using NhaTro.Dtos.Pricing;
 using NhaTro.Interfaces.Repositories;
 using NhaTro.Interfaces.Services;
 using NhaTro.Models;
+using NhaTro.Utils;
 
 namespace NhaTro.Services
 {
@@ -35,7 +36,9 @@ namespace NhaTro.Services
         {
             DateOnly? normalizedMonth = month.HasValue ? NormalizeMonth(month.Value) : null;
             var data = await _invoiceRepo.GetAllAsync(roomId, normalizedMonth, status);
-            return data.Select(MapToDto).ToList();
+            return SortByRoomCode(data.Select(MapToDto), x => x.RoomCode)
+                .ThenByDescending(x => x.CreatedAt)
+                .ToList();
         }
 
         public async Task<InvoiceDto?> GetByIdAsync(int invoiceId)
@@ -147,7 +150,9 @@ namespace NhaTro.Services
         {
             DateOnly? normalizedMonth = month.HasValue ? NormalizeMonth(month.Value) : null;
             var data = await _invoiceRepo.GetUnpaidAsync(normalizedMonth);
-            return data.Select(MapToDto).ToList();
+            return SortByRoomCode(data.Select(MapToDto), x => x.RoomCode)
+                .ThenByDescending(x => x.CreatedAt)
+                .ToList();
         }
 
         public async Task<InvoiceDto?> GetByPaymentCodeAsync(string paymentCode)
@@ -298,7 +303,7 @@ namespace NhaTro.Services
                 });
             }
 
-            return result;
+            return SortByRoomCode(result, x => x.RoomCode).ToList();
         }
 
         public async Task<List<InvoiceDto>> MonthlyBulkCreateAsync(InvoiceBulkCreateDto dto)
@@ -344,7 +349,9 @@ namespace NhaTro.Services
                 await AttachPendingTransactionsToInvoiceAsync(invoice);
             }
 
-            return createdInvoices.Select(MapToDto).ToList();
+            return SortByRoomCode(createdInvoices.Select(MapToDto), x => x.RoomCode)
+                .ThenByDescending(x => x.CreatedAt)
+                .ToList();
         }
 
         public async Task<InvoiceDto?> ReplaceAsync(int invoiceId, InvoiceReplaceDto dto)
@@ -900,6 +907,14 @@ namespace NhaTro.Services
                 Note = i.Note,
                 CreatedAt = i.CreatedAt
             };
+        }
+
+        private static IOrderedEnumerable<T> SortByRoomCode<T>(IEnumerable<T> items, Func<T, string?> roomCodeSelector)
+        {
+            return items
+                .OrderBy(x => RoomCodeSort.GetGroup(roomCodeSelector(x)))
+                .ThenBy(x => RoomCodeSort.GetNumber(roomCodeSelector(x)))
+                .ThenBy(x => roomCodeSelector(x));
         }
 
         private async Task<InvoiceDto> MapToDtoWithMeterReadingAsync(Invoice invoice)

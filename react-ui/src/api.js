@@ -263,6 +263,34 @@ export async function downloadInvoicePdf(id) {
   return response.blob()
 }
 
+export async function downloadInvoiceImagesZip(month, status = null) {
+  const token = localStorage.getItem('token')
+  const activeOrgId = localStorage.getItem('activeOrganizationId')
+  const headers = {
+    Accept: 'application/zip',
+    Authorization: `Bearer ${token}`
+  }
+
+  if (activeOrgId) {
+    headers['X-Organization-Id'] = activeOrgId
+  }
+
+  const response = await fetch(`${gocApi}/Invoices/images.zip${taoQuery({ month, status })}`, {
+    headers
+  })
+
+  if (!response.ok) {
+    let message = 'Khong the tai anh hoa don'
+    try {
+      const error = await response.json()
+      message = error.message || message
+    } catch {}
+    throw new Error(message)
+  }
+
+  return response.blob()
+}
+
 export async function downloadAssistantFile(downloadUrl) {
   const token = localStorage.getItem('token')
   const response = await fetch(`${gocApi.replace(/\/api$/, '')}${downloadUrl}`, {

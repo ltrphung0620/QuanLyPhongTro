@@ -69,14 +69,40 @@ namespace NhaTro.Authorization
                 .IgnoreQueryFilters()
                 .AnyAsync(p => p.UserId == userId && p.OrganizationId == activeOrgId && p.PageKey == "dashboard" && p.CanAccess);
 
-            var isDashboardRead = HttpMethods.IsGet(context.HttpContext.Request.Method)
+            var isGetRequest = HttpMethods.IsGet(context.HttpContext.Request.Method);
+            var isDashboardRead = isGetRequest
                 && hasDashboard
                 && (_permission == "rooms" || _permission == "reports" || _permission == "invoices");
 
-            if (!isDashboardRead)
+            var isDependencyRead = isGetRequest && await CanReadDependencyAsync(db, userId, activeOrgId.Value);
+
+            if (!isDashboardRead && !isDependencyRead)
             {
                 context.Result = new ForbidResult();
             }
+        }
+
+        private async Task<bool> CanReadDependencyAsync(NhaTroDbContext db, int userId, int organizationId)
+        {
+            var allowedSourcePermissions = _permission switch
+            {
+                "contracts" => new[] { "invoices", "meter-readings" },
+                "pricing-settings" => new[] { "invoices", "meter-readings", "contracts" },
+                _ => Array.Empty<string>()
+            };
+
+            if (allowedSourcePermissions.Length == 0)
+            {
+                return false;
+            }
+
+            return await db.AdminOrganizationPagePermissions
+                .IgnoreQueryFilters()
+                .AnyAsync(p =>
+                    p.UserId == userId &&
+                    p.OrganizationId == organizationId &&
+                    p.CanAccess &&
+                    allowedSourcePermissions.Contains(p.PageKey));
         }
     }
 }

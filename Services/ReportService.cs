@@ -6,6 +6,7 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using System.Globalization;
+using NhaTro.Utils;
 
 namespace NhaTro.Services
 {
@@ -92,7 +93,9 @@ namespace NhaTro.Services
 
             return invoices
                 .Where(x => x.InvoiceType == "monthly" && x.ReplacedByInvoiceId == null)
-                .OrderBy(x => x.RoomId)
+                .OrderBy(x => RoomCodeSort.GetGroup(x.Room?.RoomCode))
+                .ThenBy(x => RoomCodeSort.GetNumber(x.Room?.RoomCode))
+                .ThenBy(x => x.Room?.RoomCode)
                 .Select(x => new PaymentStatusItemDto
                 {
                     InvoiceId = x.InvoiceId,

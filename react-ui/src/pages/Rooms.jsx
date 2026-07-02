@@ -22,6 +22,7 @@ import {
   layHopDongActiveCuaPhong 
 } from '../api'
 import './Rooms.css'
+import { sortByRoomCode } from '../utils/roomSort'
 
 export default function Rooms() {
   const [rooms, setRooms] = useState([])
@@ -55,7 +56,7 @@ export default function Rooms() {
     setError(null)
     try {
       const data = await layDanhSachPhong()
-      setRooms(data)
+      setRooms(sortByRoomCode(data))
     } catch (err) {
       console.error(err)
       setError(err.message || 'Không thể tải danh sách phòng')
@@ -180,11 +181,11 @@ export default function Rooms() {
   }
 
   // Filtered rooms
-  const filteredRooms = rooms.filter(room => {
+  const filteredRooms = sortByRoomCode(rooms.filter(room => {
     const matchesStatus = selectedStatus === 'all' || room.status === selectedStatus
     const matchesSearch = (room.roomCode || '').toLowerCase().includes(searchQuery.toLowerCase())
     return matchesStatus && matchesSearch
-  })
+  }))
 
   return (
     <div className="page-body">

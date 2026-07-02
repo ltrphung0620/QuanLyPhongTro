@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using NhaTro.Utils;
 
 namespace NhaTro.Services
 {
@@ -55,7 +56,13 @@ namespace NhaTro.Services
         public async Task<List<MeterReadingDto>> GetAllAsync(int? roomId = null, DateOnly? month = null)
         {
             var data = await _meterRepo.GetAllAsync(roomId, month);
-            return data.Select(MapToDto).ToList();
+            return data
+                .Select(MapToDto)
+                .OrderBy(x => RoomCodeSort.GetGroup(x.RoomCode))
+                .ThenBy(x => RoomCodeSort.GetNumber(x.RoomCode))
+                .ThenBy(x => x.RoomCode)
+                .ThenByDescending(x => x.BillingMonth)
+                .ToList();
         }
 
         public async Task<MeterReadingDto> CreateAsync(CreateMeterReadingDto dto)
@@ -393,7 +400,11 @@ namespace NhaTro.Services
                 });
             }
 
-            return results;
+            return results
+                .OrderBy(x => RoomCodeSort.GetGroup(x.RoomCode))
+                .ThenBy(x => RoomCodeSort.GetNumber(x.RoomCode))
+                .ThenBy(x => x.RoomCode)
+                .ToList();
         }
 
         private static DateOnly NormalizeMonth(DateOnly value)

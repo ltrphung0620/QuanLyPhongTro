@@ -2,6 +2,7 @@ using NhaTro.Dtos.Rooms;
 using NhaTro.Interfaces.Repositories;
 using NhaTro.Interfaces.Services;
 using NhaTro.Models;
+using NhaTro.Utils;
 
 namespace NhaTro.Services
 {
@@ -28,7 +29,12 @@ namespace NhaTro.Services
             }
 
             var rooms = await _roomRepository.GetAllAsync(status);
-            return rooms.Select(MapToDto).ToList();
+            return rooms
+                .Select(MapToDto)
+                .OrderBy(x => RoomCodeSort.GetGroup(x.RoomCode))
+                .ThenBy(x => RoomCodeSort.GetNumber(x.RoomCode))
+                .ThenBy(x => x.RoomCode)
+                .ToList();
         }
 
         public async Task<RoomDto?> GetByIdAsync(int roomId)
