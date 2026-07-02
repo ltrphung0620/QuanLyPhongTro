@@ -176,7 +176,7 @@ export default function Payments() {
 
     const payload = {
       transactionDirection: ledgerForm.transactionDirection,
-      category: ledgerForm.category,
+      category: ledgerForm.category || 'operating',
       itemName: ledgerForm.itemName.trim() || null,
       amount: amountVal,
       transactionDate: ledgerForm.transactionDate,
@@ -370,7 +370,6 @@ export default function Payments() {
                     <tr>
                       <th>Khoản thu/chi</th>
                       <th>Phòng</th>
-                      <th>Danh mục</th>
                       <th>Số tiền</th>
                       <th>Ngày phát sinh</th>
                       <th>Ghi chú</th>
@@ -391,11 +390,6 @@ export default function Payments() {
                           </div>
                         </td>
                         <td>{tx.relatedRoomCode || <span className="text-muted">—</span>}</td>
-                        <td>
-                          <span className={`cat-badge ${tx.category}`}>
-                            {tx.category === 'operating' ? 'Vận hành' : 'Khác'}
-                          </span>
-                        </td>
                         <td>
                           <span className={tx.transactionDirection === 'income' ? 'text-success font-bold' : 'text-danger font-bold'}>
                             {tx.transactionDirection === 'income' ? '+' : '-'}{dinhDangTien(tx.amount)}
@@ -543,8 +537,7 @@ export default function Payments() {
                   </div>
                 )}
 
-                <div className="form-row">
-                  <div className="form-group">
+                <div className="form-group">
                     <label className="form-label" htmlFor="tx-dir">Loại phát sinh</label>
                     <select 
                       id="tx-dir" 
@@ -555,20 +548,6 @@ export default function Payments() {
                       <option value="expense">Chi tiền (Chi phí vận hành)</option>
                       <option value="income">Thu tiền (Doanh thu phát sinh)</option>
                     </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="tx-cat">Phân nhóm mục</label>
-                    <select 
-                      id="tx-cat" 
-                      className="form-control"
-                      value={ledgerForm.category}
-                      onChange={(e) => setLedgerForm({...ledgerForm, category: e.target.value})}
-                    >
-                      <option value="operating">Vận hành thường kỳ</option>
-                      <option value="other">Khác</option>
-                    </select>
-                  </div>
                 </div>
 
                 <div className="form-group">

@@ -18,8 +18,10 @@ import { layBaoCaoThang, layDanhSachPhong } from '../api'
 import './Dashboard.css'
 import { getCurrentMonthValue } from '../utils/month'
 import { sortByRoomCode } from '../utils/roomSort'
+import { useAuth } from '../context/AuthContext'
 
 export default function Dashboard() {
+  const { user } = useAuth()
   const [thang, setThang] = useState(getCurrentMonthValue)
   
   const [loading, setLoading] = useState(true)
@@ -122,6 +124,11 @@ export default function Dashboard() {
   const dinhDangTien = (so) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(so)
   }
+
+  const activeOrganization = user?.activeOrganization || user?.organization
+  const orgIdentity = `${activeOrganization?.name || ''} ${activeOrganization?.code || ''}`.toLowerCase()
+  const isNhaTro110 = orgIdentity.includes('110')
+  const splitProfitAmount = stats.loiNhuan / 2
 
   const timTenPhong = (roomId) => {
     const phong = danhSachPhong.find(p => p.roomId === roomId)
@@ -253,12 +260,27 @@ export default function Dashboard() {
                   <DollarSign size={18} />
                 </div>
               </div>
-              <div className="stat-value">{dinhDangTien(stats.loiNhuan)}</div>
-              <div className="stat-breakdown">
-                <span className={stats.loiNhuan >= 0 ? 'text-success' : 'text-danger'}>
-                  {stats.loiNhuan >= 0 ? 'Dòng tiền dương' : 'Dòng tiền âm'}
-                </span>
-              </div>
+              {isNhaTro110 ? (
+                <div className="profit-split-list">
+                  <div className="profit-split-row">
+                    <span>Gđ Nam-Loan</span>
+                    <strong>{dinhDangTien(splitProfitAmount)}</strong>
+                  </div>
+                  <div className="profit-split-row">
+                    <span>Ông bà</span>
+                    <strong>{dinhDangTien(splitProfitAmount)}</strong>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="stat-value">{dinhDangTien(stats.loiNhuan)}</div>
+                  <div className="stat-breakdown">
+                    <span className={stats.loiNhuan >= 0 ? 'text-success' : 'text-danger'}>
+                      {stats.loiNhuan >= 0 ? 'Dòng tiền dương' : 'Dòng tiền âm'}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="dashboard-card stat-card">

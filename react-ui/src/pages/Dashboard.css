@@ -254,6 +254,39 @@
   align-items: center;
 }
 
+.profit-split-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.profit-split-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.profit-split-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.profit-split-row span {
+  font-size: 0.86rem;
+  color: var(--text-secondary);
+  font-weight: 650;
+}
+
+.profit-split-row strong {
+  font-size: 1.08rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
 .text-success {
   color: var(--success) !important;
   font-weight: 600;

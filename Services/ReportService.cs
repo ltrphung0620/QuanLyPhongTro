@@ -131,17 +131,15 @@ namespace NhaTro.Services
                 .Select(invoice => new
                 {
                     Invoice = invoice,
-                    TransactionDate = invoice.PaidAt.HasValue 
-                        ? DateOnly.FromDateTime(invoice.PaidAt.Value) 
-                        : (invoice.BillingMonth ?? DateOnly.FromDateTime(invoice.CreatedAt))
+                    TransactionDate = ResolveInvoiceLedgerDate(invoice)
                 })
                 .Where(x => x.TransactionDate >= fromDate && x.TransactionDate <= toDate)
                 .Select(x => new SalesLedgerRowDto
                 {
                     PaymentTransactionId = -x.Invoice.InvoiceId,
                     TransactionDate = x.TransactionDate,
-                    Description = $"Thu tiền mặt phòng {x.Invoice.Room?.RoomCode} - hóa đơn #{x.Invoice.InvoiceId}",
-                    Amount = x.Invoice.PaidAmount ?? x.Invoice.TotalAmount,
+                    Description = BuildInvoicePaymentDescription(x.Invoice),
+                    Amount = CalculateRecognizedRevenue(x.Invoice),
                     RoomCode = x.Invoice.Room?.RoomCode,
                     PaymentCode = x.Invoice.PaymentCode,
                     ReferenceCode = x.Invoice.PaymentReference,
@@ -249,10 +247,10 @@ namespace NhaTro.Services
 
             if (payment.ProcessedAt.HasValue)
             {
-                return DateOnly.FromDateTime(payment.ProcessedAt.Value);
+                return DateOnly.FromDateTime(ToVietnamBusinessTime(payment.ProcessedAt.Value));
             }
 
-            return DateOnly.FromDateTime(payment.CreatedAt);
+            return DateOnly.FromDateTime(ToVietnamBusinessTime(payment.CreatedAt));
         }
 
         private static SalesLedgerRowDto MapToSalesLedgerRow(Models.PaymentTransaction payment, DateOnly transactionDate)
@@ -263,7 +261,11 @@ namespace NhaTro.Services
             var invoiceId = payment.MatchedInvoiceId;
             var descriptionParts = new List<string>();
 
-            if (!string.IsNullOrWhiteSpace(roomCode))
+            if (payment.MatchedInvoice != null)
+            {
+                descriptionParts.Add(BuildInvoicePaymentDescription(payment.MatchedInvoice));
+            }
+            else if (!string.IsNullOrWhiteSpace(roomCode))
             {
                 descriptionParts.Add($"Thu tiền phòng {roomCode}");
             }
@@ -291,12 +293,42 @@ namespace NhaTro.Services
                 PaymentTransactionId = payment.PaymentTransactionId,
                 TransactionDate = transactionDate,
                 Description = string.Join(" - ", descriptionParts),
-                Amount = payment.TransferAmount ?? 0,
+                Amount = payment.MatchedInvoice == null
+                    ? payment.TransferAmount ?? 0
+                    : CalculateRecognizedRevenue(payment.MatchedInvoice),
                 RoomCode = roomCode,
                 PaymentCode = paymentCode,
                 ReferenceCode = referenceCode,
                 PaymentMethod = "Chuyển khoản"
             };
+        }
+
+        private static DateOnly ResolveInvoiceLedgerDate(Models.Invoice invoice)
+        {
+            if (invoice.PaidAt.HasValue)
+            {
+                return DateOnly.FromDateTime(ToVietnamBusinessTime(invoice.PaidAt.Value));
+            }
+
+            return invoice.BillingMonth
+                ?? DateOnly.FromDateTime(ToVietnamBusinessTime(invoice.CreatedAt));
+        }
+
+        private static DateTime ToVietnamBusinessTime(DateTime value)
+        {
+            return value.Kind == DateTimeKind.Local ? value : value.AddHours(7);
+        }
+
+        private static string BuildInvoicePaymentDescription(Models.Invoice invoice)
+        {
+            var roomCode = string.IsNullOrWhiteSpace(invoice.Room?.RoomCode)
+                ? $"#{invoice.InvoiceId}"
+                : invoice.Room.RoomCode.Trim();
+
+            var billingMonth = invoice.BillingMonth
+                ?? ResolveInvoiceLedgerDate(invoice);
+
+            return $"Thu tiền phòng {roomCode} tháng {billingMonth:MM/yyyy}";
         }
 
         private static decimal CalculateRecognizedRevenue(Models.Invoice invoice)

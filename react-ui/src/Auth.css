@@ -22,27 +22,30 @@
 /* Split Pane Layout Container */
 .auth-split-container {
   display: flex;
+  flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
   width: 100%;
   background-color: var(--bg-card);
-  overflow: hidden;
+  overflow: auto;
 }
 
 /* Left Column: Form Section */
 .auth-left-pane {
-  flex: 1;
+  flex: 1 1 auto;
+  width: 100%;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 40px;
+  padding: 48px 24px 28px;
   background-color: var(--bg-card);
   position: relative;
 }
 
 .auth-form-wrapper {
   width: 100%;
-  max-width: 380px;
+  max-width: 420px;
   display: flex;
   flex-direction: column;
   animation: authSlideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
@@ -254,6 +257,37 @@
   color: var(--lph-blue);
 }
 
+.auth-owner-footer {
+  width: 100%;
+  border-top: 1px solid var(--lph-border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  padding: 16px 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.auth-owner-footer strong {
+  color: var(--lph-text-dark);
+}
+
+.auth-owner-footer a {
+  color: var(--lph-text-dark);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.auth-owner-footer a:hover {
+  color: var(--lph-blue);
+  text-decoration: underline;
+}
+
 .auth-footer-link {
   margin-top: 24px;
   text-align: center;
@@ -403,6 +437,27 @@
   }
   
   .auth-left-pane {
-    padding: 24px;
+    padding: 32px 20px 24px;
+  }
+}
+
+@media (max-width: 640px) {
+  .auth-left-pane {
+    justify-content: flex-start;
+    padding-top: 28px;
+  }
+
+  .auth-brand-logo {
+    margin-bottom: 24px;
+  }
+
+  .auth-title {
+    font-size: 1.95rem;
+  }
+
+  .auth-owner-footer {
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 18px;
   }
 }
