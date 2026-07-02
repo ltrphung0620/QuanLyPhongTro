@@ -12,14 +12,14 @@ import {
 import { laySalesLedger, downloadSalesLedgerPdf } from '../api'
 import './Reports.css'
 import { useNotification } from '../context/NotificationContext'
-import { getPreviousMonthValue, getRelativeMonthValue } from '../utils/month'
+import { getCurrentMonthValue, getRelativeMonthValue } from '../utils/month'
 import { sortByRoomCode } from '../utils/roomSort'
 
 export default function Reports() {
   const { toast } = useNotification()
   const [fromMonth, setFromMonth] = useState(() => getRelativeMonthValue(-6))
   
-  const [toMonth, setToMonth] = useState(getPreviousMonthValue)
+  const [toMonth, setToMonth] = useState(getCurrentMonthValue)
   
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)

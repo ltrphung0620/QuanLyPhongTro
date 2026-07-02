@@ -16,11 +16,11 @@ import {
 } from 'lucide-react'
 import { layBaoCaoThang, layDanhSachPhong } from '../api'
 import './Dashboard.css'
-import { getPreviousMonthValue } from '../utils/month'
+import { getCurrentMonthValue } from '../utils/month'
 import { sortByRoomCode } from '../utils/roomSort'
 
 export default function Dashboard() {
-  const [thang, setThang] = useState(getPreviousMonthValue)
+  const [thang, setThang] = useState(getCurrentMonthValue)
   
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
