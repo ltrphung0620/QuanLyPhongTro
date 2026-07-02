@@ -93,8 +93,15 @@ export default function Invoices() {
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [editTarget, setEditTarget] = useState(null) // invoice object
   const [editForm, setEditForm] = useState({
+    roomFee: '0',
+    electricityFee: '0',
+    waterFee: '0',
+    trashFee: '0',
+    extraFee: '0',
     discountAmount: '0',
     debtAmount: '0',
+    depositDebtAmount: '0',
+    extraFeeNote: '',
     note: ''
   })
   const [editError, setEditError] = useState(null)
@@ -205,8 +212,15 @@ export default function Invoices() {
   const handleOpenEditModal = (invoice) => {
     setEditTarget(invoice)
     setEditForm({
+      roomFee: String(invoice.roomFee || 0),
+      electricityFee: String(invoice.electricityFee || 0),
+      waterFee: String(invoice.waterFee || 0),
+      trashFee: String(invoice.trashFee || 0),
+      extraFee: String(invoice.extraFee || 0),
       discountAmount: String(invoice.discountAmount || 0),
       debtAmount: String(invoice.debtAmount || 0),
+      depositDebtAmount: String(invoice.depositDebtAmount || 0),
+      extraFeeNote: invoice.extraFeeNote || '',
       note: invoice.note || ''
     })
     setEditError(null)
@@ -220,8 +234,15 @@ export default function Invoices() {
     setEditSubmitting(true)
 
     const dto = {
+      roomFee: parseFloat(editForm.roomFee) || 0,
+      electricityFee: parseFloat(editForm.electricityFee) || 0,
+      waterFee: parseFloat(editForm.waterFee) || 0,
+      trashFee: parseFloat(editForm.trashFee) || 0,
+      extraFee: parseFloat(editForm.extraFee) || 0,
       discountAmount: parseFloat(editForm.discountAmount) || 0,
       debtAmount: parseFloat(editForm.debtAmount) || 0,
+      depositDebtAmount: parseFloat(editForm.depositDebtAmount) || 0,
+      extraFeeNote: editForm.extraFeeNote,
       note: editForm.note
     }
 
@@ -939,6 +960,47 @@ export default function Invoices() {
                     <span>{editError}</span>
                   </div>
                 )}
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-room-fee">Tiền phòng (đ)</label>
+                    <input type="number" id="edit-room-fee" className="form-control" min="0" required value={editForm.roomFee} onChange={(e) => setEditForm({...editForm, roomFee: e.target.value})} onWheel={(e) => e.target.blur()} />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-electricity-fee">Tiền điện (đ)</label>
+                    <input type="number" id="edit-electricity-fee" className="form-control" min="0" required value={editForm.electricityFee} onChange={(e) => setEditForm({...editForm, electricityFee: e.target.value})} onWheel={(e) => e.target.blur()} />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-water-fee">Tiền nước (đ)</label>
+                    <input type="number" id="edit-water-fee" className="form-control" min="0" required value={editForm.waterFee} onChange={(e) => setEditForm({...editForm, waterFee: e.target.value})} onWheel={(e) => e.target.blur()} />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-trash-fee">Tiền rác (đ)</label>
+                    <input type="number" id="edit-trash-fee" className="form-control" min="0" required value={editForm.trashFee} onChange={(e) => setEditForm({...editForm, trashFee: e.target.value})} onWheel={(e) => e.target.blur()} />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-extra-fee">Phí phát sinh (đ)</label>
+                    <input type="number" id="edit-extra-fee" className="form-control" min="0" required value={editForm.extraFee} onChange={(e) => setEditForm({...editForm, extraFee: e.target.value})} onWheel={(e) => e.target.blur()} />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-deposit-debt">Nợ tiền cọc (đ)</label>
+                    <input type="number" id="edit-deposit-debt" className="form-control" min="0" required value={editForm.depositDebtAmount} onChange={(e) => setEditForm({...editForm, depositDebtAmount: e.target.value})} onWheel={(e) => e.target.blur()} />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="edit-extra-note">Ghi chú phí phát sinh</label>
+                  <input type="text" id="edit-extra-note" className="form-control" placeholder="Ví dụ: Phụ thu, hoàn tiền, dịch vụ khác..." value={editForm.extraFeeNote} onChange={(e) => setEditForm({...editForm, extraFeeNote: e.target.value})} />
+                </div>
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="edit-discount">Số tiền giảm giá (đ)</label>

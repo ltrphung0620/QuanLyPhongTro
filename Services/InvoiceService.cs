@@ -440,6 +440,9 @@ namespace NhaTro.Services
             if (dto.TrashFee.HasValue)
                 invoice.TrashFee = dto.TrashFee.Value;
 
+            if (dto.ExtraFee.HasValue)
+                invoice.ExtraFee = dto.ExtraFee.Value;
+
             if (dto.DiscountAmount.HasValue)
                 invoice.DiscountAmount = dto.DiscountAmount.Value;
 
@@ -448,6 +451,9 @@ namespace NhaTro.Services
 
             if (dto.DepositDebtAmount.HasValue)
                 invoice.DepositDebtAmount = dto.DepositDebtAmount.Value;
+
+            if (dto.ExtraFeeNote != null)
+                invoice.ExtraFeeNote = string.IsNullOrWhiteSpace(dto.ExtraFeeNote) ? null : dto.ExtraFeeNote.Trim();
 
             if (dto.Note != null)
                 invoice.Note = string.IsNullOrWhiteSpace(dto.Note) ? null : dto.Note.Trim();
