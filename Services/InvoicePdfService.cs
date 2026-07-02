@@ -91,6 +91,7 @@ namespace NhaTro.Services
 
                         column.Item().Text(BuildInvoiceHeading(invoice)).FontSize(22).SemiBold();
                         column.Item().Text($"Ng\u00E0y in: {FormatDateTime(DateTime.Now)}").FontSize(10).FontColor(Colors.Grey.Darken1);
+                        column.Item().Text(BuildTenantLine(invoice)).FontSize(12).SemiBold().FontColor(Colors.Grey.Darken2);
 
                         column.Item().Element(Card).Column(costs =>
                         {
@@ -355,6 +356,15 @@ namespace NhaTro.Services
                 : invoice.RoomCode.Trim().ToUpperInvariant();
 
             return $"H\u00D3A \u0110\u01A0N TI\u1EC0N PH\u00D2NG {roomCode} {FormatBillingMonth(invoice.BillingMonth).ToUpperInvariant()}";
+        }
+
+        private static string BuildTenantLine(InvoiceDto invoice)
+        {
+            var tenantName = string.IsNullOrWhiteSpace(invoice.TenantName)
+                ? "Ch\u01B0a c\u00F3 d\u1EEF li\u1EC7u"
+                : invoice.TenantName.Trim();
+
+            return $"Ng\u01B0\u1EDDi thu\u00EA: {tenantName}";
         }
 
         private static string BuildElectricityReadingText(InvoiceDto invoice)

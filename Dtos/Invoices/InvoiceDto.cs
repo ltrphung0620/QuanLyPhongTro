@@ -7,6 +7,7 @@ namespace NhaTro.Dtos.Invoices
         public int RoomId { get; set; }
         public string? RoomCode { get; set; }
         public int? ContractId { get; set; }
+        public string? TenantName { get; set; }
 
         public string InvoiceType { get; set; } = string.Empty;
 
