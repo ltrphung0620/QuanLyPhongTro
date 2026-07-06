@@ -219,6 +219,10 @@ namespace NhaTro.Data
                     .HasColumnName("actual_room_price")
                     .HasPrecision(18, 2);
 
+                entity.Property(e => e.TrashFee)
+                    .HasColumnName("trash_fee")
+                    .HasPrecision(18, 2);
+
                 entity.Property(e => e.Status)
                     .HasColumnName("status")
                     .HasMaxLength(20)
@@ -274,6 +278,7 @@ namespace NhaTro.Data
                     t.HasCheckConstraint("CK_contracts_expected_end_date", "expected_end_date IS NULL OR expected_end_date >= start_date");
                     t.HasCheckConstraint("CK_contracts_occupant_count", "occupant_count > 0");
                     t.HasCheckConstraint("CK_contracts_actual_room_price", "actual_room_price > 0");
+                    t.HasCheckConstraint("CK_contracts_trash_fee", "trash_fee >= 0");
                 });
 
                 entity.HasQueryFilter(e => _currentUserService.Role == "SuperAdmin" || e.OrganizationId == _currentUserService.OrganizationId);

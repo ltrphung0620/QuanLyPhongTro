@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NhaTro.Data;
 
@@ -11,9 +12,11 @@ using NhaTro.Data;
 namespace NhaTro.Migrations
 {
     [DbContext(typeof(NhaTroDbContext))]
-    partial class NhaTroDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260706091255_AddContractTrashFee")]
+    partial class AddContractTrashFee
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

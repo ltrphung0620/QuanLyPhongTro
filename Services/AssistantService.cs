@@ -1302,7 +1302,8 @@ namespace NhaTro.Services
                 DepositAmount = ParseOptionalDecimal(command, "depositAmount") ?? ParseDecimal(command, "actualRoomPrice"),
                 DepositPaidAmount = ParseOptionalDecimal(command, "depositPaidAmount"),
                 ActualRoomPrice = ParseDecimal(command, "actualRoomPrice"),
-                OccupantCount = ParseInt(command, "occupantCount")
+                OccupantCount = ParseInt(command, "occupantCount"),
+                TrashFee = ParseOptionalDecimal(command, "trashFee")
             });
             return SuccessResponse(command, $"Đã tạo hợp đồng phòng {result.RoomCode} cho {result.TenantName}.", result);
         }
@@ -1788,14 +1789,14 @@ namespace NhaTro.Services
         private async Task<AssistantResponseDto> PreviewContractUpdateAsync(AssistantCommandDto command)
         {
             var contract = await ResolveContractAsync(command, requireActive: true);
-            EnsureAnyParam(command, "startDate", "expectedEndDate", "depositAmount", "depositPaidAmount", "occupantCount", "actualRoomPrice");
+            EnsureAnyParam(command, "startDate", "expectedEndDate", "depositAmount", "depositPaidAmount", "occupantCount", "actualRoomPrice", "trashFee");
             return ConfirmationResponse(command, $"Mình sẽ cập nhật hợp đồng phòng {contract.RoomCode}.", new { contract, changes = NonEmptyParams(command) });
         }
 
         private async Task<AssistantResponseDto> ExecuteContractUpdateAsync(AssistantCommandDto command)
         {
             var contract = await ResolveContractAsync(command, requireActive: true);
-            EnsureAnyParam(command, "startDate", "expectedEndDate", "depositAmount", "depositPaidAmount", "occupantCount", "actualRoomPrice");
+            EnsureAnyParam(command, "startDate", "expectedEndDate", "depositAmount", "depositPaidAmount", "occupantCount", "actualRoomPrice", "trashFee");
             var result = await _contractService.UpdateAsync(contract.ContractId, new UpdateContractDto
             {
                 StartDate = ParseOptionalDate(command, "startDate") ?? contract.StartDate,
@@ -1803,7 +1804,8 @@ namespace NhaTro.Services
                 DepositAmount = ParseOptionalDecimal(command, "depositAmount") ?? contract.DepositAmount,
                 DepositPaidAmount = ParseOptionalDecimal(command, "depositPaidAmount") ?? contract.DepositPaidAmount,
                 OccupantCount = ParseOptionalInt(command, "occupantCount") ?? contract.OccupantCount,
-                ActualRoomPrice = ParseOptionalDecimal(command, "actualRoomPrice") ?? contract.ActualRoomPrice
+                ActualRoomPrice = ParseOptionalDecimal(command, "actualRoomPrice") ?? contract.ActualRoomPrice,
+                TrashFee = ParseOptionalDecimal(command, "trashFee") ?? contract.TrashFee
             });
             return result == null ? ErrorResponse(command, "Không tìm thấy hợp đồng cần cập nhật.") : SuccessResponse(command, $"Đã cập nhật hợp đồng phòng {result.RoomCode}.", result);
         }

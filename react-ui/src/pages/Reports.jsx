@@ -1,44 +1,42 @@
-import React, { useState, useEffect } from 'react'
-import { 
-  FileSpreadsheet, 
-  Calendar, 
-  Download, 
-  Loader2, 
-  AlertCircle, 
-  Search, 
+import React, { useEffect, useState } from 'react'
+import {
+  AlertCircle,
   ArrowRight,
-  TrendingUp
+  Calendar,
+  Download,
+  FileSpreadsheet,
+  Loader2,
+  Search
 } from 'lucide-react'
-import { laySalesLedger, downloadSalesLedgerPdf } from '../api'
-import './Reports.css'
+import { downloadSalesLedgerPdf, laySalesLedger } from '../api'
 import { useNotification } from '../context/NotificationContext'
 import { getCurrentMonthValue, getRelativeMonthValue } from '../utils/month'
 import { sortByRoomCode } from '../utils/roomSort'
+import './Reports.css'
 
 const LEDGER_OWNER_OPTIONS = [
   { key: '', label: 'Tất cả sổ', fileSuffix: 'TatCa' },
-  { key: 'pham-sai', label: 'Phạm Thị Sài', fileSuffix: 'PhamThiSai' },
+  { key: 'pham-sai', label: 'Phạm Thị Sại', fileSuffix: 'PhamThiSai' },
   { key: 'kim-loan', label: 'Trịnh Thị Kim Loan', fileSuffix: 'TrinhThiKimLoan' }
 ]
 
 export default function Reports() {
   const { toast } = useNotification()
   const [fromMonth, setFromMonth] = useState(() => getRelativeMonthValue(-6))
-  
   const [toMonth, setToMonth] = useState(getCurrentMonthValue)
-  
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [ledger, setLedger] = useState(null)
-  const [exporting, setExporting] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
   const [ledgerOwnerKey, setLedgerOwnerKey] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [ledger, setLedger] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [error, setError] = useState(null)
 
   const taiDuLieu = async () => {
     setLoading(true)
     setError(null)
     const formattedFrom = `${fromMonth}-01`
     const formattedTo = `${toMonth}-01`
+
     try {
       const data = await laySalesLedger(formattedFrom, formattedTo, ledgerOwnerKey || null)
       setLedger(data)
@@ -59,8 +57,14 @@ export default function Reports() {
     const formattedFrom = `${fromMonth}-01`
     const formattedTo = `${toMonth}-01`
     const selectedOwner = LEDGER_OWNER_OPTIONS.find(option => option.key === ledgerOwnerKey) || LEDGER_OWNER_OPTIONS[0]
+
     try {
-      const blob = await downloadSalesLedgerPdf(formattedFrom, formattedTo, `Báo cáo Nhật ký thu tiền từ ${fromMonth} đến ${toMonth}`, ledgerOwnerKey || null)
+      const blob = await downloadSalesLedgerPdf(
+        formattedFrom,
+        formattedTo,
+        `Báo cáo Nhật ký thu tiền từ ${fromMonth} đến ${toMonth}`,
+        ledgerOwnerKey || null
+      )
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -81,94 +85,97 @@ export default function Reports() {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val || 0)
   }
 
-  // Filter rows based on search
-  const filteredRows = sortByRoomCode(ledger?.rows?.filter(r => {
+  const filteredRows = sortByRoomCode(ledger?.rows?.filter(row => {
     const query = searchQuery.toLowerCase().trim()
     if (!query) return true
-    return (
-      (r.roomCode || '').toLowerCase().includes(query) ||
-      (r.description || '').toLowerCase().includes(query) ||
-      String(r.amount).includes(query)
-    )
-  }) || [], r => r.roomCode)
 
-  const transferRows = filteredRows.filter(r => r.paymentMethod === 'Chuyển khoản')
-  const cashRows = filteredRows.filter(r => r.paymentMethod === 'Tiền mặt')
+    return (
+      (row.roomCode || '').toLowerCase().includes(query) ||
+      (row.paymentMethod || '').toLowerCase().includes(query) ||
+      (row.description || '').toLowerCase().includes(query) ||
+      String(row.amount).includes(query)
+    )
+  }) || [], row => row.roomCode)
+
+  const filteredTotal = filteredRows.reduce((sum, row) => sum + row.amount, 0)
 
   return (
-    <div className="page-body">
-      {/* Header section with page banner styling */}
-      <header className="reports-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+    <div className="page-body reports-page">
+      <header className="reports-header">
         <div>
-          <span className="page-eyebrow" style={{ textTransform: 'uppercase', letterSpacing: '1px', fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Báo cáo tài chính</span>
-          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '4px 0 0 0', fontSize: '1.6rem', fontWeight: '800' }}>
+          <span className="page-eyebrow">Báo cáo tài chính</span>
+          <h1 className="page-title reports-page-title">
             <FileSpreadsheet className="text-accent" size={28} />
             Nhật Ký Sổ Quỹ Thu Chi
           </h1>
         </div>
-        
-        <button 
-          className="btn btn-primary"
+
+        <button
+          className="btn btn-primary reports-export-button"
           onClick={handleExportPdf}
           disabled={exporting || loading || !ledger}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: 'var(--radius-md)', fontWeight: 'bold' }}
         >
-          {exporting ? (
-            <Loader2 className="spinner" size={16} />
-          ) : (
-            <Download size={16} />
-          )}
+          {exporting ? <Loader2 className="spinner" size={16} /> : <Download size={16} />}
           Xuất PDF Báo Cáo
         </button>
       </header>
 
-      {/* Filter and search controls panel */}
       <section className="reports-controls-card">
         <div className="reports-controls-row">
           <div className="reports-filter-inputs">
-            <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.8rem', fontWeight: '600' }}>Từ tháng</label>
-              <div className="auth-input-wrapper" style={{ padding: '0 12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center' }}>
-                <Calendar size={16} className="text-muted" style={{ marginRight: '8px' }} />
-                <input 
-                  type="month" 
-                  className="form-control" 
-                  style={{ border: 'none', padding: '10px 0', width: '100%', background: 'transparent' }}
+            <div className="form-group reports-date-field">
+              <label className="form-label">Từ tháng</label>
+              <div className="reports-input-wrapper">
+                <Calendar size={16} className="text-muted" />
+                <input
+                  type="month"
+                  className="form-control reports-input"
                   value={fromMonth}
                   onChange={(e) => setFromMonth(e.target.value)}
                 />
               </div>
             </div>
 
-            <div className="text-muted" style={{ alignSelf: 'flex-end', paddingBottom: '12px', display: 'flex', alignItems: 'center' }}>
+            <div className="text-muted reports-date-arrow">
               <ArrowRight size={18} />
             </div>
 
-            <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.8rem', fontWeight: '600' }}>Đến tháng</label>
-              <div className="auth-input-wrapper" style={{ padding: '0 12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center' }}>
-                <Calendar size={16} className="text-muted" style={{ marginRight: '8px' }} />
-                <input 
-                  type="month" 
-                  className="form-control" 
-                  style={{ border: 'none', padding: '10px 0', width: '100%', background: 'transparent' }}
+            <div className="form-group reports-date-field">
+              <label className="form-label">Đến tháng</label>
+              <div className="reports-input-wrapper">
+                <Calendar size={16} className="text-muted" />
+                <input
+                  type="month"
+                  className="form-control reports-input"
                   value={toMonth}
                   onChange={(e) => setToMonth(e.target.value)}
                   min={fromMonth}
                 />
               </div>
             </div>
+
+            <div className="form-group reports-owner-field">
+              <label className="form-label">Sổ doanh thu</label>
+              <select
+                className="form-control reports-select"
+                value={ledgerOwnerKey}
+                onChange={(e) => setLedgerOwnerKey(e.target.value)}
+              >
+                {LEDGER_OWNER_OPTIONS.map(option => (
+                  <option key={option.key || 'all'} value={option.key}>{option.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="reports-search-wrapper">
-            <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.8rem', fontWeight: '600' }}>Tìm kiếm nhanh</label>
-            <div className="auth-input-wrapper" style={{ padding: '0 12px', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', background: 'var(--bg-primary)' }}>
-              <Search size={16} className="text-muted" style={{ marginRight: '8px' }} />
-              <input 
+            <label className="form-label">Tìm kiếm nhanh</label>
+            <div className="reports-input-wrapper">
+              <Search size={16} className="text-muted" />
+              <input
                 type="text"
-                className="form-control"
-                style={{ border: 'none', padding: '10px 0', width: '100%', fontSize: '0.9rem', background: 'transparent' }}
-                placeholder="Tìm phòng, nội dung..."
+                className="form-control reports-input"
+                placeholder="Tìm phòng, phương thức, nội dung..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -177,194 +184,75 @@ export default function Reports() {
         </div>
       </section>
 
-      <section className="reports-controls-card" style={{ marginTop: '-12px' }}>
-        <div className="reports-controls-row">
-          <div className="form-group" style={{ margin: 0, minWidth: '240px' }}>
-            <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.8rem', fontWeight: '600' }}>Sổ doanh thu</label>
-            <select
-              className="form-control"
-              value={ledgerOwnerKey}
-              onChange={(e) => setLedgerOwnerKey(e.target.value)}
-              style={{ padding: '10px 12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}
-            >
-              {LEDGER_OWNER_OPTIONS.map(option => (
-                <option key={option.key || 'all'} value={option.key}>{option.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </section>
-
       {error && (
-        <div className="error-alert" style={{ marginBottom: '24px', padding: '16px', borderRadius: 'var(--radius-md)', display: 'flex', gap: '12px', alignItems: 'center', backgroundColor: 'var(--danger-light)', color: 'var(--danger)', border: '1px solid rgba(166, 93, 87, 0.2)' }}>
+        <div className="error-alert reports-error-alert">
           <AlertCircle size={18} />
           <span>{error}</span>
         </div>
       )}
 
       {loading ? (
-        <div className="loading-container" style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
+        <div className="loading-container reports-loading">
           <Loader2 className="spinner" size={36} />
           <span>Đang tổng hợp dữ liệu sổ quỹ...</span>
         </div>
-      ) : (
-        <>
-          {ledger && (
-            <>
-              {/* Summary Cards Grid */}
-              <section className="reports-summary-grid" aria-label="Tóm tắt doanh thu">
-                <div className="reports-stat-card total">
-                  <div className="stat-icon-wrapper-premium">
-                    <TrendingUp size={26} />
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '0.8rem', opacity: '0.9', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600' }}>Tổng doanh thu thực nhận</span>
-                    <h2 style={{ fontSize: '1.9rem', fontWeight: '800', marginTop: '4px', margin: 0 }}>
-                      {dinhDangTien(ledger.totalAmount)}
-                    </h2>
-                  </div>
-                </div>
-
-                <div className="reports-stat-card transfer">
-                  <div className="stat-icon-wrapper-premium">
-                    <TrendingUp size={26} />
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '0.8rem', opacity: '0.9', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600' }}>Doanh thu Chuyển khoản</span>
-                    <h2 style={{ fontSize: '1.9rem', fontWeight: '800', marginTop: '4px', margin: 0 }}>
-                      {dinhDangTien(ledger.rows.filter(r => r.paymentMethod === 'Chuyển khoản').reduce((sum, r) => sum + r.amount, 0))}
-                    </h2>
-                  </div>
-                </div>
-
-                <div className="reports-stat-card cash">
-                  <div className="stat-icon-wrapper-premium">
-                    <TrendingUp size={26} />
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '0.8rem', opacity: '0.9', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600' }}>Doanh thu Tiền mặt</span>
-                    <h2 style={{ fontSize: '1.9rem', fontWeight: '800', marginTop: '4px', margin: 0 }}>
-                      {dinhDangTien(ledger.rows.filter(r => r.paymentMethod === 'Tiền mặt').reduce((sum, r) => sum + r.amount, 0))}
-                    </h2>
-                  </div>
-                </div>
-              </section>
-
-              {/* Side-by-Side Tables Container */}
-              <div className="reports-tables-container">
-                
-                {/* Bank Transfer Table Card */}
-                <section className="reports-table-card" aria-label="Doanh thu chuyển khoản">
-                  <div className="reports-table-header">
-                    <div className="reports-table-title">
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#3b82f6', display: 'inline-block' }}></span>
-                      Chi Tiết Doanh Thu Chuyển Khoản
-                    </div>
-                    <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#3b82f6', background: 'rgba(59, 130, 246, 0.1)', padding: '6px 12px', borderRadius: '20px' }}>
-                      Cộng: {dinhDangTien(transferRows.reduce((sum, r) => sum + r.amount, 0))}
-                    </span>
-                  </div>
-
-                  {transferRows.length === 0 ? (
-                    <div className="premium-empty-state">
-                      <FileSpreadsheet size={48} />
-                      <h4>Không có dữ liệu chuyển khoản</h4>
-                      <p>Không tìm thấy bản ghi chuyển khoản nào trong khoảng thời gian đã chọn.</p>
-                    </div>
-                  ) : (
-                    <div className="table-container" style={{ flexGrow: 1, overflowY: 'auto' }}>
-                      <table className="reports-custom-table custom-table">
-                        <thead>
-                          <tr>
-                            <th>Ngày tháng</th>
-                            <th>Phòng</th>
-                            <th>Nội dung chi tiết</th>
-                            <th style={{ textAlign: 'right' }}>Số tiền</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {transferRows.map((row, idx) => (
-                            <tr key={row.paymentTransactionId || idx}>
-                              <td>
-                                <span className="date-cell" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                  {row.transactionDate ? new Date(row.transactionDate).toLocaleDateString('vi-VN') : 'N/A'}
-                                </span>
-                              </td>
-                              <td>
-                                <span className="room-badge-premium">{row.roomCode || 'N/A'}</span>
-                              </td>
-                              <td>
-                                <span style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{row.description}</span>
-                              </td>
-                              <td style={{ textAlign: 'right' }}>
-                                <strong style={{ color: 'var(--success)', fontWeight: '700' }}>+{dinhDangTien(row.amount)}</strong>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </section>
-
-                {/* Cash Table Card */}
-                <section className="reports-table-card" aria-label="Doanh thu tiền mặt">
-                  <div className="reports-table-header">
-                    <div className="reports-table-title">
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block' }}></span>
-                      Chi Tiết Doanh Thu Tiền Mặt
-                    </div>
-                    <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)', padding: '6px 12px', borderRadius: '20px' }}>
-                      Cộng: {dinhDangTien(cashRows.reduce((sum, r) => sum + r.amount, 0))}
-                    </span>
-                  </div>
-
-                  {cashRows.length === 0 ? (
-                    <div className="premium-empty-state">
-                      <FileSpreadsheet size={48} />
-                      <h4>Không có dữ liệu tiền mặt</h4>
-                      <p>Không tìm thấy bản ghi tiền mặt nào trong khoảng thời gian đã chọn.</p>
-                    </div>
-                  ) : (
-                    <div className="table-container" style={{ flexGrow: 1, overflowY: 'auto' }}>
-                      <table className="reports-custom-table custom-table">
-                        <thead>
-                          <tr>
-                            <th>Ngày tháng</th>
-                            <th>Phòng</th>
-                            <th>Nội dung chi tiết</th>
-                            <th style={{ textAlign: 'right' }}>Số tiền</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {cashRows.map((row, idx) => (
-                            <tr key={row.paymentTransactionId || idx}>
-                              <td>
-                                <span className="date-cell" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                  {row.transactionDate ? new Date(row.transactionDate).toLocaleDateString('vi-VN') : 'N/A'}
-                                </span>
-                              </td>
-                              <td>
-                                <span className="room-badge-premium">{row.roomCode || 'N/A'}</span>
-                              </td>
-                              <td>
-                                <span style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{row.description}</span>
-                              </td>
-                              <td style={{ textAlign: 'right' }}>
-                                <strong style={{ color: 'var(--success)', fontWeight: '700' }}>+{dinhDangTien(row.amount)}</strong>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </section>
-                
+      ) : ledger && (
+        <div className="reports-tables-container">
+          <section className="reports-table-card" aria-label="Danh sách doanh thu">
+            <div className="reports-table-header">
+              <div className="reports-table-title">
+                <span className="reports-title-dot" />
+                Danh sách doanh thu
               </div>
-            </>
-          )}
-        </>
+              <span className="reports-table-total">Tổng: {dinhDangTien(filteredTotal)}</span>
+            </div>
+
+            {filteredRows.length === 0 ? (
+              <div className="premium-empty-state">
+                <FileSpreadsheet size={48} />
+                <h4>Không có dữ liệu doanh thu</h4>
+                <p>Không tìm thấy bản ghi nào trong khoảng thời gian đã chọn.</p>
+              </div>
+            ) : (
+              <div className="table-container reports-ledger-table-container">
+                <table className="reports-custom-table custom-table">
+                  <thead>
+                    <tr>
+                      <th>Ngày tháng</th>
+                      <th>Phòng</th>
+                      <th>Phương thức</th>
+                      <th>Nội dung chi tiết</th>
+                      <th style={{ textAlign: 'right' }}>Số tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredRows.map((row, idx) => (
+                      <tr key={row.paymentTransactionId || idx}>
+                        <td>
+                          <span className="date-cell">
+                            {row.transactionDate ? new Date(row.transactionDate).toLocaleDateString('vi-VN') : 'N/A'}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="room-badge-premium">{row.roomCode || 'N/A'}</span>
+                        </td>
+                        <td>
+                          <span className="payment-method-badge">{row.paymentMethod || 'N/A'}</span>
+                        </td>
+                        <td>
+                          <span className="ledger-description">{row.description}</span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <strong className="ledger-amount">+{dinhDangTien(row.amount)}</strong>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
       )}
     </div>
   )

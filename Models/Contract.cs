@@ -28,6 +28,9 @@ namespace NhaTro.Models
         [Column(TypeName = "decimal(18,2)")]
         public decimal ActualRoomPrice { get; set; }
 
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal TrashFee { get; set; } = 30000m;
+
         [Required]
         [MaxLength(20)]
         public string Status { get; set; } = "active"; // active | ended | cancelled

@@ -19,7 +19,7 @@ const KIM_LOAN_ACCOUNT = {
 const PHAM_SAI_ACCOUNT = {
   bankCode: 'acb',
   accountNumber: '194218449',
-  accountName: 'Pham Thi Sai'
+  accountName: 'Phạm Thị Sại'
 }
 
 export function getInvoiceBankAccount(roomCode) {

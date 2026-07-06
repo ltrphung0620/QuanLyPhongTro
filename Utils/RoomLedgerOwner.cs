@@ -5,7 +5,7 @@ namespace NhaTro.Utils
         public const string KimLoanKey = "kim-loan";
         public const string PhamSaiKey = "pham-sai";
         public const string KimLoanName = "Trinh Thi Kim Loan";
-        public const string PhamSaiName = "Pham Thi Sai";
+        public const string PhamSaiName = "Phạm Thị Sại";
 
         private static readonly HashSet<string> KimLoanRoomCodes = new(StringComparer.OrdinalIgnoreCase)
         {
