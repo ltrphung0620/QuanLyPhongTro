@@ -77,6 +77,32 @@ namespace NhaTro.Controllers
             }
         }
 
+        [HttpGet("{id:int}/image")]
+        public async Task<IActionResult> DownloadImage(int id)
+        {
+            try
+            {
+                var invoice = await _service.GetByIdAsync(id);
+                if (invoice == null)
+                {
+                    return NotFound(new { message = "KhÃ´ng tÃ¬m tháº¥y hÃ³a Ä‘Æ¡n." });
+                }
+
+                var images = await _pdfService.GenerateInvoiceImagesAsync(invoice);
+                if (images.Count == 0)
+                {
+                    return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Kh\u00F4ng t\u1EA3i \u0111\u01B0\u1EE3c \u1EA3nh h\u00F3a \u0111\u01A1n." });
+                }
+
+                var fileName = _pdfService.BuildInvoiceImageFileName(invoice);
+                return File(images[0], "image/png", fileName);
+            }
+            catch
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Kh\u00F4ng t\u1EA3i \u0111\u01B0\u1EE3c \u1EA3nh h\u00F3a \u0111\u01A1n." });
+            }
+        }
+
         [HttpGet("images.zip")]
         public async Task<IActionResult> DownloadImagesZip(
             [FromQuery] DateOnly? month,

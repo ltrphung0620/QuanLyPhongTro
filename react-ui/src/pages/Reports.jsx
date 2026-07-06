@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import {
   AlertCircle,
   ArrowRight,
-  Calendar,
   Download,
   FileSpreadsheet,
   Loader2,
@@ -128,7 +127,6 @@ export default function Reports() {
               <div className="form-group reports-date-field">
               <label className="form-label">Từ tháng</label>
               <div className="reports-input-wrapper">
-                <Calendar size={16} className="text-muted" />
                 <input
                   type="month"
                   className="form-control reports-input"
@@ -145,7 +143,6 @@ export default function Reports() {
               <div className="form-group reports-date-field">
               <label className="form-label">Đến tháng</label>
               <div className="reports-input-wrapper">
-                <Calendar size={16} className="text-muted" />
                 <input
                   type="month"
                   className="form-control reports-input"

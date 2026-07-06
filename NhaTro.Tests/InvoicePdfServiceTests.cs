@@ -43,7 +43,7 @@ public class InvoicePdfServiceTests
         var images = await service.GenerateInvoiceImagesAsync(invoice);
 
         Assert.NotEmpty(pdf);
-        Assert.NotEmpty(images);
+        Assert.Single(images);
         Assert.All(images, image => Assert.NotEmpty(image));
     }
 
