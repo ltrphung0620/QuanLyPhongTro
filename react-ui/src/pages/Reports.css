@@ -50,9 +50,9 @@
 
 .reports-controls-row {
   display: grid;
-  grid-template-columns: minmax(170px, 0.85fr) 24px minmax(170px, 0.85fr) minmax(220px, 1fr) minmax(300px, 1.35fr);
+  grid-template-columns: minmax(360px, 1.15fr) minmax(220px, 0.75fr) minmax(360px, 1fr);
   align-items: end;
-  gap: 18px 20px;
+  gap: 18px 28px;
   min-width: 0;
 }
 
@@ -61,10 +61,27 @@
 }
 
 .reports-date-field,
+.reports-date-range-field,
 .reports-owner-field,
 .reports-search-wrapper {
   margin: 0;
   min-width: 0;
+}
+
+.reports-date-range-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.reports-date-range-inputs .reports-date-field {
+  margin: 0;
+}
+
+.reports-date-range-inputs .reports-date-field > .form-label {
+  display: none;
 }
 
 .reports-date-field {
@@ -83,7 +100,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding-bottom: 12px;
+  padding-top: 0;
 }
 
 .reports-input-wrapper {
@@ -292,12 +309,11 @@
 
 @media (max-width: 1200px) {
   .reports-controls-row {
-    grid-template-columns: minmax(170px, 1fr) 24px minmax(170px, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
-  .reports-owner-field,
   .reports-search-wrapper {
-    grid-column: span 3;
+    grid-column: span 2;
   }
 }
 
@@ -317,6 +333,7 @@
   }
 
   .reports-date-field,
+  .reports-date-range-field,
   .reports-owner-field,
   .reports-search-wrapper {
     grid-column: auto;
@@ -333,6 +350,15 @@
     grid-template-columns: 1fr;
   }
 
+  .reports-date-range-inputs {
+    grid-template-columns: 1fr;
+  }
+
+  .reports-date-arrow {
+    display: none;
+  }
+
+  .reports-date-range-field,
   .reports-owner-field,
   .reports-search-wrapper {
     grid-column: auto;
