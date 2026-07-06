@@ -8,8 +8,8 @@ namespace NhaTro.Interfaces.Services
         Task<MonthlyExpenseDto> GetMonthlyExpenseAsync(DateOnly month);
         Task<MonthlyProfitLossDto> GetMonthlyProfitLossAsync(DateOnly month);
         Task<List<PaymentStatusItemDto>> GetPaymentStatusAsync(DateOnly month);
-        Task<SalesLedgerDto> GetSalesLedgerAsync(DateOnly fromMonth, DateOnly toMonth);
+        Task<SalesLedgerDto> GetSalesLedgerAsync(DateOnly fromMonth, DateOnly toMonth, string? ledgerOwnerKey = null);
         Task<byte[]> GenerateSalesLedgerPdfAsync(SalesLedgerPdfRequestDto request);
-        string BuildSalesLedgerPdfFileName(DateOnly fromMonth, DateOnly toMonth);
+        string BuildSalesLedgerPdfFileName(DateOnly fromMonth, DateOnly toMonth, string? ledgerOwnerKey = null);
     }
 }

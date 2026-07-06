@@ -109,13 +109,15 @@ namespace NhaTro.Services
                 .ToList();
         }
 
-        public async Task<SalesLedgerDto> GetSalesLedgerAsync(DateOnly fromMonth, DateOnly toMonth)
+        public async Task<SalesLedgerDto> GetSalesLedgerAsync(DateOnly fromMonth, DateOnly toMonth, string? ledgerOwnerKey = null)
         {
             var (fromDate, toDate) = GetSalesLedgerRange(fromMonth, toMonth);
+            var normalizedOwnerKey = RoomLedgerOwner.NormalizeOwnerKey(ledgerOwnerKey);
 
             var paymentTransactions = await _paymentTransactionRepository.GetAllAsync("paid");
             var transferRows = paymentTransactions
                 .Where(IsQualifiedSalesLedgerPayment)
+                .Where(payment => MatchesLedgerOwner(payment.MatchedInvoice?.Room?.RoomCode, normalizedOwnerKey))
                 .Select(payment => new
                 {
                     Payment = payment,
@@ -128,6 +130,7 @@ namespace NhaTro.Services
             var cashInvoices = await _invoiceRepository.GetAllAsync(null, null, "paid");
             var cashRows = cashInvoices
                 .Where(invoice => string.Equals(invoice.PaymentMethod, "Tiền mặt", StringComparison.OrdinalIgnoreCase))
+                .Where(invoice => MatchesLedgerOwner(invoice.Room?.RoomCode, normalizedOwnerKey))
                 .Select(invoice => new
                 {
                     Invoice = invoice,
@@ -141,6 +144,8 @@ namespace NhaTro.Services
                     Description = BuildInvoicePaymentDescription(x.Invoice),
                     Amount = CalculateRecognizedRevenue(x.Invoice),
                     RoomCode = x.Invoice.Room?.RoomCode,
+                    LedgerOwnerKey = RoomLedgerOwner.ResolveOwnerKey(x.Invoice.Room?.RoomCode),
+                    LedgerOwnerName = RoomLedgerOwner.ResolveOwnerName(x.Invoice.Room?.RoomCode),
                     PaymentCode = x.Invoice.PaymentCode,
                     ReferenceCode = x.Invoice.PaymentReference,
                     PaymentMethod = "Tiền mặt"
@@ -156,6 +161,8 @@ namespace NhaTro.Services
             {
                 FromDate = fromDate,
                 ToDate = toDate,
+                LedgerOwnerKey = normalizedOwnerKey,
+                LedgerOwnerName = RoomLedgerOwner.ResolveOwnerNameByKey(normalizedOwnerKey),
                 TotalAmount = allRows.Sum(x => x.Amount),
                 Rows = allRows
             };
@@ -163,7 +170,7 @@ namespace NhaTro.Services
 
         public async Task<byte[]> GenerateSalesLedgerPdfAsync(SalesLedgerPdfRequestDto request)
         {
-            var ledger = await GetSalesLedgerAsync(request.FromMonth, request.ToMonth);
+            var ledger = await GetSalesLedgerAsync(request.FromMonth, request.ToMonth, request.LedgerOwnerKey);
 
             using var stream = new MemoryStream();
 
@@ -187,11 +194,17 @@ namespace NhaTro.Services
             return stream.ToArray();
         }
 
-        public string BuildSalesLedgerPdfFileName(DateOnly fromMonth, DateOnly toMonth)
+        public string BuildSalesLedgerPdfFileName(DateOnly fromMonth, DateOnly toMonth, string? ledgerOwnerKey = null)
         {
             var normalizedFrom = NormalizeMonth(fromMonth);
             var normalizedTo = NormalizeMonth(toMonth);
-            return $"SoDoanhThu-{normalizedFrom:yyyy-MM}-den-{normalizedTo:yyyy-MM}.pdf";
+            var ownerSuffix = RoomLedgerOwner.NormalizeOwnerKey(ledgerOwnerKey) switch
+            {
+                RoomLedgerOwner.KimLoanKey => "-TrinhThiKimLoan",
+                RoomLedgerOwner.PhamSaiKey => "-PhamThiSai",
+                _ => string.Empty
+            };
+            return $"SoDoanhThu{ownerSuffix}-{normalizedFrom:yyyy-MM}-den-{normalizedTo:yyyy-MM}.pdf";
         }
 
         private static DateOnly NormalizeMonth(DateOnly date)
@@ -236,6 +249,12 @@ namespace NhaTro.Services
                 && string.Equals(payment.TransferType, "in", StringComparison.OrdinalIgnoreCase)
                 && payment.TransferAmount.HasValue
                 && payment.TransferAmount.Value > 0;
+        }
+
+        private static bool MatchesLedgerOwner(string? roomCode, string? ledgerOwnerKey)
+        {
+            return string.IsNullOrWhiteSpace(ledgerOwnerKey)
+                || (!string.IsNullOrWhiteSpace(roomCode) && RoomLedgerOwner.MatchesOwner(roomCode, ledgerOwnerKey));
         }
 
         private static DateOnly ResolveLedgerDate(Models.PaymentTransaction payment)
@@ -297,6 +316,8 @@ namespace NhaTro.Services
                     ? payment.TransferAmount ?? 0
                     : CalculateRecognizedRevenue(payment.MatchedInvoice),
                 RoomCode = roomCode,
+                LedgerOwnerKey = string.IsNullOrWhiteSpace(roomCode) ? null : RoomLedgerOwner.ResolveOwnerKey(roomCode),
+                LedgerOwnerName = string.IsNullOrWhiteSpace(roomCode) ? null : RoomLedgerOwner.ResolveOwnerName(roomCode),
                 PaymentCode = paymentCode,
                 ReferenceCode = referenceCode,
                 PaymentMethod = "Chuyển khoản"
@@ -367,6 +388,10 @@ namespace NhaTro.Services
                 {
                     center.Spacing(4);
                     center.Item().Text("SỔ DOANH THU BÁN HÀNG HÓA, DỊCH VỤ").FontSize(15).SemiBold();
+                    if (!string.IsNullOrWhiteSpace(ledger.LedgerOwnerName))
+                    {
+                        center.Item().Text($"Sổ riêng: {ledger.LedgerOwnerName}").SemiBold();
+                    }
                     center.Item().Text($"Địa điểm kinh doanh: {NormalizePrintableValue(request.BusinessLocation, 28)}");
                     center.Item().Text($"Kỳ kê khai: {BuildLedgerPeriodLabel(ledger.FromDate, ledger.ToDate)}");
                 });

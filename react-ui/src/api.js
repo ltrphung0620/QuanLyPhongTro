@@ -444,11 +444,11 @@ export async function layBaoCaoThang(thang) {
   }
 }
 
-export function laySalesLedger(fromMonth, toMonth) {
-  return goiApi('/Reports/sales-ledger', { fromMonth, toMonth })
+export function laySalesLedger(fromMonth, toMonth, ledgerOwnerKey = null) {
+  return goiApi('/Reports/sales-ledger', { fromMonth, toMonth, ledgerOwnerKey })
 }
 
-export async function downloadSalesLedgerPdf(fromMonth, toMonth, reportTitle = 'Báo cáo Sổ quỹ thu chi') {
+export async function downloadSalesLedgerPdf(fromMonth, toMonth, reportTitle = 'Báo cáo Sổ quỹ thu chi', ledgerOwnerKey = null) {
   const token = localStorage.getItem('token')
   const response = await fetch(`${gocApi}/Reports/sales-ledger/pdf`, {
     method: 'POST',
@@ -457,7 +457,7 @@ export async function downloadSalesLedgerPdf(fromMonth, toMonth, reportTitle = '
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`
     },
-    body: JSON.stringify({ fromMonth, toMonth, reportTitle })
+    body: JSON.stringify({ fromMonth, toMonth, reportTitle, ledgerOwnerKey })
   })
   if (!response.ok) throw new Error('Không thể tải PDF báo cáo sổ quỹ')
   return response.blob()
