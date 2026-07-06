@@ -23,7 +23,7 @@ import {
   thanhToanHoaDon, 
   huyThanhToanHoaDon, 
   xoaHoaDon, 
-  downloadInvoicePdf,
+  downloadInvoiceImage,
   downloadInvoiceImagesZip,
   layDanhSachHopDong,
   thayTheHoaDon,
@@ -394,21 +394,21 @@ export default function Invoices() {
     }
   }
 
-  // Handle download PDF
-  const handleDownloadPdf = async (id, roomCode) => {
+  // Handle download invoice image
+  const handleDownloadImage = async (id, roomCode) => {
     try {
-      const blob = await downloadInvoicePdf(id)
+      const blob = await downloadInvoiceImage(id)
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `HoaDon-${roomCode}-${thang}.pdf`
+      a.download = `HoaDon-${roomCode}-${thang}.png`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
     } catch (err) {
       console.error(err)
-      toast.error(err.message || 'Không thể tải PDF hóa đơn')
+      toast.error(err.message || 'Không thể tải ảnh hóa đơn')
     }
   }
 
@@ -636,8 +636,8 @@ export default function Invoices() {
 
                           <button 
                             className="btn-card-edit"
-                            onClick={() => handleDownloadPdf(inv.invoiceId, inv.roomCode)}
-                            title="Tải hóa đơn PDF"
+                            onClick={() => handleDownloadImage(inv.invoiceId, inv.roomCode)}
+                            title="Tải ảnh hóa đơn"
                             style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
                             <Download size={14} />

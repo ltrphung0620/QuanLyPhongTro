@@ -63,7 +63,6 @@ namespace NhaTro.Services
         private async Task<IDocument> CreateInvoiceDocumentAsync(InvoiceDto invoice)
         {
             var qrBytes = await TryGetQrBytesAsync(invoice);
-            var meterImageBytes = TryGetMeterImageBytes(invoice);
             var bankAccount = ResolveBankQrAccount(invoice.RoomCode);
             var paymentContent = InvoicePaymentContent.Build(invoice);
             var carriedDebt = invoice.DebtAmount + invoice.DepositDebtAmount;
@@ -73,57 +72,57 @@ namespace NhaTro.Services
             {
                 container.Page(page =>
                 {
-                    page.Size(PageSizes.A4);
-                    page.Margin(28);
+                    page.Size(432, 768);
+                    page.Margin(15);
                     page.PageColor(Colors.White);
-                    page.DefaultTextStyle(TextStyle.Default.FontSize(11).FontFamily("Lato", "Arial").FontColor(Colors.Grey.Darken4));
+                    page.DefaultTextStyle(TextStyle.Default.FontSize(10).FontFamily("Lato", "Arial").FontColor(Colors.Grey.Darken4));
 
-                    page.Content().AlignCenter().MaxWidth(500).Column(column =>
+                    page.Content().Column(column =>
                     {
-                        column.Spacing(18);
+                        column.Spacing(8);
 
                         column.Item().AlignCenter().Text("H\u00D3A \u0110\u01A0N TI\u1EC0N PH\u00D2NG")
-                            .FontSize(30)
+                            .FontSize(22)
                             .Bold()
                             .FontColor(Colors.Brown.Darken4);
                         column.Item().AlignCenter().Text(FormatBillingMonth(invoice.BillingMonth).ToUpperInvariant())
-                            .FontSize(20)
+                            .FontSize(14)
                             .Bold()
                             .FontColor(Colors.Brown.Darken3);
 
                         column.Item().Element(SoftCard).Row(row =>
                         {
-                            row.RelativeItem().Element(container => AddInvoiceIdentity(container, "P", "PH\u00D2NG", FormatRoomCode(invoice)));
-                            row.ConstantItem(1).Height(68).Background(Colors.Grey.Lighten2);
-                            row.RelativeItem().Element(container => AddInvoiceIdentity(container, "N", "NG\u01AF\u1EDCI THU\u00CA", FormatTenantName(invoice)));
+                            row.RelativeItem().Element(container => AddInvoiceIdentity(container, "home", "PH\u00D2NG", FormatRoomCode(invoice)));
+                            row.ConstantItem(1).Height(40).Background(Colors.Grey.Lighten2);
+                            row.RelativeItem().Element(container => AddInvoiceIdentity(container, "user", "NG\u01AF\u1EDCI THU\u00CA", FormatTenantName(invoice)));
                         });
 
                         column.Item().Element(SoftCard).Column(items =>
                         {
                             items.Spacing(0);
-                            items.Item().Element(container => AddReceiptLine(container, "P", "Ti\u1EC1n ph\u00F2ng", null, invoice.RoomFee));
-                            items.Item().Element(container => AddReceiptLine(container, "D", "Ti\u1EC1n \u0111i\u1EC7n", BuildElectricityReadingText(invoice), invoice.ElectricityFee));
-                            items.Item().Element(container => AddReceiptLine(container, "N", "Ti\u1EC1n n\u01B0\u1EDBc", null, invoice.WaterFee));
-                            items.Item().Element(container => AddReceiptLine(container, "R", "Ph\u00ED r\u00E1c", null, invoice.TrashFee));
-                            items.Item().Element(container => AddReceiptLine(container, "X", "Ph\u00ED ph\u00E1t sinh", NullIfWhiteSpace(invoice.ExtraFeeNote), invoice.ExtraFee));
-                            items.Item().Element(container => AddReceiptLine(container, "G", "Gi\u1EA3m gi\u00E1", NullIfWhiteSpace(invoice.Note), invoice.DiscountAmount));
-                            items.Item().Element(container => AddReceiptLine(container, "C", "N\u1EE3 c\u0169", BuildDebtNote(invoice), carriedDebt, showDivider: false));
+                            items.Item().Element(container => AddReceiptLine(container, "home", "Ti\u1EC1n ph\u00F2ng", null, invoice.RoomFee));
+                            items.Item().Element(container => AddReceiptLine(container, "zap", "Ti\u1EC1n \u0111i\u1EC7n", BuildElectricityReadingText(invoice), invoice.ElectricityFee));
+                            items.Item().Element(container => AddReceiptLine(container, "drop", "Ti\u1EC1n n\u01B0\u1EDBc", null, invoice.WaterFee));
+                            items.Item().Element(container => AddReceiptLine(container, "trash", "Ph\u00ED r\u00E1c", null, invoice.TrashFee));
+                            items.Item().Element(container => AddReceiptLine(container, "car", "Ph\u00ED ph\u00E1t sinh", NullIfWhiteSpace(invoice.ExtraFeeNote), invoice.ExtraFee));
+                            items.Item().Element(container => AddReceiptLine(container, "tag", "Gi\u1EA3m gi\u00E1", NullIfWhiteSpace(invoice.Note), invoice.DiscountAmount));
+                            items.Item().Element(container => AddReceiptLine(container, "debt", "N\u1EE3 c\u0169", BuildDebtNote(invoice), carriedDebt, showDivider: false));
                         });
 
                         column.Item().Element(TotalCard).Column(total =>
                         {
                             total.Spacing(0);
                             total.Item().Element(container => AddTotalLine(container, "T\u1ED5ng ti\u1EC1n th\u00E1ng n\u00E0y", currentMonthTotal));
-                            total.Item().PaddingVertical(8).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                            total.Item().PaddingVertical(5).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
                             total.Item().Element(container => AddTotalLine(container, "N\u1EE3 c\u0169", carriedDebt));
-                            total.Item().PaddingTop(12).BorderTop(1).BorderColor(Colors.Brown.Lighten2).PaddingTop(14).Row(row =>
+                            total.Item().PaddingTop(9).BorderTop(1).BorderColor(Colors.Brown.Lighten2).PaddingTop(10).Row(row =>
                             {
                                 row.RelativeItem().AlignMiddle().Text("T\u1ED4NG C\u1EA6N THANH TO\u00C1N")
-                                    .FontSize(16)
+                                    .FontSize(13)
                                     .Bold()
                                     .FontColor(Colors.Brown.Darken4);
-                                row.ConstantItem(210).AlignRight().Text(FormatMoney(invoice.TotalAmount))
-                                    .FontSize(24)
+                                row.ConstantItem(130).AlignRight().Text(FormatMoney(invoice.TotalAmount))
+                                    .FontSize(18)
                                     .Bold()
                                     .FontColor(Colors.Brown.Darken4);
                             });
@@ -134,13 +133,13 @@ namespace NhaTro.Services
                             row.Spacing(16);
                             row.RelativeItem().Column(bank =>
                             {
-                                bank.Spacing(12);
+                                bank.Spacing(5);
                                 bank.Item().Row(title =>
                                 {
-                                    title.ConstantItem(42).Element(container => AddIconBadge(container, "B"));
+                                    title.ConstantItem(32).Element(container => AddIconBadge(container, "bank", 27, 15));
                                     title.RelativeItem().AlignMiddle().Text("THANH TO\u00C1N CHUY\u1EC2N KHO\u1EA2N")
                                         .Bold()
-                                        .FontSize(13)
+                                        .FontSize(10)
                                         .FontColor(Colors.Brown.Darken4);
                                 });
 
@@ -150,41 +149,31 @@ namespace NhaTro.Services
                                 AddBankInfoRow(bank, "N\u1ED9i dung CK", paymentContent);
                             });
 
-                            row.ConstantItem(1).Height(190).Background(Colors.Grey.Lighten2);
+                            row.ConstantItem(1).Height(112).Background(Colors.Grey.Lighten2);
 
-                            row.ConstantItem(190).Column(qr =>
+                            row.ConstantItem(126).Column(qr =>
                             {
-                                qr.Spacing(8);
+                                qr.Spacing(5);
                                 qr.Item().AlignCenter().Text("QU\u00C9T M\u00C3 QR \u0110\u1EC2 THANH TO\u00C1N")
                                     .Bold()
-                                    .FontSize(10)
+                                    .FontSize(8)
                                     .FontColor(Colors.Brown.Darken4);
 
                                 if (qrBytes != null)
                                 {
-                                    qr.Item().AlignCenter().Width(150).Height(150).Image(qrBytes).FitArea();
+                                    qr.Item().AlignCenter().Width(88).Height(88).Image(qrBytes).FitArea();
                                 }
                                 else
                                 {
-                                    qr.Item().Width(150).Height(150).Border(1).BorderColor(Colors.Grey.Lighten2)
+                                    qr.Item().AlignCenter().Width(88).Height(88).Border(1).BorderColor(Colors.Grey.Lighten2)
                                         .AlignCenter().AlignMiddle().Text("QR").FontSize(18).Bold();
                                 }
 
                                 qr.Item().AlignCenter().Text("Qu\u00E9t m\u00E3 b\u1EB1ng \u1EE9ng d\u1EE5ng ng\u00E2n h\u00E0ng")
-                                    .FontSize(8)
+                                    .FontSize(7)
                                     .FontColor(Colors.Grey.Darken1);
                             });
                         });
-
-                        if (meterImageBytes != null)
-                        {
-                            column.Item().Element(SoftCard).Column(meterImage =>
-                            {
-                                meterImage.Spacing(8);
-                                meterImage.Item().Text("\u1EA2nh c\u00F4ng t\u01A1 \u0111i\u1EC7n").SemiBold().FontSize(13);
-                                meterImage.Item().AlignCenter().MaxHeight(220).Image(meterImageBytes).FitArea();
-                            });
-                        }
                     });
                 });
             });
@@ -204,7 +193,8 @@ namespace NhaTro.Services
             return container
                 .Border(1)
                 .BorderColor(Colors.Grey.Lighten2)
-                .Padding(18)
+                .CornerRadius(7)
+                .Padding(9)
                 .Background(Colors.White);
         }
 
@@ -213,7 +203,8 @@ namespace NhaTro.Services
             return container
                 .Border(1)
                 .BorderColor(Colors.Brown.Lighten2)
-                .Padding(18)
+                .CornerRadius(7)
+                .Padding(9)
                 .Background(Colors.Brown.Lighten5);
         }
 
@@ -221,19 +212,19 @@ namespace NhaTro.Services
         {
             container.Row(row =>
             {
-                row.ConstantItem(58).Element(item => AddIconBadge(item, iconText));
+                row.ConstantItem(42).Element(item => AddIconBadge(item, iconText, 32, 18));
                 row.RelativeItem().AlignMiddle().Column(column =>
                 {
-                    column.Spacing(4);
-                    column.Item().Text(label).FontSize(10).SemiBold().FontColor(Colors.Grey.Darken1);
-                    column.Item().Text(value).FontSize(18).Bold().FontColor(Colors.Grey.Darken4);
+                    column.Spacing(2);
+                    column.Item().Text(label).FontSize(8).SemiBold().FontColor(Colors.Grey.Darken1);
+                    column.Item().Text(value).FontSize(14).Bold().FontColor(Colors.Grey.Darken4);
                 });
             });
         }
 
         private static void AddReceiptLine(IContainer container, string iconText, string title, string? detail, decimal amount, bool showDivider = true)
         {
-            var lineContainer = container.PaddingVertical(12);
+            var lineContainer = container.PaddingVertical(4);
             if (showDivider)
             {
                 lineContainer = lineContainer.BorderBottom(1).BorderColor(Colors.Grey.Lighten3);
@@ -241,18 +232,18 @@ namespace NhaTro.Services
 
             lineContainer.Row(row =>
             {
-                row.ConstantItem(48).Element(item => AddIconBadge(item, iconText, 34, 11));
+                row.ConstantItem(34).Element(item => AddIconBadge(item, iconText, 24, 13));
                 row.RelativeItem().AlignMiddle().Column(text =>
                 {
-                    text.Spacing(4);
-                    text.Item().Text(title).FontSize(13).Bold().FontColor(Colors.Grey.Darken4);
+                    text.Spacing(2);
+                    text.Item().Text(title).FontSize(10).Bold().FontColor(Colors.Grey.Darken4);
 
                     if (!string.IsNullOrWhiteSpace(detail))
                     {
-                        text.Item().Text(detail).FontSize(9).FontColor(Colors.Grey.Darken1);
+                        text.Item().Text(detail).FontSize(7).FontColor(Colors.Grey.Darken1);
                     }
                 });
-                row.ConstantItem(150).AlignMiddle().AlignRight().Text(FormatMoney(amount)).FontSize(15).Bold();
+                row.ConstantItem(98).AlignMiddle().AlignRight().Text(FormatMoney(amount)).FontSize(12).Bold();
             });
         }
 
@@ -260,8 +251,8 @@ namespace NhaTro.Services
         {
             container.Row(row =>
             {
-                row.RelativeItem().Text(label).FontSize(13).Bold();
-                row.ConstantItem(180).AlignRight().Text(FormatMoney(amount)).FontSize(14).Bold();
+                row.RelativeItem().Text(label).FontSize(11).Bold();
+                row.ConstantItem(110).AlignRight().Text(FormatMoney(amount)).FontSize(11).Bold();
             });
         }
 
@@ -269,9 +260,9 @@ namespace NhaTro.Services
         {
             column.Item().Row(row =>
             {
-                row.ConstantItem(88).Text(label).FontSize(9).FontColor(Colors.Grey.Darken2);
-                row.ConstantItem(10).Text(":").FontSize(9).FontColor(Colors.Grey.Darken2);
-                row.RelativeItem().Text(value).FontSize(9).SemiBold().FontColor(Colors.Grey.Darken4);
+                row.ConstantItem(64).Text(label).FontSize(7.5f).FontColor(Colors.Grey.Darken2);
+                row.ConstantItem(7).Text(":").FontSize(7.5f).FontColor(Colors.Grey.Darken2);
+                row.RelativeItem().Text(value).FontSize(7.5f).SemiBold().FontColor(Colors.Grey.Darken4);
             });
         }
 
@@ -280,13 +271,37 @@ namespace NhaTro.Services
             container
                 .Width(size)
                 .Height(size)
+                .CornerRadius(size / 2)
                 .Background(Colors.Brown.Lighten5)
                 .AlignCenter()
                 .AlignMiddle()
-                .Text(text)
-                .FontSize(fontSize)
-                .Bold()
-                .FontColor(Colors.Brown.Darken4);
+                .Padding(size * 0.24f)
+                .Svg(GetIconSvg(text))
+                .FitArea();
+        }
+
+        private static string GetIconSvg(string icon)
+        {
+            const string color = "#5b2418";
+            var body = icon switch
+            {
+                "home" => """<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h5v-5.5h3V20h5v-9.5"/>""",
+                "user" => """<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-4 3.2-6 7-6s6.3 2 7 6"/>""",
+                "zap" => """<path d="M13 2 5 13h6l-1 9 8-12h-6l1-8Z"/>""",
+                "drop" => """<path d="M12 3s6 6.3 6 11a6 6 0 0 1-12 0c0-4.7 6-11 6-11Z"/>""",
+                "trash" => """<path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M7 7l1 13h8l1-13"/><path d="M10.5 11v5"/><path d="M13.5 11v5"/>""",
+                "car" => """<path d="M6 17h12l1-5-2-4H7l-2 4 1 5Z"/><path d="M7 17v2"/><path d="M17 17v2"/><circle cx="8.5" cy="14" r="1"/><circle cx="15.5" cy="14" r="1"/><path d="M7 10h10"/>""",
+                "tag" => """<path d="M4 12V5h7l9 9-7 7-9-9Z"/><circle cx="8.5" cy="8.5" r="1"/>""",
+                "debt" => """<path d="M6 3h9l3 3v15H6V3Z"/><path d="M14 3v4h4"/><path d="M9 15h5a2 2 0 0 0 0-4h-3a2 2 0 0 1 0-4h5"/><path d="M12.5 6v12"/>""",
+                "bank" => """<path d="M3 10h18L12 4 3 10Z"/><path d="M5 10v8"/><path d="M9 10v8"/><path d="M15 10v8"/><path d="M19 10v8"/><path d="M3 20h18"/>""",
+                _ => """<circle cx="12" cy="12" r="8"/>"""
+            };
+
+            return $"""
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  {body}
+                </svg>
+                """;
         }
 
         private static IContainer CellLabel(IContainer container)

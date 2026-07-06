@@ -263,6 +263,34 @@ export async function downloadInvoicePdf(id) {
   return response.blob()
 }
 
+export async function downloadInvoiceImage(id) {
+  const token = localStorage.getItem('token')
+  const activeOrgId = localStorage.getItem('activeOrganizationId')
+  const headers = {
+    Accept: 'image/png',
+    Authorization: `Bearer ${token}`
+  }
+
+  if (activeOrgId) {
+    headers['X-Organization-Id'] = activeOrgId
+  }
+
+  const response = await fetch(`${gocApi}/Invoices/${id}/image`, {
+    headers
+  })
+
+  if (!response.ok) {
+    let message = 'Khong the tai anh hoa don'
+    try {
+      const error = await response.json()
+      message = error.message || message
+    } catch {}
+    throw new Error(message)
+  }
+
+  return response.blob()
+}
+
 export async function downloadInvoiceImagesZip(month, status = null) {
   const token = localStorage.getItem('token')
   const activeOrgId = localStorage.getItem('activeOrganizationId')
