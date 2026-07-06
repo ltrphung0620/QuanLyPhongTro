@@ -495,7 +495,6 @@ export default function Contracts() {
                     <th>Phòng</th>
                     <th>Khách thuê</th>
                     <th>Giá thuê thực tế</th>
-                    <th>Tiền rác</th>
                     <th>Tiền cọc</th>
                     <th>Thời hạn</th>
                     <th>Trạng thái</th>
@@ -519,9 +518,6 @@ export default function Contracts() {
                       </td>
                       <td>
                         <strong>{dinhDangTien(c.actualRoomPrice)}</strong>
-                      </td>
-                      <td>
-                        <span>{dinhDangTien(c.trashFee || 0)}</span>
                       </td>
                       <td>
                         <div className="details-cell-mini">
