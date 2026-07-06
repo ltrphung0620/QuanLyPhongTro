@@ -13,7 +13,7 @@ namespace NhaTro.Services
     {
         private const string BankCode = "acb";
         private static readonly BankQrAccount KimLoanAccount = new("226448", "Trinh Thi Kim Loan");
-        private static readonly BankQrAccount PhamSaiAccount = new("194218449", "Pham Thi Sai");
+        private static readonly BankQrAccount PhamSaiAccount = new("194218449", "Phạm Thị Sại");
         private static readonly object FontRegistrationLock = new();
         private static bool _fontsRegistered;
 

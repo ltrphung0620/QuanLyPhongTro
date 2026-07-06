@@ -27,7 +27,8 @@ import {
   layBaoCaoKetThucHopDong, 
   ketThucHopDong,
   layDanhSachPhong,
-  layDanhSachNguoiThue
+  layDanhSachNguoiThue,
+  layCauHinhGia
 } from '../api'
 import './Contracts.css'
 import { useNotification } from '../context/NotificationContext'
@@ -42,6 +43,7 @@ export default function Contracts() {
   // Lists for dropdowns
   const [rooms, setRooms] = useState([])
   const [tenants, setTenants] = useState([])
+  const [defaultTrashFee, setDefaultTrashFee] = useState(0)
   
   // Filtering
   const [selectedStatus, setSelectedStatus] = useState('active')
@@ -56,7 +58,8 @@ export default function Contracts() {
     depositAmount: '0',
     depositPaidAmount: '0',
     occupantCount: '1',
-    actualRoomPrice: ''
+    actualRoomPrice: '',
+    trashFee: '0'
   })
   const [createError, setCreateError] = useState(null)
   const [createSubmitting, setCreateSubmitting] = useState(false)
@@ -94,6 +97,7 @@ export default function Contracts() {
     depositPaidAmount: '0',
     occupantCount: '1',
     actualRoomPrice: '',
+    trashFee: '0',
     status: 'Active'
   })
   const [editError, setEditError] = useState(null)
@@ -103,14 +107,16 @@ export default function Contracts() {
     setLoading(true)
     setError(null)
     try {
-      const [contractsData, roomsData, tenantsData] = await Promise.all([
+      const [contractsData, roomsData, tenantsData, pricingData] = await Promise.all([
         layDanhSachHopDong(null, null, true), // includeArchived
         layDanhSachPhong(),
-        layDanhSachNguoiThue()
+        layDanhSachNguoiThue(),
+        layCauHinhGia()
       ])
       setContracts(sortByRoomCode(contractsData))
       setRooms(sortByRoomCode(roomsData))
       setTenants(tenantsData)
+      setDefaultTrashFee(Number(pricingData?.trashFee) || 0)
     } catch (err) {
       console.error(err)
       setError(err.message || 'Không thể tải danh sách hợp đồng')
@@ -131,7 +137,8 @@ export default function Contracts() {
       roomId: roomId,
       actualRoomPrice: room ? room.listedPrice.toString() : '',
       depositAmount: room ? room.listedPrice.toString() : '0',
-      depositPaidAmount: room ? room.listedPrice.toString() : '0'
+      depositPaidAmount: room ? room.listedPrice.toString() : '0',
+      trashFee: prev.trashFee || String(defaultTrashFee)
     }))
   }
 
@@ -150,7 +157,8 @@ export default function Contracts() {
       depositAmount: '0',
       depositPaidAmount: '0',
       occupantCount: '1',
-      actualRoomPrice: ''
+      actualRoomPrice: '',
+      trashFee: String(defaultTrashFee)
     })
     setCreateError(null)
     setCreateModalOpen(true)
@@ -170,7 +178,8 @@ export default function Contracts() {
       depositAmount: parseFloat(createForm.depositAmount),
       depositPaidAmount: parseFloat(createForm.depositPaidAmount),
       occupantCount: parseInt(createForm.occupantCount),
-      actualRoomPrice: parseFloat(createForm.actualRoomPrice)
+      actualRoomPrice: parseFloat(createForm.actualRoomPrice),
+      trashFee: parseFloat(createForm.trashFee)
     }
 
     if (isNaN(values.roomId) || isNaN(values.tenantId)) {
@@ -193,6 +202,12 @@ export default function Contracts() {
 
     if (isNaN(values.actualRoomPrice) || values.actualRoomPrice <= 0) {
       setCreateError('Giá thuê thực tế phải lớn hơn 0')
+      setCreateSubmitting(false)
+      return
+    }
+
+    if (isNaN(values.trashFee) || values.trashFee < 0) {
+      setCreateError('Tiền rác không hợp lệ')
       setCreateSubmitting(false)
       return
     }
@@ -221,6 +236,7 @@ export default function Contracts() {
       depositPaidAmount: String(contract.depositPaidAmount || 0),
       occupantCount: String(contract.occupantCount || 1),
       actualRoomPrice: String(contract.actualRoomPrice || 0),
+      trashFee: String(contract.trashFee || 0),
       status: contract.status || 'Active'
     })
     setEditError(null)
@@ -240,6 +256,7 @@ export default function Contracts() {
       depositPaidAmount: parseFloat(editForm.depositPaidAmount) || 0,
       occupantCount: parseInt(editForm.occupantCount) || 1,
       actualRoomPrice: parseFloat(editForm.actualRoomPrice) || 0,
+      trashFee: parseFloat(editForm.trashFee) || 0,
       status: editForm.status
     }
 
@@ -251,6 +268,12 @@ export default function Contracts() {
 
     if (dto.depositPaidAmount < 0 || dto.depositPaidAmount > dto.depositAmount) {
       setEditError('Tiền cọc đã nhận phải từ 0 đến số tiền cọc phải thu')
+      setEditSubmitting(false)
+      return
+    }
+
+    if (dto.trashFee < 0) {
+      setEditError('Tiền rác không hợp lệ')
       setEditSubmitting(false)
       return
     }
@@ -472,6 +495,7 @@ export default function Contracts() {
                     <th>Phòng</th>
                     <th>Khách thuê</th>
                     <th>Giá thuê thực tế</th>
+                    <th>Tiền rác</th>
                     <th>Tiền cọc</th>
                     <th>Thời hạn</th>
                     <th>Trạng thái</th>
@@ -495,6 +519,9 @@ export default function Contracts() {
                       </td>
                       <td>
                         <strong>{dinhDangTien(c.actualRoomPrice)}</strong>
+                      </td>
+                      <td>
+                        <span>{dinhDangTien(c.trashFee || 0)}</span>
                       </td>
                       <td>
                         <div className="details-cell-mini">
@@ -673,6 +700,20 @@ export default function Contracts() {
                       onChange={(e) => setCreateForm({...createForm, depositAmount: e.target.value})}
                     />
                   </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="create-trash-fee">Tiền rác theo phòng (VND/tháng) *</label>
+                  <input
+                    type="number"
+                    id="create-trash-fee"
+                    className="form-control"
+                    required
+                    min="0"
+                    value={createForm.trashFee}
+                    onChange={(e) => setCreateForm({...createForm, trashFee: e.target.value})}
+                  />
+                  <span className="form-help">Mặc định lấy từ cấu hình giá, có thể chỉnh riêng cho từng hợp đồng.</span>
                 </div>
 
                 <div className="form-group">
@@ -1086,6 +1127,19 @@ export default function Contracts() {
                     />
                   </div>
                 </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="edit-trash-fee">Tiền rác theo phòng (đ/tháng) *</label>
+                  <input
+                    type="number"
+                    id="edit-trash-fee"
+                    className="form-control"
+                    required
+                    min="0"
+                    value={editForm.trashFee}
+                    onChange={(e) => setEditForm({...editForm, trashFee: e.target.value})}
+                  />
+                </div>
+
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="edit-deposit-paid">Tiền cọc đã nhận (đ)</label>

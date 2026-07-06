@@ -26,5 +26,8 @@ namespace NhaTro.Dtos.Contracts
 
         [Range(0.01, double.MaxValue)]
         public decimal ActualRoomPrice { get; set; }
+
+        [Range(0, double.MaxValue)]
+        public decimal? TrashFee { get; set; }
     }
 }

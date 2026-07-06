@@ -104,6 +104,13 @@ namespace NhaTro.Services
                 throw new InvalidOperationException("Tiền cọc đã nhận không được lớn hơn tiền cọc phải thu.");
             }
 
+            var pricing = await _pricingSettingsService.GetAsync();
+            var trashFee = dto.TrashFee ?? pricing.TrashFee;
+            if (trashFee < 0)
+            {
+                throw new InvalidOperationException("Tiền rác không hợp lệ.");
+            }
+
             var contract = new Contract
             {
                 RoomId = dto.RoomId,
@@ -114,6 +121,7 @@ namespace NhaTro.Services
                 DepositPaidAmount = depositPaidAmount,
                 OccupantCount = dto.OccupantCount,
                 ActualRoomPrice = dto.ActualRoomPrice,
+                TrashFee = trashFee,
                 Status = "active",
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -171,10 +179,19 @@ namespace NhaTro.Services
                 throw new InvalidOperationException("Tiền cọc đã nhận không được lớn hơn tiền cọc phải thu.");
             }
 
+            if (dto.TrashFee.HasValue && dto.TrashFee.Value < 0)
+            {
+                throw new InvalidOperationException("Tiền rác không hợp lệ.");
+            }
+
             contract.DepositAmount = dto.DepositAmount;
             contract.DepositPaidAmount = depositPaidAmount;
             contract.OccupantCount = dto.OccupantCount;
             contract.ActualRoomPrice = dto.ActualRoomPrice;
+            if (dto.TrashFee.HasValue)
+            {
+                contract.TrashFee = dto.TrashFee.Value;
+            }
             contract.UpdatedAt = DateTime.UtcNow;
 
             _contractRepository.Update(contract);
@@ -294,7 +311,7 @@ namespace NhaTro.Services
             }
 
             var waterFee = Math.Round((pricing.WaterFeePerPerson / daysInMonth) * numberOfDays * contract.OccupantCount, 2);
-            var trashFee = pricing.TrashFee;
+            var trashFee = contract.TrashFee;
 
             var finalInvoiceAmount = roomFee + electricityFee + waterFee + trashFee;
 
@@ -565,6 +582,7 @@ namespace NhaTro.Services
                 DepositPaidAmount = contract.DepositPaidAmount,
                 OccupantCount = contract.OccupantCount,
                 ActualRoomPrice = contract.ActualRoomPrice,
+                TrashFee = contract.TrashFee,
                 Status = contract.Status,
                 IsArchived = contract.IsArchived,
                 ArchivedAt = contract.ArchivedAt,

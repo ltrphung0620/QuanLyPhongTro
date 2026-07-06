@@ -78,7 +78,7 @@ namespace NhaTro.Services
             var (fromDate, toDate) = GetInvoiceCoveragePeriod(contract, billingMonth);
             var roomFee = CalculateRoomFeeForBillingMonth(contract, billingMonth, fromDate, toDate);
             var water = contract.OccupantCount * pricing.WaterFeePerPerson;
-            var trash = pricing.TrashFee;
+            var trash = contract.TrashFee;
             var extraChargeInfo = await GetInvoiceExtraChargeInfoAsync(dto.RoomId, billingMonth, contract, pricing);
             var discount = dto.DiscountAmount;
             var carryOver = await GetCarryOverInfoAsync(contract.ContractId, billingMonth);
@@ -280,7 +280,7 @@ namespace NhaTro.Services
                 var (fromDate, toDate) = GetInvoiceCoveragePeriod(contract, billingMonth);
                 var roomFee = CalculateRoomFeeForBillingMonth(contract, billingMonth, fromDate, toDate);
                 var water = contract.OccupantCount * pricing.WaterFeePerPerson;
-                var trash = pricing.TrashFee;
+                var trash = contract.TrashFee;
                 var extraChargeInfo = await GetInvoiceExtraChargeInfoAsync(contract.RoomId, billingMonth, contract, pricing);
                 var discount = dto.DefaultDiscountAmount;
                 var carryOver = await GetCarryOverInfoAsync(contract.ContractId, billingMonth);
