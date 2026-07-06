@@ -29,8 +29,19 @@ export function getInvoiceBankAccount(roomCode) {
     : PHAM_SAI_ACCOUNT
 }
 
+export function buildInvoicePaymentContent(invoice) {
+  const tenantName = String(invoice?.tenantName || '').trim() || 'Nguoi thue'
+  const roomCode = String(invoice?.roomCode || '').trim() || `Phong ${invoice?.roomId || ''}`.trim()
+  const billingMonth = String(invoice?.billingMonth || '').trim()
+  const parts = billingMonth.split('-')
+  const monthText = parts.length >= 2 ? `${parts[1]}/${parts[0]}` : billingMonth
+
+  return `${tenantName} dai dien phong ${roomCode} chuyen tien thang ${monthText} theo hoa don`
+}
+
 export function buildInvoiceQrUrl(invoice) {
-  if (!invoice?.paymentCode || !String(invoice.paymentCode).trim()) {
+  const paymentContent = buildInvoicePaymentContent(invoice)
+  if (!paymentContent) {
     return ''
   }
 
@@ -42,7 +53,7 @@ export function buildInvoiceQrUrl(invoice) {
   const account = getInvoiceBankAccount(invoice.roomCode)
   const query = new URLSearchParams({
     amount: String(amount),
-    addInfo: String(invoice.paymentCode).trim(),
+    addInfo: paymentContent,
     accountName: account.accountName
   })
 

@@ -5,6 +5,8 @@ namespace NhaTro.Dtos.Reports
         public DateOnly FromDate { get; set; }
         public DateOnly ToDate { get; set; }
         public string UnitLabel { get; set; } = "dong";
+        public string? LedgerOwnerKey { get; set; }
+        public string? LedgerOwnerName { get; set; }
         public decimal TotalAmount { get; set; }
         public List<SalesLedgerRowDto> Rows { get; set; } = new();
     }

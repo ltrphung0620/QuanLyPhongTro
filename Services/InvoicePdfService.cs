@@ -1,6 +1,7 @@
 using System.Globalization;
 using NhaTro.Dtos.Invoices;
 using NhaTro.Interfaces.Services;
+using NhaTro.Utils;
 using QuestPDF.Drawing;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -13,18 +14,6 @@ namespace NhaTro.Services
         private const string BankCode = "acb";
         private static readonly BankQrAccount KimLoanAccount = new("226448", "Trinh Thi Kim Loan");
         private static readonly BankQrAccount PhamSaiAccount = new("194218449", "Pham Thi Sai");
-        private static readonly HashSet<string> KimLoanRoomCodes = new(StringComparer.OrdinalIgnoreCase)
-        {
-            "A1",
-            "A2",
-            "A3",
-            "Kios 110/2A",
-            "B4",
-            "B5",
-            "B6",
-            "B7",
-            "B8"
-        };
         private static readonly object FontRegistrationLock = new();
         private static bool _fontsRegistered;
 
@@ -167,7 +156,7 @@ namespace NhaTro.Services
 
                         column.Item().Element(Card).Column(qr =>
                         {
-                            qr.Spacing(0);
+                            qr.Spacing(8);
 
                             if (qrBytes != null)
                             {
@@ -182,6 +171,9 @@ namespace NhaTro.Services
                                     .AlignCenter()
                                     .Text("Kh\u00F4ng t\u1EA3i \u0111\u01B0\u1EE3c QR thanh to\u00E1n.");
                             }
+
+                            qr.Item().Text("N\u1ED9i dung chuy\u1EC3n kho\u1EA3n").SemiBold();
+                            qr.Item().Text(InvoicePaymentContent.Build(invoice)).FontSize(10);
                         });
 
                         column.Item()
@@ -320,21 +312,20 @@ namespace NhaTro.Services
         private static string BuildQrUrl(InvoiceDto invoice)
         {
             var amount = Math.Max(0, Math.Round(invoice.TotalAmount));
-            var paymentCode = GetPaymentCode(invoice);
-            if (amount <= 0 || string.IsNullOrWhiteSpace(paymentCode))
+            var paymentContent = InvoicePaymentContent.Build(invoice);
+            if (amount <= 0 || string.IsNullOrWhiteSpace(paymentContent))
             {
                 return string.Empty;
             }
 
             var account = ResolveBankQrAccount(invoice.RoomCode);
-            var query = $"amount={amount.ToString("0", CultureInfo.InvariantCulture)}&addInfo={Uri.EscapeDataString(paymentCode)}&accountName={Uri.EscapeDataString(account.AccountName)}";
+            var query = $"amount={amount.ToString("0", CultureInfo.InvariantCulture)}&addInfo={Uri.EscapeDataString(paymentContent)}&accountName={Uri.EscapeDataString(account.AccountName)}";
             return $"https://img.vietqr.io/image/{BankCode}-{account.AccountNumber}-compact2.jpg?{query}";
         }
 
         private static BankQrAccount ResolveBankQrAccount(string? roomCode)
         {
-            var normalizedRoomCode = roomCode?.Trim();
-            return !string.IsNullOrWhiteSpace(normalizedRoomCode) && KimLoanRoomCodes.Contains(normalizedRoomCode)
+            return RoomLedgerOwner.ResolveOwnerKey(roomCode) == RoomLedgerOwner.KimLoanKey
                 ? KimLoanAccount
                 : PhamSaiAccount;
         }

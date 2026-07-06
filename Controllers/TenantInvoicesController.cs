@@ -42,6 +42,7 @@ namespace NhaTro.Controllers
             var query = _context.Invoices
                 .Include(i => i.Room)
                 .Include(i => i.Contract)
+                    .ThenInclude(c => c!.Tenant)
                 .Where(i => i.Contract != null && i.Contract.TenantId == tenantId.Value);
 
             if (!string.IsNullOrEmpty(status))
@@ -72,6 +73,7 @@ namespace NhaTro.Controllers
             var invoice = await _context.Invoices
                 .Include(i => i.Room)
                 .Include(i => i.Contract)
+                    .ThenInclude(c => c!.Tenant)
                 .FirstOrDefaultAsync(i => i.InvoiceId == id);
 
             if (invoice == null || invoice.Contract == null || invoice.Contract.TenantId != tenantId.Value)
@@ -93,6 +95,7 @@ namespace NhaTro.Controllers
             var invoice = await _context.Invoices
                 .Include(i => i.Room)
                 .Include(i => i.Contract)
+                    .ThenInclude(c => c!.Tenant)
                 .FirstOrDefaultAsync(i => i.InvoiceId == id);
 
             if (invoice == null || invoice.Contract == null || invoice.Contract.TenantId != tenantId.Value)
@@ -121,6 +124,7 @@ namespace NhaTro.Controllers
                 RoomId = invoice.RoomId,
                 RoomCode = invoice.Room?.RoomCode,
                 ContractId = invoice.ContractId,
+                TenantName = invoice.Contract?.Tenant?.FullName,
                 InvoiceType = invoice.InvoiceType,
                 BillingMonth = invoice.BillingMonth,
                 FromDate = invoice.FromDate,

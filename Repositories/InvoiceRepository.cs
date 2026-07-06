@@ -56,6 +56,8 @@ namespace NhaTro.Repositories
         {
             return await _context.Invoices
                 .Include(x => x.Room)
+                .Include(x => x.Contract)
+                    .ThenInclude(x => x!.Tenant)
                 .FirstOrDefaultAsync(x =>
                     x.RoomId == roomId &&
                     x.BillingMonth == month &&
@@ -67,6 +69,8 @@ namespace NhaTro.Repositories
         {
             return await _context.Invoices
                 .Include(x => x.Room)
+                .Include(x => x.Contract)
+                    .ThenInclude(x => x!.Tenant)
                 .FirstOrDefaultAsync(x =>
                     x.ContractId == contractId &&
                     x.BillingMonth == month &&
@@ -115,6 +119,8 @@ namespace NhaTro.Repositories
         {
             var query = _context.Invoices
                 .Include(x => x.Room)
+                .Include(x => x.Contract)
+                    .ThenInclude(x => x!.Tenant)
                 .Where(x => x.Status == "unpaid" && x.ReplacedByInvoiceId == null);
 
             if (month.HasValue)
@@ -130,6 +136,8 @@ namespace NhaTro.Repositories
             return await _context.Invoices
                 .IgnoreQueryFilters()
                 .Include(x => x.Room)
+                .Include(x => x.Contract)
+                    .ThenInclude(x => x!.Tenant)
                 .Where(x => x.Status == "unpaid" && x.ReplacedByInvoiceId == null)
                 .OrderBy(x => x.RoomId)
                 .ToListAsync();
@@ -140,6 +148,8 @@ namespace NhaTro.Repositories
             var normalized = paymentCode.Trim();
             return await _context.Invoices
                 .Include(x => x.Room)
+                .Include(x => x.Contract)
+                    .ThenInclude(x => x!.Tenant)
                 .FirstOrDefaultAsync(x => x.PaymentCode == normalized && x.ReplacedByInvoiceId == null);
         }
 
@@ -149,6 +159,8 @@ namespace NhaTro.Repositories
             return await _context.Invoices
                 .IgnoreQueryFilters()
                 .Include(x => x.Room)
+                .Include(x => x.Contract)
+                    .ThenInclude(x => x!.Tenant)
                 .FirstOrDefaultAsync(x => x.PaymentCode == normalized && x.ReplacedByInvoiceId == null);
         }
 

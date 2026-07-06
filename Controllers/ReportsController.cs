@@ -48,9 +48,9 @@ namespace NhaTro.Controllers
         }
 
         [HttpGet("sales-ledger")]
-        public async Task<IActionResult> GetSalesLedger([FromQuery] DateOnly fromMonth, [FromQuery] DateOnly toMonth)
+        public async Task<IActionResult> GetSalesLedger([FromQuery] DateOnly fromMonth, [FromQuery] DateOnly toMonth, [FromQuery] string? ledgerOwnerKey = null)
         {
-            var result = await _reportService.GetSalesLedgerAsync(fromMonth, toMonth);
+            var result = await _reportService.GetSalesLedgerAsync(fromMonth, toMonth, ledgerOwnerKey);
             return Ok(result);
         }
 
@@ -58,7 +58,7 @@ namespace NhaTro.Controllers
         public async Task<IActionResult> ExportSalesLedgerPdf([FromBody] SalesLedgerPdfRequestDto request)
         {
             var pdfBytes = await _reportService.GenerateSalesLedgerPdfAsync(request);
-            var fileName = _reportService.BuildSalesLedgerPdfFileName(request.FromMonth, request.ToMonth);
+            var fileName = _reportService.BuildSalesLedgerPdfFileName(request.FromMonth, request.ToMonth, request.LedgerOwnerKey);
 
             return File(pdfBytes, "application/pdf", fileName);
         }
@@ -67,6 +67,7 @@ namespace NhaTro.Controllers
         public async Task<IActionResult> DownloadSalesLedgerPdf(
             [FromQuery] DateOnly fromMonth,
             [FromQuery] DateOnly toMonth,
+            [FromQuery] string? ledgerOwnerKey = null,
             [FromQuery] string? businessOwnerName = null,
             [FromQuery] string? address = null,
             [FromQuery] string? taxCode = null,
@@ -76,13 +77,14 @@ namespace NhaTro.Controllers
             {
                 FromMonth = fromMonth,
                 ToMonth = toMonth,
+                LedgerOwnerKey = ledgerOwnerKey,
                 BusinessOwnerName = businessOwnerName,
                 Address = address,
                 TaxCode = taxCode,
                 BusinessLocation = businessLocation
             };
             var pdfBytes = await _reportService.GenerateSalesLedgerPdfAsync(request);
-            return File(pdfBytes, "application/pdf", _reportService.BuildSalesLedgerPdfFileName(fromMonth, toMonth));
+            return File(pdfBytes, "application/pdf", _reportService.BuildSalesLedgerPdfFileName(fromMonth, toMonth, ledgerOwnerKey));
         }
     }
 }

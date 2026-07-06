@@ -4,6 +4,7 @@ namespace NhaTro.Dtos.Reports
     {
         public DateOnly FromMonth { get; set; }
         public DateOnly ToMonth { get; set; }
+        public string? LedgerOwnerKey { get; set; }
 
         public string? BusinessOwnerName { get; set; }
         public string? Address { get; set; }

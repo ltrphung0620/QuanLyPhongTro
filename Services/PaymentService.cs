@@ -5,6 +5,7 @@ using NhaTro.Dtos.Payments;
 using NhaTro.Interfaces.Repositories;
 using NhaTro.Interfaces.Services;
 using NhaTro.Models;
+using NhaTro.Utils;
 
 namespace NhaTro.Services
 {
@@ -322,6 +323,25 @@ namespace NhaTro.Services
                     var normalizedCode = NormalizeText(paymentCode);
                     if (normalizedCandidate.Contains(normalizedCode, StringComparison.OrdinalIgnoreCase))
                         return paymentCode;
+                }
+            }
+
+            foreach (var rawCandidate in candidates)
+            {
+                var normalizedCandidate = NormalizeText(rawCandidate);
+                foreach (var invoice in unpaidInvoices)
+                {
+                    if (string.IsNullOrWhiteSpace(invoice.PaymentCode))
+                    {
+                        continue;
+                    }
+
+                    var normalizedInstruction = NormalizeText(InvoicePaymentContent.Build(invoice));
+                    if (normalizedCandidate.Contains(normalizedInstruction, StringComparison.OrdinalIgnoreCase)
+                        || normalizedInstruction.Contains(normalizedCandidate, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return invoice.PaymentCode.Trim();
+                    }
                 }
             }
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { FileText, Download, Eye, Calendar, DollarSign, RefreshCw, AlertCircle, Info } from 'lucide-react'
 import { layHoaDonTenant, taiPdfHoaDonTenant } from '../api'
 import { useNotification } from '../context/NotificationContext'
-import { buildInvoiceQrUrl } from '../utils/bankQr'
+import { buildInvoicePaymentContent, buildInvoiceQrUrl } from '../utils/bankQr'
 import { sortByRoomCode } from '../utils/roomSort'
 
 export default function TenantInvoices() {
@@ -312,7 +312,7 @@ export default function TenantInvoices() {
               </div>
 
               {/* Payment code if unpaid */}
-              {selectedInvoice.status !== 'paid' && selectedInvoice.paymentCode && (
+              {selectedInvoice.status !== 'paid' && (
                 <div style={{
                   background: 'rgba(59, 130, 246, 0.03)',
                   border: '1px dashed var(--primary-color, #3b82f6)',
@@ -352,7 +352,7 @@ export default function TenantInvoices() {
                     borderRadius: '6px',
                     display: 'inline-block'
                   }}>
-                    {selectedInvoice.paymentCode}
+                    {buildInvoicePaymentContent(selectedInvoice)}
                   </div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', maxWidth: '90%' }}>
                     * Hệ thống sẽ tự động gạch nợ hóa đơn ngay khi nhận được giao dịch chuyển khoản đúng cú pháp.

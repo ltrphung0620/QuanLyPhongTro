@@ -15,6 +15,12 @@ import { useNotification } from '../context/NotificationContext'
 import { getCurrentMonthValue, getRelativeMonthValue } from '../utils/month'
 import { sortByRoomCode } from '../utils/roomSort'
 
+const LEDGER_OWNER_OPTIONS = [
+  { key: '', label: 'Tất cả sổ', fileSuffix: 'TatCa' },
+  { key: 'pham-sai', label: 'Phạm Thị Sài', fileSuffix: 'PhamThiSai' },
+  { key: 'kim-loan', label: 'Trịnh Thị Kim Loan', fileSuffix: 'TrinhThiKimLoan' }
+]
+
 export default function Reports() {
   const { toast } = useNotification()
   const [fromMonth, setFromMonth] = useState(() => getRelativeMonthValue(-6))
@@ -26,6 +32,7 @@ export default function Reports() {
   const [ledger, setLedger] = useState(null)
   const [exporting, setExporting] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [ledgerOwnerKey, setLedgerOwnerKey] = useState('')
 
   const taiDuLieu = async () => {
     setLoading(true)
@@ -33,7 +40,7 @@ export default function Reports() {
     const formattedFrom = `${fromMonth}-01`
     const formattedTo = `${toMonth}-01`
     try {
-      const data = await laySalesLedger(formattedFrom, formattedTo)
+      const data = await laySalesLedger(formattedFrom, formattedTo, ledgerOwnerKey || null)
       setLedger(data)
     } catch (err) {
       console.error(err)
@@ -45,18 +52,19 @@ export default function Reports() {
 
   useEffect(() => {
     taiDuLieu()
-  }, [fromMonth, toMonth])
+  }, [fromMonth, toMonth, ledgerOwnerKey])
 
   const handleExportPdf = async () => {
     setExporting(true)
     const formattedFrom = `${fromMonth}-01`
     const formattedTo = `${toMonth}-01`
+    const selectedOwner = LEDGER_OWNER_OPTIONS.find(option => option.key === ledgerOwnerKey) || LEDGER_OWNER_OPTIONS[0]
     try {
-      const blob = await downloadSalesLedgerPdf(formattedFrom, formattedTo, `Báo cáo Nhật ký thu tiền từ ${fromMonth} đến ${toMonth}`)
+      const blob = await downloadSalesLedgerPdf(formattedFrom, formattedTo, `Báo cáo Nhật ký thu tiền từ ${fromMonth} đến ${toMonth}`, ledgerOwnerKey || null)
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `SoDoanhThu_${fromMonth}_den_${toMonth}.pdf`
+      a.download = `SoDoanhThu_${selectedOwner.fileSuffix}_${fromMonth}_den_${toMonth}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -165,6 +173,24 @@ export default function Reports() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="reports-controls-card" style={{ marginTop: '-12px' }}>
+        <div className="reports-controls-row">
+          <div className="form-group" style={{ margin: 0, minWidth: '240px' }}>
+            <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.8rem', fontWeight: '600' }}>Sổ doanh thu</label>
+            <select
+              className="form-control"
+              value={ledgerOwnerKey}
+              onChange={(e) => setLedgerOwnerKey(e.target.value)}
+              style={{ padding: '10px 12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}
+            >
+              {LEDGER_OWNER_OPTIONS.map(option => (
+                <option key={option.key || 'all'} value={option.key}>{option.label}</option>
+              ))}
+            </select>
           </div>
         </div>
       </section>
