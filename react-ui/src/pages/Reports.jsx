@@ -122,8 +122,10 @@ export default function Reports() {
 
       <section className="reports-controls-card">
         <div className="reports-controls-row">
-          <div className="reports-filter-inputs">
-            <div className="form-group reports-date-field">
+          <div className="form-group reports-date-range-field">
+            <label className="form-label">Khoảng tháng</label>
+            <div className="reports-date-range-inputs">
+              <div className="form-group reports-date-field">
               <label className="form-label">Từ tháng</label>
               <div className="reports-input-wrapper">
                 <Calendar size={16} className="text-muted" />
@@ -140,7 +142,7 @@ export default function Reports() {
               <ArrowRight size={18} />
             </div>
 
-            <div className="form-group reports-date-field">
+              <div className="form-group reports-date-field">
               <label className="form-label">Đến tháng</label>
               <div className="reports-input-wrapper">
                 <Calendar size={16} className="text-muted" />
@@ -154,7 +156,10 @@ export default function Reports() {
               </div>
             </div>
 
-            <div className="form-group reports-owner-field">
+            </div>
+          </div>
+
+          <div className="form-group reports-owner-field">
               <label className="form-label">Sổ doanh thu</label>
               <select
                 className="form-control reports-select"
@@ -165,7 +170,6 @@ export default function Reports() {
                   <option key={option.key || 'all'} value={option.key}>{option.label}</option>
                 ))}
               </select>
-            </div>
           </div>
 
           <div className="reports-search-wrapper">

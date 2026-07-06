@@ -131,6 +131,7 @@ namespace NhaTro.Services
 
                         column.Item().Element(SoftCard).Row(row =>
                         {
+                            row.Spacing(16);
                             row.RelativeItem().Column(bank =>
                             {
                                 bank.Spacing(12);
@@ -149,7 +150,7 @@ namespace NhaTro.Services
                                 AddBankInfoRow(bank, "N\u1ED9i dung CK", paymentContent);
                             });
 
-                            row.ConstantItem(1).PaddingHorizontal(10).Height(190).Background(Colors.Grey.Lighten2);
+                            row.ConstantItem(1).Height(190).Background(Colors.Grey.Lighten2);
 
                             row.ConstantItem(190).Column(qr =>
                             {
