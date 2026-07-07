@@ -72,28 +72,28 @@ namespace NhaTro.Services
             {
                 container.Page(page =>
                 {
-                    page.Size(432, 768);
-                    page.Margin(15);
+                    page.Size(432, 820);
+                    page.Margin(13);
                     page.PageColor(Colors.White);
-                    page.DefaultTextStyle(TextStyle.Default.FontSize(10).FontFamily("Lato", "Arial").FontColor(Colors.Grey.Darken4));
+                    page.DefaultTextStyle(TextStyle.Default.FontSize(11).FontFamily("Lato", "Arial").FontColor(Colors.Grey.Darken4));
 
                     page.Content().Column(column =>
                     {
-                        column.Spacing(8);
+                        column.Spacing(10);
 
                         column.Item().AlignCenter().Text("H\u00D3A \u0110\u01A0N TI\u1EC0N PH\u00D2NG")
-                            .FontSize(22)
+                            .FontSize(25)
                             .Bold()
                             .FontColor(Colors.Brown.Darken4);
                         column.Item().AlignCenter().Text(FormatBillingMonth(invoice.BillingMonth).ToUpperInvariant())
-                            .FontSize(14)
+                            .FontSize(16)
                             .Bold()
                             .FontColor(Colors.Brown.Darken3);
 
                         column.Item().Element(SoftCard).Row(row =>
                         {
                             row.RelativeItem().Element(container => AddInvoiceIdentity(container, "home", "PH\u00D2NG", FormatRoomCode(invoice)));
-                            row.ConstantItem(1).Height(40).Background(Colors.Grey.Lighten2);
+                            row.ConstantItem(1).Height(48).Background(Colors.Grey.Lighten2);
                             row.RelativeItem().Element(container => AddInvoiceIdentity(container, "user", "NG\u01AF\u1EDCI THU\u00CA", FormatTenantName(invoice)));
                         });
 
@@ -113,16 +113,16 @@ namespace NhaTro.Services
                         {
                             total.Spacing(0);
                             total.Item().Element(container => AddTotalLine(container, "T\u1ED5ng ti\u1EC1n th\u00E1ng n\u00E0y", currentMonthTotal));
-                            total.Item().PaddingVertical(5).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                            total.Item().PaddingVertical(7).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
                             total.Item().Element(container => AddTotalLine(container, "N\u1EE3 c\u0169", carriedDebt));
-                            total.Item().PaddingTop(9).BorderTop(1).BorderColor(Colors.Brown.Lighten2).PaddingTop(10).Row(row =>
+                            total.Item().PaddingTop(12).BorderTop(1).BorderColor(Colors.Brown.Lighten2).PaddingTop(12).Row(row =>
                             {
                                 row.RelativeItem().AlignMiddle().Text("T\u1ED4NG C\u1EA6N THANH TO\u00C1N")
-                                    .FontSize(13)
+                                    .FontSize(15)
                                     .Bold()
                                     .FontColor(Colors.Brown.Darken4);
-                                row.ConstantItem(130).AlignRight().Text(FormatMoney(invoice.TotalAmount))
-                                    .FontSize(18)
+                                row.ConstantItem(145).AlignRight().Text(FormatMoney(invoice.TotalAmount))
+                                    .FontSize(22)
                                     .Bold()
                                     .FontColor(Colors.Brown.Darken4);
                             });
@@ -130,16 +130,16 @@ namespace NhaTro.Services
 
                         column.Item().Element(SoftCard).Row(row =>
                         {
-                            row.Spacing(16);
+                            row.Spacing(14);
                             row.RelativeItem().Column(bank =>
                             {
-                                bank.Spacing(5);
+                                bank.Spacing(6);
                                 bank.Item().Row(title =>
                                 {
-                                    title.ConstantItem(32).Element(container => AddIconBadge(container, "bank", 27, 15));
+                                    title.ConstantItem(36).Element(container => AddIconBadge(container, "bank", 30, 16));
                                     title.RelativeItem().AlignMiddle().Text("THANH TO\u00C1N CHUY\u1EC2N KHO\u1EA2N")
                                         .Bold()
-                                        .FontSize(10)
+                                        .FontSize(11)
                                         .FontColor(Colors.Brown.Darken4);
                                 });
 
@@ -149,28 +149,28 @@ namespace NhaTro.Services
                                 AddBankInfoRow(bank, "N\u1ED9i dung CK", paymentContent);
                             });
 
-                            row.ConstantItem(1).Height(112).Background(Colors.Grey.Lighten2);
+                            row.ConstantItem(1).Height(142).Background(Colors.Grey.Lighten2);
 
-                            row.ConstantItem(126).Column(qr =>
+                            row.ConstantItem(148).Column(qr =>
                             {
-                                qr.Spacing(5);
+                                qr.Spacing(6);
                                 qr.Item().AlignCenter().Text("QU\u00C9T M\u00C3 QR \u0110\u1EC2 THANH TO\u00C1N")
                                     .Bold()
-                                    .FontSize(8)
+                                    .FontSize(9)
                                     .FontColor(Colors.Brown.Darken4);
 
                                 if (qrBytes != null)
                                 {
-                                    qr.Item().AlignCenter().Width(88).Height(88).Image(qrBytes).FitArea();
+                                    qr.Item().AlignCenter().Width(124).Height(124).Image(qrBytes).FitArea();
                                 }
                                 else
                                 {
-                                    qr.Item().AlignCenter().Width(88).Height(88).Border(1).BorderColor(Colors.Grey.Lighten2)
-                                        .AlignCenter().AlignMiddle().Text("QR").FontSize(18).Bold();
+                                    qr.Item().AlignCenter().Width(124).Height(124).Border(1).BorderColor(Colors.Grey.Lighten2)
+                                        .AlignCenter().AlignMiddle().Text("QR").FontSize(20).Bold();
                                 }
 
                                 qr.Item().AlignCenter().Text("Qu\u00E9t m\u00E3 b\u1EB1ng \u1EE9ng d\u1EE5ng ng\u00E2n h\u00E0ng")
-                                    .FontSize(7)
+                                    .FontSize(7.5f)
                                     .FontColor(Colors.Grey.Darken1);
                             });
                         });
@@ -194,7 +194,7 @@ namespace NhaTro.Services
                 .Border(1)
                 .BorderColor(Colors.Grey.Lighten2)
                 .CornerRadius(7)
-                .Padding(9)
+                .Padding(11)
                 .Background(Colors.White);
         }
 
@@ -204,7 +204,7 @@ namespace NhaTro.Services
                 .Border(1)
                 .BorderColor(Colors.Brown.Lighten2)
                 .CornerRadius(7)
-                .Padding(9)
+                .Padding(11)
                 .Background(Colors.Brown.Lighten5);
         }
 
@@ -212,19 +212,19 @@ namespace NhaTro.Services
         {
             container.Row(row =>
             {
-                row.ConstantItem(42).Element(item => AddIconBadge(item, iconText, 32, 18));
+                row.ConstantItem(48).Element(item => AddIconBadge(item, iconText, 38, 19));
                 row.RelativeItem().AlignMiddle().Column(column =>
                 {
                     column.Spacing(2);
-                    column.Item().Text(label).FontSize(8).SemiBold().FontColor(Colors.Grey.Darken1);
-                    column.Item().Text(value).FontSize(14).Bold().FontColor(Colors.Grey.Darken4);
+                    column.Item().Text(label).FontSize(9).SemiBold().FontColor(Colors.Grey.Darken1);
+                    column.Item().Text(value).FontSize(16).Bold().FontColor(Colors.Grey.Darken4);
                 });
             });
         }
 
         private static void AddReceiptLine(IContainer container, string iconText, string title, string? detail, decimal amount, bool showDivider = true)
         {
-            var lineContainer = container.PaddingVertical(4);
+            var lineContainer = container.PaddingVertical(7);
             if (showDivider)
             {
                 lineContainer = lineContainer.BorderBottom(1).BorderColor(Colors.Grey.Lighten3);
@@ -232,18 +232,18 @@ namespace NhaTro.Services
 
             lineContainer.Row(row =>
             {
-                row.ConstantItem(34).Element(item => AddIconBadge(item, iconText, 24, 13));
+                row.ConstantItem(40).Element(item => AddIconBadge(item, iconText, 29, 14));
                 row.RelativeItem().AlignMiddle().Column(text =>
                 {
                     text.Spacing(2);
-                    text.Item().Text(title).FontSize(10).Bold().FontColor(Colors.Grey.Darken4);
+                    text.Item().Text(title).FontSize(11.5f).Bold().FontColor(Colors.Grey.Darken4);
 
                     if (!string.IsNullOrWhiteSpace(detail))
                     {
-                        text.Item().Text(detail).FontSize(7).FontColor(Colors.Grey.Darken1);
+                        text.Item().Text(detail).FontSize(8).FontColor(Colors.Grey.Darken1);
                     }
                 });
-                row.ConstantItem(98).AlignMiddle().AlignRight().Text(FormatMoney(amount)).FontSize(12).Bold();
+                row.ConstantItem(108).AlignMiddle().AlignRight().Text(FormatMoney(amount)).FontSize(14).Bold();
             });
         }
 
@@ -251,8 +251,8 @@ namespace NhaTro.Services
         {
             container.Row(row =>
             {
-                row.RelativeItem().Text(label).FontSize(11).Bold();
-                row.ConstantItem(110).AlignRight().Text(FormatMoney(amount)).FontSize(11).Bold();
+                row.RelativeItem().Text(label).FontSize(12).Bold();
+                row.ConstantItem(120).AlignRight().Text(FormatMoney(amount)).FontSize(12.5f).Bold();
             });
         }
 
@@ -260,9 +260,9 @@ namespace NhaTro.Services
         {
             column.Item().Row(row =>
             {
-                row.ConstantItem(64).Text(label).FontSize(7.5f).FontColor(Colors.Grey.Darken2);
-                row.ConstantItem(7).Text(":").FontSize(7.5f).FontColor(Colors.Grey.Darken2);
-                row.RelativeItem().Text(value).FontSize(7.5f).SemiBold().FontColor(Colors.Grey.Darken4);
+                row.ConstantItem(67).Text(label).FontSize(8.2f).FontColor(Colors.Grey.Darken2);
+                row.ConstantItem(7).Text(":").FontSize(8.2f).FontColor(Colors.Grey.Darken2);
+                row.RelativeItem().Text(value).FontSize(8.2f).SemiBold().FontColor(Colors.Grey.Darken4);
             });
         }
 
@@ -429,7 +429,7 @@ namespace NhaTro.Services
 
             var account = ResolveBankQrAccount(invoice.RoomCode);
             var query = $"amount={amount.ToString("0", CultureInfo.InvariantCulture)}&addInfo={Uri.EscapeDataString(paymentContent)}&accountName={Uri.EscapeDataString(account.AccountName)}";
-            return $"https://img.vietqr.io/image/{BankCode}-{account.AccountNumber}-compact2.jpg?{query}";
+            return $"https://img.vietqr.io/image/{BankCode}-{account.AccountNumber}-qr_only.png?{query}";
         }
 
         private static BankQrAccount ResolveBankQrAccount(string? roomCode)
