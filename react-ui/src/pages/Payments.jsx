@@ -33,6 +33,28 @@ import { useNotification } from '../context/NotificationContext'
 import { getCurrentMonthValue } from '../utils/month'
 import { sortByRoomCode } from '../utils/roomSort'
 
+const FIXED_MONTHLY_EXPENSE_ITEMS = ['Cáp', 'Rác', 'Tiền nc', 'Tiền điện']
+
+const taoFixedExpenseDrafts = (transactions = []) => {
+  const drafts = {}
+  FIXED_MONTHLY_EXPENSE_ITEMS.forEach((itemName) => {
+    const matched = transactions.find((tx) => laGiaoDichCoDinhThang(tx, itemName))
+    drafts[itemName] = matched ? String(matched.amount || 0) : '0'
+  })
+  return drafts
+}
+
+const chuanHoaTenKhoan = (value) => (value || '').trim().toLowerCase()
+
+const laGiaoDichCoDinhThang = (tx, itemName) => (
+  tx &&
+  chuanHoaTenKhoan(tx.itemName) === chuanHoaTenKhoan(itemName) &&
+  (tx.transactionDirection || '').toLowerCase() === 'expense' &&
+  (tx.category || '').toLowerCase() === 'operating' &&
+  !tx.relatedRoomId &&
+  !tx.relatedInvoiceId
+)
+
 export default function Payments() {
   const { toast, confirm } = useNotification()
   const [thang, setThang] = useState(getCurrentMonthValue)
@@ -47,6 +69,8 @@ export default function Payments() {
   const [bankTransactions, setBankTransactions] = useState([])
   const [rooms, setRooms] = useState([])
   const [unpaidInvoices, setUnpaidInvoices] = useState([])
+  const [fixedExpenseDrafts, setFixedExpenseDrafts] = useState(() => taoFixedExpenseDrafts())
+  const [fixedExpenseSaving, setFixedExpenseSaving] = useState(false)
 
   // Search filter
   const [searchQuery, setSearchQuery] = useState('')
@@ -87,6 +111,7 @@ export default function Payments() {
       ])
       
       setLedgerTransactions(ledgerData)
+      setFixedExpenseDrafts(taoFixedExpenseDrafts(ledgerData))
       setBankTransactions(bankData)
       setRooms(sortByRoomCode(roomsData))
       setUnpaidInvoices(sortByRoomCode(unpaidData))
@@ -181,7 +206,7 @@ export default function Payments() {
       amount: amountVal,
       transactionDate: ledgerForm.transactionDate,
       description: ledgerForm.description.trim() || null,
-      relatedRoomId: ledgerForm.relatedRoomId ? parseInt(ledgerForm.relatedRoomId) : null
+      relatedRoomId: ledgerForm.transactionDirection === 'income' && ledgerForm.relatedRoomId ? parseInt(ledgerForm.relatedRoomId) : null
     }
 
     try {
@@ -261,12 +286,94 @@ export default function Payments() {
     }
   }
 
+  const layNgayDauThang = () => `${thang}-01`
+
+  const handleFixedExpenseDraftChange = (itemName, value) => {
+    setFixedExpenseDrafts((current) => ({
+      ...current,
+      [itemName]: value
+    }))
+  }
+
+  const handleSaveFixedMonthlyExpenses = async () => {
+    setFixedExpenseSaving(true)
+    setError(null)
+
+    try {
+      for (const itemName of FIXED_MONTHLY_EXPENSE_ITEMS) {
+        const existing = ledgerTransactions.find((tx) => laGiaoDichCoDinhThang(tx, itemName))
+        const amount = parseFloat(fixedExpenseDrafts[itemName]) || 0
+
+        if (amount <= 0) {
+          if (existing) {
+            await xoaGiaoDichPhatSinh(existing.transactionId)
+          }
+          continue
+        }
+
+        const payload = {
+          transactionDirection: 'expense',
+          category: 'operating',
+          itemName,
+          amount,
+          transactionDate: layNgayDauThang(),
+          description: null,
+          relatedRoomId: null
+        }
+
+        if (existing) {
+          await suaGiaoDichPhatSinh(existing.transactionId, payload)
+        } else {
+          await themGiaoDichPhatSinh(payload)
+        }
+      }
+
+      toast.success('Đã lưu 4 khoản cố định của tháng.')
+      await taiDuLieu()
+    } catch (err) {
+      console.error(err)
+      toast.error(err.message || 'Không thể lưu các khoản cố định')
+    } finally {
+      setFixedExpenseSaving(false)
+    }
+  }
+
   const dinhDangTien = (so) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(so)
   }
 
   // Filter items
-  const filteredLedger = sortByRoomCode(ledgerTransactions.filter(tx => {
+  const fixedLedgerRows = FIXED_MONTHLY_EXPENSE_ITEMS.map((itemName) => {
+    const existing = ledgerTransactions.find((tx) => laGiaoDichCoDinhThang(tx, itemName))
+    return {
+      ...(existing || {}),
+      transactionId: existing?.transactionId ?? `fixed-${itemName}`,
+      transactionDirection: 'expense',
+      category: 'operating',
+      itemName,
+      amount: parseFloat(fixedExpenseDrafts[itemName]) || 0,
+      transactionDate: existing?.transactionDate ?? layNgayDauThang(),
+      description: existing?.description || null,
+      relatedRoomId: null,
+      relatedRoomCode: null,
+      isFixedMonthly: true
+    }
+  })
+
+  const normalLedgerRows = ledgerTransactions.filter((tx) => (
+    !FIXED_MONTHLY_EXPENSE_ITEMS.some((itemName) => laGiaoDichCoDinhThang(tx, itemName))
+  ))
+
+  const filteredFixedLedger = fixedLedgerRows.filter(tx => {
+    const query = searchQuery.toLowerCase()
+    return (
+      (tx.itemName && tx.itemName.toLowerCase().includes(query)) ||
+      (tx.description && tx.description.toLowerCase().includes(query)) ||
+      (tx.relatedRoomCode && tx.relatedRoomCode.toLowerCase().includes(query))
+    )
+  })
+
+  const filteredNormalLedger = sortByRoomCode(normalLedgerRows.filter(tx => {
     const query = searchQuery.toLowerCase()
     return (
       (tx.itemName && tx.itemName.toLowerCase().includes(query)) ||
@@ -275,12 +382,14 @@ export default function Payments() {
     )
   }), tx => tx.relatedRoomCode)
 
+  const filteredLedger = [...filteredFixedLedger, ...filteredNormalLedger]
+
   const filteredBank = bankTransactions.filter(tx => {
     const query = searchQuery.toLowerCase()
     return (
       (tx.content && tx.content.toLowerCase().includes(query)) ||
       (tx.paymentCode && tx.paymentCode.toLowerCase().includes(query)) ||
-      (tx. accountNumber && tx.accountNumber.includes(query))
+      (tx.accountNumber && tx.accountNumber.includes(query))
     )
   })
 
@@ -308,6 +417,20 @@ export default function Payments() {
                 <Plus size={18} />
                 <span>Ghi chép thu chi</span>
               </button>
+
+              <button className="btn btn-secondary" onClick={handleSaveFixedMonthlyExpenses} disabled={fixedExpenseSaving}>
+                {fixedExpenseSaving ? (
+                  <>
+                    <Loader2 className="spinner" size={16} />
+                    <span>Đang lưu...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={18} />
+                    <span>Lưu 4 khoản</span>
+                  </>
+                )}
+              </button>
             </>
           )}
         </div>
@@ -320,7 +443,7 @@ export default function Payments() {
             className={`filter-tab ${activeTab === 'ledger' ? 'active' : ''}`}
             onClick={() => setActiveTab('ledger')}
           >
-            Sổ Quỹ Thu Chi ({ledgerTransactions.length})
+            Sổ Quỹ Thu Chi ({fixedLedgerRows.length + normalLedgerRows.length})
           </button>
           <button 
             className={`filter-tab ${activeTab === 'bank' ? 'active' : ''}`}
@@ -386,14 +509,31 @@ export default function Payments() {
                             ) : (
                               <div className="dir-icon-bg expense" title="Chi phí"><ArrowUpRight size={14} /></div>
                             )}
-                            <strong>{tx.itemName || 'Giao dịch phát sinh'}</strong>
+                            <div>
+                              <strong>{tx.itemName || 'Giao dịch phát sinh'}</strong>
+                              {tx.isFixedMonthly && <div className="fixed-ledger-hint">Cố định theo tháng</div>}
+                            </div>
                           </div>
                         </td>
                         <td>{tx.relatedRoomCode || <span className="text-muted">—</span>}</td>
                         <td>
-                          <span className={tx.transactionDirection === 'income' ? 'text-success font-bold' : 'text-danger font-bold'}>
-                            {tx.transactionDirection === 'income' ? '+' : '-'}{dinhDangTien(tx.amount)}
-                          </span>
+                          {tx.isFixedMonthly ? (
+                            <div className="fixed-ledger-amount">
+                              <span>-</span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={fixedExpenseDrafts[tx.itemName] ?? '0'}
+                                onChange={(e) => handleFixedExpenseDraftChange(tx.itemName, e.target.value)}
+                                onWheel={(e) => e.target.blur()}
+                              />
+                              <span>đ</span>
+                            </div>
+                          ) : (
+                            <span className={tx.transactionDirection === 'income' ? 'text-success font-bold' : 'text-danger font-bold'}>
+                              {tx.transactionDirection === 'income' ? '+' : '-'}{dinhDangTien(tx.amount)}
+                            </span>
+                          )}
                         </td>
                         <td>
                           <span className="date-cell">
@@ -401,25 +541,31 @@ export default function Payments() {
                           </span>
                         </td>
                         <td>
-                          <span className="desc-cell-txt">{tx.description || <span className="text-muted">—</span>}</span>
+                          <span className="desc-cell-txt">
+                            {tx.isFixedMonthly ? 'Sửa số tiền rồi bấm Lưu 4 khoản' : (tx.description || <span className="text-muted">—</span>)}
+                          </span>
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <div className="invoice-actions-flex">
-                            <button 
-                              className="btn-card-edit"
-                              onClick={() => handleOpenEditLedger(tx)}
-                              title="Sửa bản ghi"
-                            >
-                              <Edit3 size={15} />
-                            </button>
-                            <button 
-                              className="btn-card-edit btn-danger-icon"
-                              onClick={() => handleDeleteLedger(tx.transactionId)}
-                              title="Xóa bản ghi"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </div>
+                          {tx.isFixedMonthly ? (
+                            <span className="fixed-ledger-action">Mặc định</span>
+                          ) : (
+                            <div className="invoice-actions-flex">
+                              <button
+                                className="btn-card-edit"
+                                onClick={() => handleOpenEditLedger(tx)}
+                                title="Sửa bản ghi"
+                              >
+                                <Edit3 size={15} />
+                              </button>
+                              <button
+                                className="btn-card-edit btn-danger-icon"
+                                onClick={() => handleDeleteLedger(tx.transactionId)}
+                                title="Xóa bản ghi"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -543,10 +689,14 @@ export default function Payments() {
                       id="tx-dir" 
                       className="form-control"
                       value={ledgerForm.transactionDirection}
-                      onChange={(e) => setLedgerForm({...ledgerForm, transactionDirection: e.target.value})}
+                      onChange={(e) => setLedgerForm({
+                        ...ledgerForm,
+                        transactionDirection: e.target.value,
+                        relatedRoomId: e.target.value === 'income' ? ledgerForm.relatedRoomId : ''
+                      })}
                     >
-                      <option value="expense">Chi tiền (Chi phí vận hành)</option>
-                      <option value="income">Thu tiền (Doanh thu phát sinh)</option>
+                      <option value="expense">Chi tiền</option>
+                      <option value="income">Thu tiền</option>
                     </select>
                 </div>
 
@@ -589,22 +739,24 @@ export default function Payments() {
                   </div>
                 </div>
 
-                <div className="form-row">
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="tx-room">Liên kết phòng trọ (Nếu có)</label>
-                    <select 
-                      id="tx-room" 
-                      className="form-control"
-                      value={ledgerForm.relatedRoomId}
-                      onChange={(e) => setLedgerForm({...ledgerForm, relatedRoomId: e.target.value})}
-                    >
-                      <option value="">-- Không liên kết --</option>
-                      {rooms.map(r => (
-                        <option key={r.roomId} value={r.roomId}>{r.roomCode}</option>
-                      ))}
-                    </select>
+                {ledgerForm.transactionDirection === 'income' && (
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="tx-room">Liên kết phòng trọ (Nếu có)</label>
+                      <select 
+                        id="tx-room" 
+                        className="form-control"
+                        value={ledgerForm.relatedRoomId}
+                        onChange={(e) => setLedgerForm({...ledgerForm, relatedRoomId: e.target.value})}
+                      >
+                        <option value="">-- Không liên kết --</option>
+                        {rooms.map(r => (
+                          <option key={r.roomId} value={r.roomId}>{r.roomCode}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="tx-desc">Chi tiết diễn giải thêm</label>

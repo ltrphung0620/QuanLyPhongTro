@@ -8,5 +8,8 @@ namespace NhaTro.Dtos.Contracts
         public DateOnly ActualEndDate { get; set; }
 
         public int? CurrentReading { get; set; }
+
+        [Range(0, double.MaxValue)]
+        public decimal DiscountAmount { get; set; }
     }
 }

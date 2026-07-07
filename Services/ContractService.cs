@@ -313,7 +313,9 @@ namespace NhaTro.Services
             var waterFee = Math.Round((pricing.WaterFeePerPerson / daysInMonth) * numberOfDays * contract.OccupantCount, 2);
             var trashFee = contract.TrashFee;
 
-            var finalInvoiceAmount = roomFee + electricityFee + waterFee + trashFee;
+            var discountAmount = dto.DiscountAmount;
+            var grossFinalInvoiceAmount = roomFee + electricityFee + waterFee + trashFee;
+            var finalInvoiceAmount = Math.Max(0, grossFinalInvoiceAmount - discountAmount);
 
             var receivedDepositAmount = await GetReceivedDepositAmountAsync(contract);
             var deductedAmount = Math.Min(receivedDepositAmount, finalInvoiceAmount);
@@ -335,6 +337,7 @@ namespace NhaTro.Services
                 ElectricityFee = electricityFee,
                 WaterFee = waterFee,
                 TrashFee = trashFee,
+                DiscountAmount = discountAmount,
                 FinalInvoiceAmount = finalInvoiceAmount,
                 DepositAmount = receivedDepositAmount,
                 DeductedAmount = deductedAmount,
@@ -359,7 +362,8 @@ namespace NhaTro.Services
             var preview = await EndPreviewAsync(contractId, new ContractEndPreviewRequestDto
             {
                 ActualEndDate = dto.ActualEndDate,
-                CurrentReading = dto.CurrentReading
+                CurrentReading = dto.CurrentReading,
+                DiscountAmount = dto.DiscountAmount
             });
 
             if (dto.CurrentReading.HasValue)
@@ -411,6 +415,10 @@ namespace NhaTro.Services
                 }
 
                 noteParts.Add($"Đã cấn trừ tiền cọc: {preview.DeductedAmount:N0}");
+                if (preview.DiscountAmount > 0)
+                {
+                    noteParts.Add($"Giảm trừ thanh lý: {preview.DiscountAmount:N0}");
+                }
 
                 finalInvoice = new Invoice
                 {
@@ -424,7 +432,7 @@ namespace NhaTro.Services
                     ElectricityFee = preview.ElectricityFee,
                     WaterFee = preview.WaterFee,
                     TrashFee = preview.TrashFee,
-                    DiscountAmount = 0,
+                    DiscountAmount = preview.DiscountAmount,
                     DebtAmount = 0,
                     TotalAmount = preview.RemainingAmount,
                     Status = "unpaid",
