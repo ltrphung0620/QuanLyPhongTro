@@ -77,7 +77,8 @@ export default function Contracts() {
   const [checkoutStep, setCheckoutStep] = useState(1) // 1: Input readings, 2: Preview calculation
   const [checkoutForm, setCheckoutForm] = useState({
     actualEndDate: '',
-    currentReading: ''
+    currentReading: '',
+    discountAmount: '0'
   })
   const [checkoutPreview, setCheckoutPreview] = useState(null)
   const [checkoutError, setCheckoutError] = useState(null)
@@ -327,7 +328,8 @@ export default function Contracts() {
     setCheckoutStep(1)
     setCheckoutForm({
       actualEndDate: `${yyyy}-${mm}-${dd}`,
-      currentReading: ''
+      currentReading: '',
+      discountAmount: '0'
     })
     setCheckoutPreview(null)
     setCheckoutError(null)
@@ -343,11 +345,13 @@ export default function Contracts() {
 
     const readingVal = checkoutForm.currentReading.trim()
     const currentReading = readingVal !== '' ? parseInt(readingVal) : null
+    const discountAmount = parseFloat(checkoutForm.discountAmount) || 0
 
     try {
       const data = await layBaoCaoKetThucHopDong(checkoutTarget.contractId, {
         actualEndDate: checkoutForm.actualEndDate,
-        currentReading: currentReading
+        currentReading: currentReading,
+        discountAmount
       })
       setCheckoutPreview(data)
       setCheckoutStep(2)
@@ -366,11 +370,13 @@ export default function Contracts() {
 
     const readingVal = checkoutForm.currentReading.trim()
     const currentReading = readingVal !== '' ? parseInt(readingVal) : null
+    const discountAmount = parseFloat(checkoutForm.discountAmount) || 0
 
     try {
       await ketThucHopDong(checkoutTarget.contractId, {
         actualEndDate: checkoutForm.actualEndDate,
         currentReading: currentReading,
+        discountAmount,
         note: checkoutNote.trim() || null
       })
       setCheckoutModalOpen(false)
@@ -904,6 +910,20 @@ export default function Contracts() {
                     />
                     <span className="form-help">Chỉ số này dùng để chốt tiền điện nước phát sinh từ kỳ ghi số điện gần nhất đến hôm nay.</span>
                   </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="chk-discount">{'Gi\u1ea3m tr\u1eeb thanh l\u00fd (\u0111)'}</label>
+                    <input
+                      type="number"
+                      id="chk-discount"
+                      className="form-control"
+                      min="0"
+                      placeholder={'Nh\u1eadp s\u1ed1 ti\u1ec1n gi\u1ea3m tr\u1eeb n\u1ebfu c\u00f3'}
+                      value={checkoutForm.discountAmount}
+                      onChange={(e) => setCheckoutForm({...checkoutForm, discountAmount: e.target.value})}
+                      onWheel={(e) => e.target.blur()}
+                    />
+                    <span className="form-help">{'S\u1ed1 ti\u1ec1n n\u00e0y s\u1ebd tr\u1eeb v\u00e0o t\u1ed5ng ph\u00ed thanh l\u00fd tr\u01b0\u1edbc khi c\u1ea5n tr\u1eeb ti\u1ec1n c\u1ecdc.'}</span>
+                  </div>
                 </div>
 
                 <div className="modal-footer">
@@ -976,6 +996,13 @@ export default function Contracts() {
                         <span>Tiền nước & dịch vụ khác phát sinh</span>
                         <span>{dinhDangTien(checkoutPreview.waterFee + checkoutPreview.trashFee)}</span>
                       </div>
+
+                      {checkoutPreview.discountAmount > 0 && (
+                        <div className="sheet-row">
+                          <span>Giảm trừ thanh lý</span>
+                          <span className="text-success">-{dinhDangTien(checkoutPreview.discountAmount)}</span>
+                        </div>
+                      )}
 
                       <div className="sheet-row highlight-subtotal">
                         <span>Tổng hóa đơn thanh lý cuối</span>

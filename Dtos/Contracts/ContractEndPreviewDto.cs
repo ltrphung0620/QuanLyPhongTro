@@ -18,6 +18,7 @@ namespace NhaTro.Dtos.Contracts
         public decimal ElectricityFee { get; set; }
         public decimal WaterFee { get; set; }
         public decimal TrashFee { get; set; }
+        public decimal DiscountAmount { get; set; }
 
         public decimal FinalInvoiceAmount { get; set; }
 
