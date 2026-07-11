@@ -105,7 +105,7 @@ namespace NhaTro.Services
                             items.Item().Element(container => AddReceiptLine(container, "drop", "Ti\u1EC1n n\u01B0\u1EDBc", null, invoice.WaterFee));
                             items.Item().Element(container => AddReceiptLine(container, "trash", "Ph\u00ED r\u00E1c", null, invoice.TrashFee));
                             items.Item().Element(container => AddReceiptLine(container, "car", "Ph\u00ED ph\u00E1t sinh", NullIfWhiteSpace(invoice.ExtraFeeNote), invoice.ExtraFee));
-                            items.Item().Element(container => AddReceiptLine(container, "tag", "Gi\u1EA3m gi\u00E1", NullIfWhiteSpace(invoice.Note), invoice.DiscountAmount));
+                            items.Item().Element(container => AddReceiptLine(container, "tag", "Gi\u1EA3m gi\u00E1", null, invoice.DiscountAmount));
                             items.Item().Element(container => AddReceiptLine(container, "debt", "N\u1EE3 c\u0169", BuildDebtNote(invoice), carriedDebt, showDivider: false));
                         });
 
@@ -504,13 +504,60 @@ namespace NhaTro.Services
                 return null;
             }
 
-            if (!invoice.BillingMonth.HasValue)
+            var noteParts = new List<string>();
+
+            if (invoice.DepositDebtAmount > 0)
             {
-                return "N\u1EE3 k\u1EF3 tr\u01B0\u1EDBc ch\u01B0a thanh to\u00E1n \u0111\u1EE7";
+                noteParts.Add($"N\u1EE3 ti\u1EC1n c\u1ECDc: {FormatMoney(invoice.DepositDebtAmount)}");
             }
 
-            var previousMonth = invoice.BillingMonth.Value.AddMonths(-1);
-            return $"N\u1EE3 h\u00F3a \u0111\u01A1n th\u00E1ng {previousMonth:MM/yyyy} ch\u01B0a thanh to\u00E1n \u0111\u1EE7";
+            if (invoice.DebtAmount > 0)
+            {
+                var debtNote = NullIfWhiteSpace(invoice.Note);
+                if (!string.IsNullOrWhiteSpace(debtNote))
+                {
+                    noteParts.Add(NormalizeDebtNoteForDisplay(debtNote));
+                }
+                else if (invoice.BillingMonth.HasValue)
+                {
+                    var previousMonth = invoice.BillingMonth.Value.AddMonths(-1);
+                    noteParts.Add($"N\u1EE3 h\u00F3a \u0111\u01A1n th\u00E1ng {previousMonth:MM/yyyy}: {FormatMoney(invoice.DebtAmount)}");
+                }
+                else
+                {
+                    noteParts.Add($"N\u1EE3 k\u1EF3 tr\u01B0\u1EDBc: {FormatMoney(invoice.DebtAmount)}");
+                }
+            }
+
+            return noteParts.Count == 0 ? null : string.Join(" | ", noteParts);
+        }
+
+        private static string NormalizeDebtNoteForDisplay(string note)
+        {
+            return string.Join(" | ",
+                note.Split(" | ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(NormalizeDebtNotePartForDisplay)
+                    .Where(part => !string.IsNullOrWhiteSpace(part)));
+        }
+
+        private static string NormalizeDebtNotePartForDisplay(string notePart)
+        {
+            var trimmed = notePart.Trim();
+            if (!trimmed.StartsWith("Thu ti\u1EC1n ", StringComparison.OrdinalIgnoreCase))
+            {
+                return trimmed;
+            }
+
+            var withoutPrefix = trimmed["Thu ti\u1EC1n ".Length..].Trim();
+            var lastSpaceIndex = withoutPrefix.LastIndexOf(' ');
+            if (lastSpaceIndex <= 0)
+            {
+                return $"Ti\u1EC1n {withoutPrefix}";
+            }
+
+            var name = withoutPrefix[..lastSpaceIndex].Trim();
+            var amount = withoutPrefix[(lastSpaceIndex + 1)..].Trim();
+            return $"Ti\u1EC1n {name}: {amount}";
         }
 
         private static string? NullIfWhiteSpace(string? value)

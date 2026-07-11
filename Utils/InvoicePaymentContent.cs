@@ -1,4 +1,3 @@
-using System.Globalization;
 using NhaTro.Dtos.Invoices;
 using NhaTro.Models;
 
@@ -32,11 +31,7 @@ namespace NhaTro.Utils
             var room = string.IsNullOrWhiteSpace(roomCode)
                 ? $"Phong {roomId}"
                 : roomCode.Trim();
-            var month = billingMonth.HasValue
-                ? billingMonth.Value.ToString("MM/yyyy", CultureInfo.InvariantCulture)
-                : DateTime.Now.ToString("MM/yyyy", CultureInfo.InvariantCulture);
-
-            return $"{tenant} dai dien phong {room} chuyen tien thang {month} theo hoa don";
+            return $"{tenant} chuyen tien phong {room}";
         }
     }
 }

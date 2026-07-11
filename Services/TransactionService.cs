@@ -234,12 +234,16 @@ namespace NhaTro.Services
                 ? "Thu phí phát sinh"
                 : baseText.Trim();
 
-            if (!normalizedBaseText.StartsWith("Thu", StringComparison.OrdinalIgnoreCase))
+            var normalizedForCheck = normalizedBaseText.ToLowerInvariant();
+            if (!normalizedForCheck.StartsWith("tien ") &&
+                !normalizedForCheck.StartsWith("tiền ") &&
+                !normalizedForCheck.StartsWith("phi ") &&
+                !normalizedForCheck.StartsWith("phí "))
             {
-                normalizedBaseText = $"Thu tiền {normalizedBaseText}";
+                normalizedBaseText = $"Tiền {normalizedBaseText}";
             }
 
-            return $"{normalizedBaseText} {FormatCompactMoney(transaction.Amount)}";
+            return $"{normalizedBaseText}: {FormatCompactMoney(transaction.Amount)}";
         }
 
         private static string FormatCompactMoney(decimal amount)

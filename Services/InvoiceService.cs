@@ -833,6 +833,12 @@ namespace NhaTro.Services
 
         private static bool IsCarryOverNoteForInvoice(string notePart, Invoice sourceInvoice)
         {
+            if (!string.IsNullOrWhiteSpace(sourceInvoice.ExtraFeeNote) &&
+                string.Equals(notePart.Trim(), sourceInvoice.ExtraFeeNote.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
             var billingMonthText = sourceInvoice.BillingMonth.HasValue
                 ? FormatBillingMonth(sourceInvoice.BillingMonth.Value)
                 : string.Empty;
@@ -844,11 +850,42 @@ namespace NhaTro.Services
 
         private static string BuildCarryOverNote(Invoice sourceInvoice, decimal carryOverAmount)
         {
+            if (sourceInvoice.ExtraFee > 0 &&
+                carryOverAmount <= sourceInvoice.ExtraFee &&
+                !string.IsNullOrWhiteSpace(sourceInvoice.ExtraFeeNote))
+            {
+                return NormalizeExtraFeeNoteForCarryOver(sourceInvoice.ExtraFeeNote);
+            }
+
             var billingMonthText = sourceInvoice.BillingMonth.HasValue
                 ? FormatBillingMonth(sourceInvoice.BillingMonth.Value)
                 : "tháng trước";
 
             return $"Đã cộng {FormatMoney(carryOverAmount)} từ hóa đơn {billingMonthText} còn thiếu.";
+        }
+
+        private static string NormalizeExtraFeeNoteForCarryOver(string note)
+        {
+            return string.Join(" | ",
+                SplitNoteParts(note).Select(part =>
+                {
+                    var trimmed = part.Trim();
+                    if (!trimmed.StartsWith("Thu tiền ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return trimmed;
+                    }
+
+                    var withoutPrefix = trimmed["Thu tiền ".Length..].Trim();
+                    var lastSpaceIndex = withoutPrefix.LastIndexOf(' ');
+                    if (lastSpaceIndex <= 0)
+                    {
+                        return $"Tiền {withoutPrefix}";
+                    }
+
+                    var name = withoutPrefix[..lastSpaceIndex].Trim();
+                    var amount = withoutPrefix[(lastSpaceIndex + 1)..].Trim();
+                    return $"Tiền {name}: {amount}";
+                }));
         }
 
         private static IEnumerable<string> SplitNoteParts(string? note)
