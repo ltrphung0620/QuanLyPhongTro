@@ -196,6 +196,17 @@
   font-size: 0.85rem;
 }
 
+.invoice-tenant-name {
+  display: inline-block;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-weight: 650;
+  vertical-align: middle;
+}
+
 /* Premium styling for "Thu tiền" button */
 .invoice-list-total {
   display: flex;
