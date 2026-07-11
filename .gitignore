@@ -50,9 +50,24 @@ secrets.json
 node_modules/
 react-ui/node_modules/
 react-ui/dist/
+mobile-app/node_modules/
+mobile-app/.expo/
+mobile-app/dist/
+mobile-app/build/
+mobile-app/web-build/
+mobile-app/eas-build-local-*/
 .env
 .env.*
 !.env.example
+
+# React Native / Expo build outputs and signing files
+*.apk
+*.aab
+*.ipa
+*.jks
+*.p8
+*.p12
+*.mobileprovision
 
 # =========================
 # Test / coverage

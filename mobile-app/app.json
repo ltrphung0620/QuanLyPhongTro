@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "QLPT",
+    "slug": "qlpt-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "qlpt",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "vn.qlpt.mobile"
+    },
+    "android": {
+      "package": "vn.qlpt.mobile"
+    },
+    "extra": {
+      "apiBaseUrl": "https://qlpt.io.vn:18444/api",
+      "eas": {
+        "projectId": ""
+      }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}

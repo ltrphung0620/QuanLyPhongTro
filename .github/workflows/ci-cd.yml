@@ -5,10 +5,14 @@ on:
     branches:
       - main
       - develop
+    paths-ignore:
+      - mobile-app/**
   push:
     branches:
       - main
       - develop
+    paths-ignore:
+      - mobile-app/**
   workflow_dispatch:
 
 permissions:
