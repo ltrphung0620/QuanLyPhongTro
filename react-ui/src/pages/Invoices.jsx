@@ -459,7 +459,11 @@ export default function Invoices() {
   // Filtered list
   const filteredInvoices = sortByRoomCode(invoices.filter(inv => {
     const matchesStatus = selectedStatus === 'all' || (inv.status || '').toLowerCase() === selectedStatus.toLowerCase()
-    const matchesSearch = inv.roomCode ? inv.roomCode.toLowerCase().includes(searchQuery.toLowerCase()) : false
+    const query = searchQuery.toLowerCase()
+    const matchesSearch = (
+      (inv.roomCode && inv.roomCode.toLowerCase().includes(query)) ||
+      (inv.tenantName && inv.tenantName.toLowerCase().includes(query))
+    )
     return matchesStatus && matchesSearch
   }))
 
@@ -566,13 +570,13 @@ export default function Invoices() {
                 <thead>
                   <tr>
                     <th>Phòng</th>
+                    <th>Người thuê</th>
                     <th>Tiền phòng</th>
                     <th>Tiền điện (kWh)</th>
                     <th>Nước & DV khác</th>
                     <th>Giảm giá/Công nợ</th>
                     <th>Tổng cộng</th>
                     <th>Trạng thái</th>
-                    <th>Mã thanh toán</th>
                     <th style={{ textAlign: 'right' }}>Thao tác</th>
                   </tr>
                 </thead>
@@ -582,6 +586,9 @@ export default function Invoices() {
                       <td>
                         <strong>{inv.roomCode}</strong>
                         {inv.invoiceType === 'end' && <span className="type-badge-mini" style={{ marginLeft: '4px' }}>Quyết toán</span>}
+                      </td>
+                      <td>
+                        <span className="invoice-tenant-name">{inv.tenantName || '—'}</span>
                       </td>
                       <td>{dinhDangTien(inv.roomFee)}</td>
                       <td>
@@ -610,9 +617,6 @@ export default function Invoices() {
                         <span className={`status-badge ${layBadgeClass(inv.status)}`}>
                           {layTenTrangThai(inv.status)}
                         </span>
-                      </td>
-                      <td>
-                        <span className="payment-code-lbl">{inv.paymentCode || 'N/A'}</span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <div className="invoice-actions-flex" style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center' }}>
