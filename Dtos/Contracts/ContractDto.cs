@@ -14,6 +14,7 @@ namespace NhaTro.Dtos.Contracts
         public decimal DepositPaidAmount { get; set; }
         public decimal DepositDebtAmount => Math.Max(0, DepositAmount - DepositPaidAmount);
         public int OccupantCount { get; set; }
+        public decimal? CustomWaterFee { get; set; }
         public decimal ActualRoomPrice { get; set; }
         public decimal TrashFee { get; set; }
         public string Status { get; set; } = string.Empty;

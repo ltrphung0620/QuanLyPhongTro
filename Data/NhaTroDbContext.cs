@@ -215,6 +215,10 @@ namespace NhaTro.Data
                 entity.Property(e => e.OccupantCount)
                     .HasColumnName("occupant_count");
 
+                entity.Property(e => e.CustomWaterFee)
+                    .HasColumnName("custom_water_fee")
+                    .HasPrecision(18, 2);
+
                 entity.Property(e => e.ActualRoomPrice)
                     .HasColumnName("actual_room_price")
                     .HasPrecision(18, 2);
@@ -277,6 +281,7 @@ namespace NhaTro.Data
                     t.HasCheckConstraint("CK_contracts_deposit_paid_amount", "deposit_paid_amount >= 0 AND deposit_paid_amount <= deposit_amount");
                     t.HasCheckConstraint("CK_contracts_expected_end_date", "expected_end_date IS NULL OR expected_end_date >= start_date");
                     t.HasCheckConstraint("CK_contracts_occupant_count", "occupant_count > 0");
+                    t.HasCheckConstraint("CK_contracts_custom_water_fee", "custom_water_fee IS NULL OR custom_water_fee >= 0");
                     t.HasCheckConstraint("CK_contracts_actual_room_price", "actual_room_price > 0");
                     t.HasCheckConstraint("CK_contracts_trash_fee", "trash_fee >= 0");
                 });

@@ -120,6 +120,7 @@ namespace NhaTro.Services
                 DepositAmount = dto.DepositAmount,
                 DepositPaidAmount = depositPaidAmount,
                 OccupantCount = dto.OccupantCount,
+                CustomWaterFee = dto.CustomWaterFee,
                 ActualRoomPrice = dto.ActualRoomPrice,
                 TrashFee = trashFee,
                 Status = "active",
@@ -187,6 +188,7 @@ namespace NhaTro.Services
             contract.DepositAmount = dto.DepositAmount;
             contract.DepositPaidAmount = depositPaidAmount;
             contract.OccupantCount = dto.OccupantCount;
+            contract.CustomWaterFee = dto.CustomWaterFee;
             contract.ActualRoomPrice = dto.ActualRoomPrice;
             if (dto.TrashFee.HasValue)
             {
@@ -310,7 +312,9 @@ namespace NhaTro.Services
                 electricityFee = consumed * pricing.ElectricityUnitPrice;
             }
 
-            var waterFee = Math.Round((pricing.WaterFeePerPerson / daysInMonth) * numberOfDays * contract.OccupantCount, 2);
+            var monthlyWaterFee = contract.CustomWaterFee
+                ?? pricing.WaterFeePerPerson * contract.OccupantCount;
+            var waterFee = Math.Round((monthlyWaterFee / daysInMonth) * numberOfDays, 2);
             var trashFee = contract.TrashFee;
 
             var discountAmount = dto.DiscountAmount;
@@ -589,6 +593,7 @@ namespace NhaTro.Services
                 DepositAmount = contract.DepositAmount,
                 DepositPaidAmount = contract.DepositPaidAmount,
                 OccupantCount = contract.OccupantCount,
+                CustomWaterFee = contract.CustomWaterFee,
                 ActualRoomPrice = contract.ActualRoomPrice,
                 TrashFee = contract.TrashFee,
                 Status = contract.Status,

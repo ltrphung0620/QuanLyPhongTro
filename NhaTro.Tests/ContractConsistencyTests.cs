@@ -120,6 +120,33 @@ namespace NhaTro.Tests
             fixture.InvoiceRepository.Verify(x => x.SaveChangesAsync(), Times.Never);
         }
 
+        [Fact]
+        public async Task EndPreview_ShouldProrateCustomWaterFee()
+        {
+            var fixture = CreateFixture();
+            fixture.ContractRepository.Setup(x => x.GetByIdAsync(8)).ReturnsAsync(new Contract
+            {
+                ContractId = 8,
+                RoomId = 1,
+                TenantId = 1,
+                StartDate = new DateOnly(2026, 6, 16),
+                ActualRoomPrice = 3_000_000m,
+                OccupantCount = 2,
+                CustomWaterFee = 60_000m,
+                DepositAmount = 0,
+                DepositPaidAmount = 0,
+                Status = "active"
+            });
+            fixture.InvoiceRepository.Setup(x => x.GetByContractIdAsync(8)).ReturnsAsync(new List<Invoice>());
+
+            var preview = await fixture.Service.EndPreviewAsync(8, new ContractEndPreviewRequestDto
+            {
+                ActualEndDate = new DateOnly(2026, 6, 30)
+            });
+
+            Assert.Equal(30_000m, preview.WaterFee);
+        }
+
         private static Fixture CreateFixture()
         {
             var contracts = new Mock<IContractRepository>();

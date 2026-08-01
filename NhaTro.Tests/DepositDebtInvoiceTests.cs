@@ -43,6 +43,22 @@ namespace NhaTro.Tests
         }
 
         [Fact]
+        public async Task Preview_ShouldUseContractCustomWaterFee()
+        {
+            var fixture = CreateFixture(existingDepositDebt: 500_000m, customWaterFee: 60_000m, occupantCount: 2);
+
+            var preview = await fixture.Service.PreviewAsync(new CreateInvoiceDto
+            {
+                RoomId = 1,
+                ContractId = 10,
+                BillingMonth = new DateOnly(2026, 7, 1)
+            });
+
+            Assert.Equal(60_000m, preview.WaterFee);
+            Assert.Equal(2_590_000m, preview.TotalAmount);
+        }
+
+        [Fact]
         public async Task Preview_ShouldCarryUnpaidPreviousInvoiceIntoNextInvoiceDebt()
         {
             var fixture = CreateFixture(
@@ -135,7 +151,11 @@ namespace NhaTro.Tests
             Assert.Contains("không khớp", error.Message);
         }
 
-        private static Fixture CreateFixture(decimal existingDepositDebt, Invoice? previousInvoice = null)
+        private static Fixture CreateFixture(
+            decimal existingDepositDebt,
+            Invoice? previousInvoice = null,
+            decimal? customWaterFee = null,
+            int occupantCount = 1)
         {
             var invoiceRepository = new Mock<IInvoiceRepository>();
             invoiceRepository.Setup(x => x.GetByRoomAndMonthAsync(1, It.IsAny<DateOnly>()))
@@ -156,7 +176,8 @@ namespace NhaTro.Tests
                 RoomId = 1,
                 StartDate = new DateOnly(2026, 6, 1),
                 ActualRoomPrice = 2_500_000m,
-                OccupantCount = 1,
+                OccupantCount = occupantCount,
+                CustomWaterFee = customWaterFee,
                 DepositAmount = 2_500_000m,
                 DepositPaidAmount = 2_000_000m,
                 Status = "active"
