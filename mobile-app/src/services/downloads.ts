@@ -3,7 +3,7 @@ import * as Sharing from "expo-sharing";
 import { API_BASE_URL } from "@/config/env";
 import { getActiveOrganizationId, getToken } from "./storage";
 
-async function downloadAndShare(path: string, fileName: string) {
+async function downloadFile(path: string, fileName: string) {
   const token = await getToken();
   const activeOrganizationId = await getActiveOrganizationId();
   const target = `${FileSystem.cacheDirectory ?? ""}${fileName}`;
@@ -20,11 +20,17 @@ async function downloadAndShare(path: string, fileName: string) {
     throw new Error(`Không tải được file (${result.status}).`);
   }
 
+  return result.uri;
+}
+
+async function downloadAndShare(path: string, fileName: string) {
+  const uri = await downloadFile(path, fileName);
+
   if (!(await Sharing.isAvailableAsync())) {
     throw new Error("Thiết bị chưa hỗ trợ chia sẻ file.");
   }
 
-  await Sharing.shareAsync(result.uri);
+  await Sharing.shareAsync(uri);
 }
 
 export function shareInvoicePdf(invoiceId: number, fileName: string) {
@@ -33,4 +39,8 @@ export function shareInvoicePdf(invoiceId: number, fileName: string) {
 
 export function shareInvoiceImage(invoiceId: number, fileName: string) {
   return downloadAndShare(`/Invoices/${invoiceId}/image`, fileName);
+}
+
+export function downloadInvoiceImage(invoiceId: number) {
+  return downloadFile(`/Invoices/${invoiceId}/image`, `invoice-preview-${invoiceId}-${Date.now()}.png`);
 }

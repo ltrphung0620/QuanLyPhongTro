@@ -93,13 +93,40 @@ export type Invoice = {
   status: "paid" | "unpaid" | string;
   paymentCode?: string | null;
   paidAt?: string | null;
+  extraFeeNote?: string | null;
+  note?: string | null;
   previousReading?: number | null;
   currentReading?: number | null;
   consumedUnits?: number | null;
 };
 
+export type UpdateInvoice = {
+  roomFee: number;
+  electricityFee: number;
+  waterFee: number;
+  trashFee: number;
+  extraFee: number;
+  discountAmount: number;
+  debtAmount: number;
+  depositDebtAmount: number;
+  extraFeeNote?: string | null;
+  note?: string | null;
+};
+
 export type Transaction = {
   transactionId: number;
+  transactionDirection: "income" | "expense" | string;
+  category: string;
+  itemName?: string | null;
+  amount: number;
+  transactionDate: string;
+  description?: string | null;
+  relatedRoomId?: number | null;
+  relatedRoomCode?: string | null;
+  relatedInvoiceId?: number | null;
+};
+
+export type TransactionInput = {
   transactionDirection: "income" | "expense" | string;
   category: string;
   itemName?: string | null;
@@ -122,6 +149,9 @@ export type MonthlyExpense = {
 };
 
 export type MonthlyProfitLoss = {
+  totalRevenue?: number;
+  totalExpense?: number;
+  profitLoss?: number;
   revenue?: number;
   expense?: number;
   profit?: number;

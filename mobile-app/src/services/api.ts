@@ -10,6 +10,8 @@ import {
   Room,
   Tenant,
   Transaction,
+  TransactionInput,
+  UpdateInvoice,
   UserProfile
 } from "@/types/api";
 import { getActiveOrganizationId, getToken } from "./storage";
@@ -122,10 +124,10 @@ export const api = {
   invoices(month: string, status?: string | null) {
     return apiRequest<Invoice[]>("/Invoices", { query: { month, status } });
   },
-  markInvoicePaid(id: number) {
+  markInvoicePaid(id: number, dto: { amount: number; paymentMethod: string; paymentReference?: string | null; note?: string | null }) {
     return apiRequest<Invoice>(`/Invoices/${id}/mark-paid`, {
       method: "PATCH",
-      body: JSON.stringify({})
+      body: JSON.stringify(dto)
     });
   },
   markInvoiceUnpaid(id: number) {
@@ -133,8 +135,26 @@ export const api = {
       method: "PATCH"
     });
   },
+  updateInvoice(id: number, dto: UpdateInvoice) {
+    return apiRequest<Invoice>(`/Invoices/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(dto)
+    });
+  },
+  deleteInvoice(id: number) {
+    return apiRequest<void>(`/Invoices/${id}`, { method: "DELETE" });
+  },
   transactions(month: string) {
     return apiRequest<Transaction[]>("/Transactions", { query: { month } });
+  },
+  createTransaction(dto: TransactionInput) {
+    return apiRequest<Transaction>("/Transactions", { method: "POST", body: JSON.stringify(dto) });
+  },
+  updateTransaction(id: number, dto: TransactionInput) {
+    return apiRequest<Transaction>(`/Transactions/${id}`, { method: "PUT", body: JSON.stringify(dto) });
+  },
+  deleteTransaction(id: number) {
+    return apiRequest<void>(`/Transactions/${id}`, { method: "DELETE" });
   },
   monthlyRevenue(month: string) {
     return apiRequest<MonthlyRevenue>("/Reports/monthly-revenue", { query: { month } });

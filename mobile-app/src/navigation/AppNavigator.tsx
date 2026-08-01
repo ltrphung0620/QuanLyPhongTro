@@ -3,6 +3,8 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "@/theme";
 import { useAuth } from "@/context/AuthContext";
 import { ChangePasswordScreen } from "@/screens/ChangePasswordScreen";
@@ -23,19 +25,18 @@ export type AuthStackParamList = {
 
 export type AdminTabParamList = {
   Dashboard: undefined;
-  Rooms: undefined;
   Invoices: undefined;
+  Transactions: undefined;
   More: undefined;
 };
 
 export type MoreStackParamList = {
   MoreHome: undefined;
+  Rooms: undefined;
   Tenants: undefined;
   Contracts: undefined;
   MeterReadings: undefined;
-  Transactions: undefined;
   Reports: undefined;
-  Settings: undefined;
 };
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -66,32 +67,36 @@ function UnsupportedRoleScreen() {
 
 function MoreStackNavigator() {
   return (
-    <MoreStack.Navigator>
+    <MoreStack.Navigator screenOptions={{ headerShown: false }}>
       <MoreStack.Screen name="MoreHome" component={SettingsScreen} options={{ title: "Khác" }} />
+      <MoreStack.Screen name="Rooms" component={RoomsScreen} options={{ title: "Phòng trọ" }} />
       <MoreStack.Screen name="Tenants" component={TenantsScreen} options={{ title: "Khách thuê" }} />
       <MoreStack.Screen name="Contracts" component={ContractsScreen} options={{ title: "Hợp đồng" }} />
       <MoreStack.Screen name="MeterReadings" component={MeterReadingsScreen} options={{ title: "Chỉ số" }} />
-      <MoreStack.Screen name="Transactions" component={TransactionsScreen} options={{ title: "Thu chi" }} />
       <MoreStack.Screen name="Reports" component={ReportsScreen} options={{ title: "Báo cáo" }} />
-      <MoreStack.Screen name="Settings" component={SettingsScreen} options={{ title: "Tài khoản" }} />
     </MoreStack.Navigator>
   );
 }
 
 function AdminTabs() {
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, 10);
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primaryDark,
         tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border }
+        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 62 + bottomPadding, paddingTop: 7, paddingBottom: bottomPadding },
+        tabBarItemStyle: { paddingBottom: 3 },
+        tabBarIconStyle: { marginTop: -2 },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "700", marginTop: -2 }
       }}
     >
-      <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: "Tổng quan", tabBarIcon: () => <Text>▦</Text> }} />
-      <Tab.Screen name="Rooms" component={RoomsScreen} options={{ title: "Phòng", tabBarIcon: () => <Text>⌂</Text> }} />
-      <Tab.Screen name="Invoices" component={InvoicesScreen} options={{ title: "Hóa đơn", tabBarIcon: () => <Text>₫</Text> }} />
-      <Tab.Screen name="More" component={MoreStackNavigator} options={{ title: "Khác", tabBarIcon: () => <Text>☰</Text> }} />
+      <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: "Tổng quan", tabBarIcon: ({ color, size }) => <Ionicons name="grid-outline" color={color} size={size} /> }} />
+      <Tab.Screen name="Invoices" component={InvoicesScreen} options={{ title: "Hóa đơn", tabBarIcon: ({ color, size }) => <Ionicons name="receipt-outline" color={color} size={size} /> }} />
+      <Tab.Screen name="Transactions" component={TransactionsScreen} options={{ title: "Thu chi tháng", tabBarIcon: ({ color, size }) => <Ionicons name="swap-horizontal-outline" color={color} size={size} /> }} />
+      <Tab.Screen name="More" component={MoreStackNavigator} options={{ title: "Khác", tabBarIcon: ({ color, size }) => <Ionicons name="menu-outline" color={color} size={size} /> }} />
     </Tab.Navigator>
   );
 }

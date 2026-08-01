@@ -17,7 +17,7 @@
     "extra": {
       "apiBaseUrl": "https://qlpt.io.vn:18444/api",
       "eas": {
-        "projectId": ""
+        "projectId": "67b78228-13f2-498e-ab62-6f8f1cd5d59a"
       }
     },
     "plugins": [
