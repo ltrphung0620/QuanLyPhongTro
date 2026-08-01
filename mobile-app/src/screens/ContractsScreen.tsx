@@ -26,7 +26,7 @@ export function ContractsScreen() {
             <ListRow
               key={contract.contractId}
               title={`${contract.roomCode || `Phòng #${contract.roomId}`} • ${contract.tenantName || `Khách #${contract.tenantId}`}`}
-              subtitle={`Từ ${contract.startDate} • ${contract.occupantCount} người`}
+              subtitle={`Từ ${contract.startDate} • ${contract.occupantCount} người${contract.customWaterFee == null ? "" : ` • Nước riêng ${formatMoney(contract.customWaterFee)}`}`}
               right={formatMoney(contract.actualRoomPrice)}
             />
           ))

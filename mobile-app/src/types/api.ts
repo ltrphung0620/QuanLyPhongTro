@@ -58,6 +58,7 @@ export type Contract = {
   depositAmount: number;
   depositPaidAmount: number;
   occupantCount: number;
+  customWaterFee?: number | null;
   actualRoomPrice: number;
   status: string;
   isArchived: boolean;

@@ -77,7 +77,7 @@ namespace NhaTro.Services
             var electricity = meter?.Amount ?? 0;
             var (fromDate, toDate) = GetInvoiceCoveragePeriod(contract, billingMonth);
             var roomFee = CalculateRoomFeeForBillingMonth(contract, billingMonth, fromDate, toDate);
-            var water = contract.OccupantCount * pricing.WaterFeePerPerson;
+            var water = CalculateMonthlyWaterFee(contract, pricing);
             var trash = contract.TrashFee;
             var extraChargeInfo = await GetInvoiceExtraChargeInfoAsync(dto.RoomId, billingMonth, contract, pricing);
             var discount = dto.DiscountAmount;
@@ -279,7 +279,7 @@ namespace NhaTro.Services
                 var electricity = meter?.Amount ?? 0;
                 var (fromDate, toDate) = GetInvoiceCoveragePeriod(contract, billingMonth);
                 var roomFee = CalculateRoomFeeForBillingMonth(contract, billingMonth, fromDate, toDate);
-                var water = contract.OccupantCount * pricing.WaterFeePerPerson;
+                var water = CalculateMonthlyWaterFee(contract, pricing);
                 var trash = contract.TrashFee;
                 var extraChargeInfo = await GetInvoiceExtraChargeInfoAsync(contract.RoomId, billingMonth, contract, pricing);
                 var discount = dto.DefaultDiscountAmount;
@@ -595,6 +595,12 @@ namespace NhaTro.Services
             }
 
             return Math.Round((contract.ActualRoomPrice / daysInMonth) * occupiedDays, 2, MidpointRounding.AwayFromZero);
+        }
+
+        private static decimal CalculateMonthlyWaterFee(Contract contract, PricingSettingsDto pricing)
+        {
+            return contract.CustomWaterFee
+                ?? contract.OccupantCount * pricing.WaterFeePerPerson;
         }
 
         private async Task<(decimal Amount, string? Note)> GetCarryOverInfoAsync(int contractId, DateOnly billingMonth)

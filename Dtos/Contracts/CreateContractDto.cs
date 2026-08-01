@@ -24,6 +24,9 @@ namespace NhaTro.Dtos.Contracts
         [Range(1, int.MaxValue)]
         public int OccupantCount { get; set; }
 
+        [Range(0, double.MaxValue)]
+        public decimal? CustomWaterFee { get; set; }
+
         [Range(0.01, double.MaxValue)]
         public decimal ActualRoomPrice { get; set; }
 

@@ -44,6 +44,7 @@ export default function Contracts() {
   const [rooms, setRooms] = useState([])
   const [tenants, setTenants] = useState([])
   const [defaultTrashFee, setDefaultTrashFee] = useState(0)
+  const [defaultWaterFeePerPerson, setDefaultWaterFeePerPerson] = useState(0)
   
   // Filtering
   const [selectedStatus, setSelectedStatus] = useState('active')
@@ -58,6 +59,7 @@ export default function Contracts() {
     depositAmount: '0',
     depositPaidAmount: '0',
     occupantCount: '1',
+    customWaterFee: '',
     actualRoomPrice: '',
     trashFee: '0'
   })
@@ -97,6 +99,7 @@ export default function Contracts() {
     depositAmount: '0',
     depositPaidAmount: '0',
     occupantCount: '1',
+    customWaterFee: '',
     actualRoomPrice: '',
     trashFee: '0',
     status: 'Active'
@@ -118,6 +121,7 @@ export default function Contracts() {
       setRooms(sortByRoomCode(roomsData))
       setTenants(tenantsData)
       setDefaultTrashFee(Number(pricingData?.trashFee) || 0)
+      setDefaultWaterFeePerPerson(Number(pricingData?.waterFeePerPerson) || 0)
     } catch (err) {
       console.error(err)
       setError(err.message || 'Không thể tải danh sách hợp đồng')
@@ -158,6 +162,7 @@ export default function Contracts() {
       depositAmount: '0',
       depositPaidAmount: '0',
       occupantCount: '1',
+      customWaterFee: '',
       actualRoomPrice: '',
       trashFee: String(defaultTrashFee)
     })
@@ -179,6 +184,7 @@ export default function Contracts() {
       depositAmount: parseFloat(createForm.depositAmount),
       depositPaidAmount: parseFloat(createForm.depositPaidAmount),
       occupantCount: parseInt(createForm.occupantCount),
+      customWaterFee: createForm.customWaterFee === '' ? null : parseFloat(createForm.customWaterFee),
       actualRoomPrice: parseFloat(createForm.actualRoomPrice),
       trashFee: parseFloat(createForm.trashFee)
     }
@@ -203,6 +209,12 @@ export default function Contracts() {
 
     if (isNaN(values.actualRoomPrice) || values.actualRoomPrice <= 0) {
       setCreateError('Giá thuê thực tế phải lớn hơn 0')
+      setCreateSubmitting(false)
+      return
+    }
+
+    if (values.customWaterFee !== null && (isNaN(values.customWaterFee) || values.customWaterFee < 0)) {
+      setCreateError('Tiền nước tùy chỉnh không hợp lệ')
       setCreateSubmitting(false)
       return
     }
@@ -236,6 +248,7 @@ export default function Contracts() {
       depositAmount: String(contract.depositAmount || 0),
       depositPaidAmount: String(contract.depositPaidAmount || 0),
       occupantCount: String(contract.occupantCount || 1),
+      customWaterFee: contract.customWaterFee == null ? '' : String(contract.customWaterFee),
       actualRoomPrice: String(contract.actualRoomPrice || 0),
       trashFee: String(contract.trashFee || 0),
       status: contract.status || 'Active'
@@ -256,6 +269,7 @@ export default function Contracts() {
       depositAmount: parseFloat(editForm.depositAmount) || 0,
       depositPaidAmount: parseFloat(editForm.depositPaidAmount) || 0,
       occupantCount: parseInt(editForm.occupantCount) || 1,
+      customWaterFee: editForm.customWaterFee === '' ? null : parseFloat(editForm.customWaterFee),
       actualRoomPrice: parseFloat(editForm.actualRoomPrice) || 0,
       trashFee: parseFloat(editForm.trashFee) || 0,
       status: editForm.status
@@ -269,6 +283,12 @@ export default function Contracts() {
 
     if (dto.depositPaidAmount < 0 || dto.depositPaidAmount > dto.depositAmount) {
       setEditError('Tiền cọc đã nhận phải từ 0 đến số tiền cọc phải thu')
+      setEditSubmitting(false)
+      return
+    }
+
+    if (dto.customWaterFee !== null && (isNaN(dto.customWaterFee) || dto.customWaterFee < 0)) {
+      setEditError('Tiền nước tùy chỉnh không hợp lệ')
       setEditSubmitting(false)
       return
     }
@@ -501,6 +521,7 @@ export default function Contracts() {
                     <th>Phòng</th>
                     <th>Khách thuê</th>
                     <th>Giá thuê thực tế</th>
+                    <th>Tiền nước</th>
                     <th>Tiền cọc</th>
                     <th>Thời hạn</th>
                     <th>Trạng thái</th>
@@ -524,6 +545,12 @@ export default function Contracts() {
                       </td>
                       <td>
                         <strong>{dinhDangTien(c.actualRoomPrice)}</strong>
+                      </td>
+                      <td>
+                        <div className="details-cell-mini">
+                          <span>{dinhDangTien(c.customWaterFee ?? (defaultWaterFeePerPerson * c.occupantCount))}</span>
+                          <span className="text-muted">{c.customWaterFee == null ? `${c.occupantCount} người` : 'Mức riêng'}</span>
+                        </div>
                       </td>
                       <td>
                         <div className="details-cell-mini">
@@ -716,6 +743,22 @@ export default function Contracts() {
                     onChange={(e) => setCreateForm({...createForm, trashFee: e.target.value})}
                   />
                   <span className="form-help">Mặc định lấy từ cấu hình giá, có thể chỉnh riêng cho từng hợp đồng.</span>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="create-custom-water-fee">Tiền nước tùy chỉnh (VND/tháng)</label>
+                  <input
+                    type="number"
+                    id="create-custom-water-fee"
+                    className="form-control"
+                    min="0"
+                    placeholder="Để trống để tính theo số người"
+                    value={createForm.customWaterFee}
+                    onChange={(e) => setCreateForm({...createForm, customWaterFee: e.target.value})}
+                  />
+                  <span className="form-help">
+                    Để trống: {dinhDangTien(defaultWaterFeePerPerson)} × {Number(createForm.occupantCount) || 0} người = {dinhDangTien(defaultWaterFeePerPerson * (Number(createForm.occupantCount) || 0))}/tháng.
+                  </span>
                 </div>
 
                 <div className="form-group">
@@ -1161,6 +1204,22 @@ export default function Contracts() {
                     value={editForm.trashFee}
                     onChange={(e) => setEditForm({...editForm, trashFee: e.target.value})}
                   />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="edit-custom-water-fee">Tiền nước tùy chỉnh (đ/tháng)</label>
+                  <input
+                    type="number"
+                    id="edit-custom-water-fee"
+                    className="form-control"
+                    min="0"
+                    placeholder="Để trống để tính theo số người"
+                    value={editForm.customWaterFee}
+                    onChange={(e) => setEditForm({...editForm, customWaterFee: e.target.value})}
+                  />
+                  <span className="form-help">
+                    Để trống: {dinhDangTien(defaultWaterFeePerPerson)} × {Number(editForm.occupantCount) || 0} người = {dinhDangTien(defaultWaterFeePerPerson * (Number(editForm.occupantCount) || 0))}/tháng.
+                  </span>
                 </div>
 
 

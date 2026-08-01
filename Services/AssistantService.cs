@@ -1303,6 +1303,7 @@ namespace NhaTro.Services
                 DepositPaidAmount = ParseOptionalDecimal(command, "depositPaidAmount"),
                 ActualRoomPrice = ParseDecimal(command, "actualRoomPrice"),
                 OccupantCount = ParseInt(command, "occupantCount"),
+                CustomWaterFee = ParseOptionalDecimal(command, "customWaterFee"),
                 TrashFee = ParseOptionalDecimal(command, "trashFee")
             });
             return SuccessResponse(command, $"Đã tạo hợp đồng phòng {result.RoomCode} cho {result.TenantName}.", result);
@@ -1804,6 +1805,7 @@ namespace NhaTro.Services
                 DepositAmount = ParseOptionalDecimal(command, "depositAmount") ?? contract.DepositAmount,
                 DepositPaidAmount = ParseOptionalDecimal(command, "depositPaidAmount") ?? contract.DepositPaidAmount,
                 OccupantCount = ParseOptionalInt(command, "occupantCount") ?? contract.OccupantCount,
+                CustomWaterFee = ParseOptionalDecimal(command, "customWaterFee") ?? contract.CustomWaterFee,
                 ActualRoomPrice = ParseOptionalDecimal(command, "actualRoomPrice") ?? contract.ActualRoomPrice,
                 TrashFee = ParseOptionalDecimal(command, "trashFee") ?? contract.TrashFee
             });

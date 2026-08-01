@@ -26,6 +26,9 @@ namespace NhaTro.Models
         public int OccupantCount { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
+        public decimal? CustomWaterFee { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
         public decimal ActualRoomPrice { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
