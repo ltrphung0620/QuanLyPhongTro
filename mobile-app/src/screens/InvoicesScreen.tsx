@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Card, EmptyState } from "@/components/Cards";
 import { AppInput, PillButton, PrimaryButton } from "@/components/FormControls";
 import { MonthYearPicker } from "@/components/MonthYearPicker";
@@ -27,12 +28,11 @@ function InvoiceAction({ label, icon, danger, onPress }: { label: string; icon: 
 
 export function InvoicesScreen() {
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
   const [month, setMonth] = useState(formatMonth(new Date()));
   const [status, setStatus] = useState<string | null>(null);
   const [payTarget, setPayTarget] = useState<Invoice | null>(null);
   const [payAmount, setPayAmount] = useState("");
-  const [paymentReference, setPaymentReference] = useState("");
-  const [paymentNote, setPaymentNote] = useState("");
   const [payError, setPayError] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<Invoice | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
@@ -40,8 +40,8 @@ export function InvoicesScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const invoices = useQuery({ queryKey: ["invoices", month, status], queryFn: () => api.invoices(month, status) });
   const markPaid = useMutation({
-    mutationFn: ({ id, amount, paymentReference: reference, note }: { id: number; amount: number; paymentReference?: string | null; note?: string | null }) =>
-      api.markInvoicePaid(id, { amount, paymentMethod: "Tiền mặt", paymentReference: reference, note }),
+    mutationFn: ({ id, amount }: { id: number; amount: number }) =>
+      api.markInvoicePaid(id, { amount, paymentMethod: "Tiền mặt", paymentReference: null, note: null }),
     onSuccess: async () => {
       setPayTarget(null);
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
@@ -79,8 +79,6 @@ export function InvoicesScreen() {
   const openPayModal = (invoice: Invoice) => {
     setPayTarget(invoice);
     setPayAmount(String(invoice.totalAmount));
-    setPaymentReference("");
-    setPaymentNote("");
     setPayError(null);
   };
 
@@ -94,9 +92,7 @@ export function InvoicesScreen() {
     setPayError(null);
     markPaid.mutate({
       id: payTarget.invoiceId,
-      amount,
-      paymentReference: paymentReference.trim() || null,
-      note: paymentNote.trim() || null
+      amount
     });
   };
 
@@ -209,24 +205,8 @@ export function InvoicesScreen() {
                 editable={!markPaid.isPending}
               />
               <Text style={styles.formHelp}>Mặc định là số tiền hóa đơn cần thu: {formatMoney(payTarget?.totalAmount)}</Text>
-              <AppInput label="Phương thức thanh toán" value="Tiền mặt" editable={false} />
-              <AppInput
-                label="Mã tham chiếu / Số bút toán (nếu có)"
-                placeholder="Ví dụ: FT200192837..."
-                value={paymentReference}
-                onChangeText={setPaymentReference}
-                editable={!markPaid.isPending}
-                autoCapitalize="characters"
-              />
-              <AppInput
-                label="Ghi chú thanh toán"
-                placeholder="Ví dụ: Đã trả đủ"
-                value={paymentNote}
-                onChangeText={setPaymentNote}
-                editable={!markPaid.isPending}
-              />
             </ScrollView>
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
               <View style={styles.footerButton}><PrimaryButton title="Hủy" variant="secondary" disabled={markPaid.isPending} onPress={() => setPayTarget(null)} /></View>
               <View style={styles.footerButton}><PrimaryButton title={markPaid.isPending ? "Đang lưu..." : "Xác nhận thu tiền"} disabled={markPaid.isPending} onPress={submitPayment} /></View>
             </View>
