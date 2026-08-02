@@ -96,7 +96,8 @@ namespace NhaTro.Tests
                     {
                         InvoiceId = 6,
                         BillingMonth = new DateOnly(2026, 6, 1),
-                        TotalAmount = 2_000_000m,
+                        DepositDebtAmount = 500_000m,
+                        TotalAmount = 2_500_000m,
                         DebtAmount = 0,
                         Status = "unpaid"
                     }
@@ -123,16 +124,34 @@ namespace NhaTro.Tests
                 .Setup(x => x.GetAllAsync(It.IsAny<DateOnly?>(), "income"))
                 .ReturnsAsync(new List<Transaction>());
 
+            var contractRepository = new Mock<IContractRepository>();
+            contractRepository
+                .Setup(x => x.GetAllAsync(null, null, true))
+                .ReturnsAsync(new List<Contract>
+                {
+                    new()
+                    {
+                        ContractId = 10,
+                        StartDate = new DateOnly(2026, 6, 15),
+                        DepositAmount = 2_500_000m,
+                        DepositPaidAmount = 2_000_000m
+                    }
+                });
+
             var service = new ReportService(
                 invoiceRepository.Object,
                 new Mock<IPaymentTransactionRepository>().Object,
-                transactionRepository.Object);
+                transactionRepository.Object,
+                contractRepository.Object);
 
             var june = await service.GetMonthlyRevenueAsync(new DateOnly(2026, 6, 1));
             var july = await service.GetMonthlyRevenueAsync(new DateOnly(2026, 7, 1));
 
             Assert.Equal(2_000_000m, june.PaidInvoicesRevenue);
+            Assert.Equal(2_000_000m, june.DepositRevenue);
+            Assert.Equal(4_000_000m, june.TotalRevenue);
             Assert.Equal(2_580_000m, july.PaidInvoicesRevenue);
+            Assert.Equal(0, july.DepositRevenue);
             Assert.Equal(2_580_000m, july.TotalRevenue);
         }
 

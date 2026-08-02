@@ -137,6 +137,7 @@ namespace NhaTro.Controllers
                 DiscountAmount = invoice.DiscountAmount,
                 DebtAmount = invoice.DebtAmount,
                 DepositDebtAmount = invoice.DepositDebtAmount,
+                DepositPaidAmount = invoice.Contract?.DepositPaidAmount ?? 0,
                 TotalAmount = invoice.TotalAmount,
                 Status = invoice.Status,
                 PaymentCode = invoice.PaymentCode,

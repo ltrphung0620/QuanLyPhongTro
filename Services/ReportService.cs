@@ -18,15 +18,18 @@ namespace NhaTro.Services
         private readonly IInvoiceRepository _invoiceRepository;
         private readonly IPaymentTransactionRepository _paymentTransactionRepository;
         private readonly ITransactionRepository _transactionRepository;
+        private readonly IContractRepository _contractRepository;
 
         public ReportService(
             IInvoiceRepository invoiceRepository,
             IPaymentTransactionRepository paymentTransactionRepository,
-            ITransactionRepository transactionRepository)
+            ITransactionRepository transactionRepository,
+            IContractRepository contractRepository)
         {
             _invoiceRepository = invoiceRepository;
             _paymentTransactionRepository = paymentTransactionRepository;
             _transactionRepository = transactionRepository;
+            _contractRepository = contractRepository;
             EnsurePdfFontsRegistered();
         }
 
@@ -36,6 +39,7 @@ namespace NhaTro.Services
 
             var invoices = await _invoiceRepository.GetAllAsync(null, billingMonth, null);
             var transactions = await _transactionRepository.GetAllAsync(billingMonth, "income");
+            var contracts = await _contractRepository.GetAllAsync(null, null, includeArchived: true);
 
             var paidInvoicesRevenue = invoices
                 .Where(x => x.ReplacedByInvoiceId == null)
@@ -44,12 +48,16 @@ namespace NhaTro.Services
             var extraIncome = transactions
                 .Where(x => !x.RelatedInvoiceId.HasValue)
                 .Sum(x => x.Amount);
-            var totalRevenue = paidInvoicesRevenue + extraIncome;
+            var depositRevenue = contracts
+                .Where(x => x.StartDate.Year == billingMonth.Year && x.StartDate.Month == billingMonth.Month)
+                .Sum(x => x.DepositPaidAmount);
+            var totalRevenue = paidInvoicesRevenue + depositRevenue + extraIncome;
 
             return new MonthlyRevenueDto
             {
                 Month = billingMonth,
                 PaidInvoicesRevenue = paidInvoicesRevenue,
+                DepositRevenue = depositRevenue,
                 ExtraIncome = extraIncome,
                 TotalRevenue = totalRevenue
             };
@@ -354,7 +362,9 @@ namespace NhaTro.Services
 
         private static decimal CalculateRecognizedRevenue(Models.Invoice invoice)
         {
-            var recognizedRevenue = invoice.TotalAmount - invoice.DebtAmount;
+            // Tiền cọc thực thu được ghi nhận riêng theo tháng bắt đầu hợp đồng.
+            // Loại nợ cọc khỏi hóa đơn để không cộng trùng hoặc ghi nhận khoản chưa thực thu.
+            var recognizedRevenue = invoice.TotalAmount - invoice.DebtAmount - invoice.DepositDebtAmount;
             return recognizedRevenue > 0 ? recognizedRevenue : 0;
         }
 
