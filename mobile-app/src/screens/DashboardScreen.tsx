@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { View, StyleSheet, Text } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { StatCard } from "@/components/Cards";
 import { MonthYearPicker } from "@/components/MonthYearPicker";
 import { Screen } from "@/components/Screen";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/services/api";
-import { colors, displayMonth, formatMoney, formatMonth, spacing } from "@/theme";
+import { colors, displayMonth, formatMoney, formatMonth, radius, shadow, spacing } from "@/theme";
 
 function getRecentMonths(selectedMonth: string) {
   const [year, month] = selectedMonth.split("-").map(Number);
@@ -40,6 +41,10 @@ export function DashboardScreen() {
   const totalRevenue = Number(revenue.data?.totalRevenue ?? revenue.data?.invoiceRevenue ?? profit.data?.revenue ?? 0);
   const totalExpense = Number(expense.data?.totalExpense ?? profit.data?.expense ?? 0);
   const netProfit = Number(profit.data?.profitLoss ?? profit.data?.netProfit ?? profit.data?.profit ?? totalRevenue - totalExpense);
+  const activeOrganization = profile?.organizations?.find((item) => item.id === activeOrganizationId) ?? profile?.activeOrganization;
+  const organizationIdentity = `${activeOrganization?.name ?? ""} ${activeOrganization?.code ?? ""}`.toLowerCase();
+  const isNhaTro110 = organizationIdentity.includes("110");
+  const splitProfitAmount = netProfit / 2;
   const cashFlowData = chartMonths.map((chartMonth, index) => {
     const data = cashFlowQueries[index]?.data;
     const revenueValue = Number(data?.totalRevenue ?? data?.revenue ?? 0);
@@ -65,7 +70,7 @@ export function DashboardScreen() {
     <Screen
       title="Tổng quan"
       subtitle={`Báo cáo hoạt động kinh doanh tháng ${displayMonth(month)}`}
-      organizationName={profile?.activeOrganization?.name || profile?.organizations?.find((item) => item.id === activeOrganizationId)?.name}
+      organizationName={activeOrganization?.name}
       profileName={profile?.displayName || profile?.username}
       refreshing={refreshing}
       onRefresh={refresh}
@@ -75,7 +80,28 @@ export function DashboardScreen() {
       <View style={styles.grid}>
         <StatCard label="Doanh thu thực thu" value={formatMoney(totalRevenue)} helper="Hóa đơn, tiền cọc và phát sinh" />
         <StatCard label="Chi phí phát sinh" value={formatMoney(totalExpense)} helper="Chi phí quản lý" />
-        <StatCard label="Lợi nhuận thuần" value={formatMoney(netProfit)} helper={netProfit >= 0 ? "Dòng tiền dương" : "Đang âm"} />
+        {isNhaTro110 ? (
+          <View style={styles.profitSplitCard}>
+            <View style={styles.profitSplitHeader}>
+              <Text style={styles.profitSplitTitle}>LỢI NHUẬN THUẦN</Text>
+              <View style={[styles.profitSplitIcon, netProfit < 0 && styles.profitSplitIconNegative]}>
+                <Ionicons name="logo-usd" size={20} color={netProfit < 0 ? colors.danger : colors.accent} />
+              </View>
+            </View>
+            <View style={styles.profitSplitRows}>
+              <View style={styles.profitSplitRow}>
+                <Text style={styles.profitSplitLabel}>Gđ Nam-Loan</Text>
+                <Text style={styles.profitSplitValue}>{formatMoney(splitProfitAmount)}</Text>
+              </View>
+              <View style={[styles.profitSplitRow, styles.profitSplitLastRow]}>
+                <Text style={styles.profitSplitLabel}>Ông bà</Text>
+                <Text style={styles.profitSplitValue}>{formatMoney(splitProfitAmount)}</Text>
+              </View>
+            </View>
+          </View>
+        ) : (
+          <StatCard label="Lợi nhuận thuần" value={formatMoney(netProfit)} helper={netProfit >= 0 ? "Dòng tiền dương" : "Đang âm"} />
+        )}
       </View>
       <View style={styles.chartCard}>
         <View style={styles.chartHeader}>
@@ -121,6 +147,68 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
     marginTop: spacing.sm
+  },
+  profitSplitCard: {
+    width: "100%",
+    minHeight: 170,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    ...shadow
+  },
+  profitSplitHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    marginBottom: spacing.md
+  },
+  profitSplitTitle: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: "800"
+  },
+  profitSplitIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#eef6f3"
+  },
+  profitSplitIconNegative: {
+    backgroundColor: "#fbf1f0"
+  },
+  profitSplitRows: {
+    gap: spacing.md
+  },
+  profitSplitRow: {
+    minHeight: 40,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md
+  },
+  profitSplitLastRow: {
+    minHeight: 24,
+    paddingBottom: 0,
+    borderBottomWidth: 0
+  },
+  profitSplitLabel: {
+    flex: 1,
+    color: colors.textMuted,
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  profitSplitValue: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "900"
   },
   chartCard: { padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.surface },
   chartHeader: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },

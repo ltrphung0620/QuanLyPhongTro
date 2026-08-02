@@ -38,7 +38,7 @@ export function InvoicesScreen() {
   const [editError, setEditError] = useState<string | null>(null);
   const [imageTarget, setImageTarget] = useState<Invoice | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
-  const invoices = useQuery({ queryKey: ["invoices", month, status], queryFn: () => api.invoices(month, status) });
+  const invoices = useQuery({ queryKey: ["invoices", month], queryFn: () => api.invoices(month, null) });
   const markPaid = useMutation({
     mutationFn: ({ id, amount }: { id: number; amount: number }) =>
       api.markInvoicePaid(id, { amount, paymentMethod: "Tiền mặt", paymentReference: null, note: null }),
@@ -67,13 +67,28 @@ export function InvoicesScreen() {
     onError: (error) => Alert.alert("Không thể xóa hóa đơn", error instanceof Error ? error.message : "Vui lòng thử lại.")
   });
 
+  const displayedInvoices = useMemo(
+    () => (invoices.data ?? []).filter((invoice) => !status || invoice.status === status),
+    [invoices.data, status]
+  );
+
+  const roomCounts = useMemo(() => {
+    const countRooms = (items: Invoice[]) => new Set(items.map((invoice) => invoice.roomId)).size;
+    const all = invoices.data ?? [];
+    return {
+      all: countRooms(all),
+      unpaid: countRooms(all.filter((invoice) => invoice.status !== "paid")),
+      paid: countRooms(all.filter((invoice) => invoice.status === "paid"))
+    };
+  }, [invoices.data]);
+
   const totalThisMonth = useMemo(
     () =>
-      (invoices.data ?? []).reduce(
+      displayedInvoices.reduce(
         (sum, invoice) => sum + invoice.roomFee + invoice.electricityFee + invoice.waterFee + invoice.trashFee + invoice.extraFee - invoice.discountAmount,
         0
       ),
-    [invoices.data]
+    [displayedInvoices]
   );
 
   const openPayModal = (invoice: Invoice) => {
@@ -133,18 +148,18 @@ export function InvoicesScreen() {
     <Screen title="Hóa đơn" subtitle={`Kỳ ${displayMonth(month)}`} loading={invoices.isLoading} refreshing={invoices.isFetching} onRefresh={invoices.refetch}>
       <MonthYearPicker value={month} onChange={setMonth} />
       <View style={styles.filters}>
-        <PillButton title="Tất cả" active={!status} onPress={() => setStatus(null)} />
-        <PillButton title="Chưa thu" active={status === "unpaid"} onPress={() => setStatus("unpaid")} />
-        <PillButton title="Đã thu" active={status === "paid"} onPress={() => setStatus("paid")} />
+        <PillButton title={`Tất cả (${roomCounts.all})`} active={!status} onPress={() => setStatus(null)} />
+        <PillButton title={`Chưa thu (${roomCounts.unpaid})`} active={status === "unpaid"} onPress={() => setStatus("unpaid")} />
+        <PillButton title={`Đã thu (${roomCounts.paid})`} active={status === "paid"} onPress={() => setStatus("paid")} />
       </View>
       <Card>
         <Text style={styles.totalLabel}>Tổng tiền tháng này</Text>
         <Text style={styles.totalValue}>{formatMoney(totalThisMonth)}</Text>
       </Card>
-      {(invoices.data ?? []).length === 0 ? (
+      {displayedInvoices.length === 0 ? (
         <EmptyState text="Chưa có hóa đơn trong kỳ này." />
       ) : (
-        invoices.data?.map((invoice) => (
+        displayedInvoices.map((invoice) => (
           <Card key={invoice.invoiceId}>
             <View style={styles.invoiceHeader}>
               <View style={{ flex: 1 }}>
