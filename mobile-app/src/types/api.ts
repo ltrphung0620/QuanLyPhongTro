@@ -140,6 +140,7 @@ export type TransactionInput = {
 export type MonthlyRevenue = {
   totalRevenue?: number;
   invoiceRevenue?: number;
+  depositRevenue?: number;
   extraIncome?: number;
   [key: string]: unknown;
 };

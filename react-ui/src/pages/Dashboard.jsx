@@ -30,6 +30,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState({
     doanhThu: 0,
     paidInvoicesRevenue: 0,
+    depositRevenue: 0,
     extraIncome: 0,
     chiPhi: 0,
     loiNhuan: 0,
@@ -85,6 +86,7 @@ export default function Dashboard() {
       setStats({
         doanhThu: baoCao.doanhThu?.totalRevenue || 0,
         paidInvoicesRevenue: baoCao.doanhThu?.paidInvoicesRevenue || 0,
+        depositRevenue: baoCao.doanhThu?.depositRevenue || 0,
         extraIncome: baoCao.doanhThu?.extraIncome || 0,
         chiPhi: baoCao.chiPhi?.totalExpense || 0,
         loiNhuan: baoCao.loiNhuan?.profitLoss || 0,
@@ -235,6 +237,8 @@ export default function Dashboard() {
               <div className="stat-value">{dinhDangTien(stats.doanhThu)}</div>
               <div className="stat-breakdown">
                 <span>Hóa đơn: {dinhDangTien(stats.paidInvoicesRevenue)}</span>
+                <span>•</span>
+                <span>Tiền cọc: {dinhDangTien(stats.depositRevenue)}</span>
                 <span>•</span>
                 <span>Phát sinh: {dinhDangTien(stats.extraIncome)}</span>
               </div>

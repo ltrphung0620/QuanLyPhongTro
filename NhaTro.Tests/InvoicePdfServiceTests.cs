@@ -33,9 +33,10 @@ public class InvoicePdfServiceTests
             ExtraFee = 120000,
             ExtraFeeNote = "Gui xe thang 07: 120.000d",
             DiscountAmount = 0,
-            DebtAmount = 1000000,
-            DepositDebtAmount = 0,
-            TotalAmount = 3609500,
+            DebtAmount = 0,
+            DepositDebtAmount = 200000,
+            DepositPaidAmount = 2400000,
+            TotalAmount = 2809500,
             Status = "unpaid"
         };
 

@@ -508,7 +508,7 @@ namespace NhaTro.Services
 
             if (invoice.DepositDebtAmount > 0)
             {
-                noteParts.Add($"N\u1EE3 ti\u1EC1n c\u1ECDc: {FormatMoney(invoice.DepositDebtAmount)}");
+                noteParts.Add($"N\u1EE3 ti\u1EC1n c\u1ECDc: {FormatMoney(invoice.DepositDebtAmount)} (\u0111\u00E3 c\u1ECDc {FormatMoney(invoice.DepositPaidAmount)})");
             }
 
             if (invoice.DebtAmount > 0)

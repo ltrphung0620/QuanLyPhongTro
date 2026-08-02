@@ -73,7 +73,7 @@ export function DashboardScreen() {
       <MonthYearPicker value={month} onChange={setMonth} />
       <Text style={styles.sectionLabel}>TỔNG QUAN THÁNG</Text>
       <View style={styles.grid}>
-        <StatCard label="Doanh thu thực thu" value={formatMoney(totalRevenue)} helper="Hóa đơn và phát sinh" />
+        <StatCard label="Doanh thu thực thu" value={formatMoney(totalRevenue)} helper="Hóa đơn, tiền cọc và phát sinh" />
         <StatCard label="Chi phí phát sinh" value={formatMoney(totalExpense)} helper="Chi phí quản lý" />
         <StatCard label="Lợi nhuận thuần" value={formatMoney(netProfit)} helper={netProfit >= 0 ? "Dòng tiền dương" : "Đang âm"} />
       </View>

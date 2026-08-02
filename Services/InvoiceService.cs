@@ -953,6 +953,7 @@ namespace NhaTro.Services
                 DiscountAmount = i.DiscountAmount,
                 DebtAmount = i.DebtAmount,
                 DepositDebtAmount = i.DepositDebtAmount,
+                DepositPaidAmount = i.Contract?.DepositPaidAmount ?? 0,
                 TotalAmount = i.TotalAmount,
                 Status = i.Status,
                 PaymentCode = i.PaymentCode,
