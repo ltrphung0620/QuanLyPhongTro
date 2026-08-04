@@ -3,7 +3,6 @@ const KIM_LOAN_ROOM_CODES = new Set([
   'A2',
   'A3',
   'Kios 110/2A',
-  'B4',
   'B5',
   'B6',
   'B7',

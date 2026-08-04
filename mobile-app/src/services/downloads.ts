@@ -44,3 +44,15 @@ export function shareInvoiceImage(invoiceId: number, fileName: string) {
 export function downloadInvoiceImage(invoiceId: number) {
   return downloadFile(`/Invoices/${invoiceId}/image`, `invoice-preview-${invoiceId}-${Date.now()}.png`);
 }
+
+export function shareInvoiceImagesZip(month: string, status?: string | null) {
+  const query = new URLSearchParams({ month });
+  if (status) query.set("status", status);
+
+  const monthPart = month.slice(0, 7);
+  const statusPart = status || "tat-ca";
+  return downloadAndShare(
+    `/Invoices/images.zip?${query.toString()}`,
+    `AnhHoaDon-${monthPart}-${statusPart}.zip`
+  );
+}

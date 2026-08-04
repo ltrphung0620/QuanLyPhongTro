@@ -9,7 +9,7 @@ import { MonthYearPicker } from "@/components/MonthYearPicker";
 import { InvoiceEditModal } from "@/components/InvoiceEditModal";
 import { Screen } from "@/components/Screen";
 import { api } from "@/services/api";
-import { downloadInvoiceImage } from "@/services/downloads";
+import { downloadInvoiceImage, shareInvoiceImage, shareInvoiceImagesZip } from "@/services/downloads";
 import { displayMonth, formatMoney, formatMonth, colors, spacing } from "@/theme";
 import { Invoice, UpdateInvoice } from "@/types/api";
 
@@ -30,7 +30,7 @@ export function InvoicesScreen() {
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const [month, setMonth] = useState(formatMonth(new Date()));
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<"unpaid" | "paid" | null>(null);
   const [payTarget, setPayTarget] = useState<Invoice | null>(null);
   const [payAmount, setPayAmount] = useState("");
   const [payError, setPayError] = useState<string | null>(null);
@@ -38,6 +38,8 @@ export function InvoicesScreen() {
   const [editError, setEditError] = useState<string | null>(null);
   const [imageTarget, setImageTarget] = useState<Invoice | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageDownloading, setImageDownloading] = useState(false);
+  const [imagesDownloading, setImagesDownloading] = useState(false);
   const invoices = useQuery({ queryKey: ["invoices", month], queryFn: () => api.invoices(month, null) });
   const markPaid = useMutation({
     mutationFn: ({ id, amount }: { id: number; amount: number }) =>
@@ -133,6 +135,35 @@ export function InvoicesScreen() {
     }
   };
 
+  const downloadAllImages = async () => {
+    if (displayedInvoices.length === 0 || imagesDownloading) return;
+
+    setImagesDownloading(true);
+    try {
+      await shareInvoiceImagesZip(month, status);
+    } catch (error) {
+      Alert.alert("Không thể tải ảnh hóa đơn", error instanceof Error ? error.message : "Vui lòng thử lại.");
+    } finally {
+      setImagesDownloading(false);
+    }
+  };
+
+  const downloadCurrentImage = async () => {
+    if (!imageTarget || imageDownloading) return;
+
+    const roomCode = (imageTarget.roomCode || `Phong-${imageTarget.roomId}`).replace(/[^a-zA-Z0-9_-]/g, "-");
+    const billingMonth = imageTarget.billingMonth?.slice(0, 7) || month.slice(0, 7);
+
+    setImageDownloading(true);
+    try {
+      await shareInvoiceImage(imageTarget.invoiceId, `HoaDon-${roomCode}-${billingMonth}.png`);
+    } catch (error) {
+      Alert.alert("Không thể tải ảnh hóa đơn", error instanceof Error ? error.message : "Vui lòng thử lại.");
+    } finally {
+      setImageDownloading(false);
+    }
+  };
+
   const confirmDelete = (invoice: Invoice) => {
     Alert.alert(
       "Xác nhận xóa hóa đơn",
@@ -152,6 +183,23 @@ export function InvoicesScreen() {
         <PillButton title={`Chưa thu (${roomCounts.unpaid})`} active={status === "unpaid"} onPress={() => setStatus("unpaid")} />
         <PillButton title={`Đã thu (${roomCounts.paid})`} active={status === "paid"} onPress={() => setStatus("paid")} />
       </View>
+      <Pressable
+        disabled={imagesDownloading || displayedInvoices.length === 0}
+        style={({ pressed }) => [
+          styles.downloadAllButton,
+          (pressed || imagesDownloading || displayedInvoices.length === 0) && styles.downloadAllButtonDisabled
+        ]}
+        onPress={downloadAllImages}
+      >
+        {imagesDownloading ? (
+          <ActivityIndicator size="small" color={colors.white} />
+        ) : (
+          <Ionicons name="download-outline" size={19} color={colors.white} />
+        )}
+        <Text style={styles.downloadAllButtonText}>
+          {imagesDownloading ? "Đang tạo file ảnh..." : `Tải tất cả ảnh (${roomCounts[status || "all"]} phòng)`}
+        </Text>
+      </Pressable>
       <Card>
         <Text style={styles.totalLabel}>Tổng tiền tháng này</Text>
         <Text style={styles.totalValue}>{formatMoney(totalThisMonth)}</Text>
@@ -256,6 +304,25 @@ export function InvoicesScreen() {
               </View>
             )}
           </View>
+          <View style={[styles.imageDownloadFooter, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+            <Pressable
+              disabled={!imageUri || imageDownloading}
+              style={({ pressed }) => [
+                styles.imageDownloadButton,
+                (pressed || !imageUri || imageDownloading) && styles.imageDownloadButtonDisabled
+              ]}
+              onPress={downloadCurrentImage}
+            >
+              {imageDownloading ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : (
+                <Ionicons name="download-outline" size={20} color={colors.white} />
+              )}
+              <Text style={styles.imageDownloadButtonText}>
+                {imageDownloading ? "Đang tải ảnh..." : "Tải ảnh hóa đơn"}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </Modal>
     </Screen>
@@ -267,6 +334,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: spacing.sm,
     flexWrap: "wrap"
+  },
+  downloadAllButton: {
+    minHeight: 48,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.primaryDark
+  },
+  downloadAllButtonDisabled: {
+    opacity: 0.55
+  },
+  downloadAllButtonText: {
+    color: colors.white,
+    fontSize: 15,
+    fontWeight: "900"
   },
   totalLabel: {
     color: colors.textMuted,
@@ -363,5 +448,27 @@ const styles = StyleSheet.create({
   imageCanvas: { flex: 1, padding: spacing.sm, alignItems: "center", justifyContent: "center" },
   invoiceImage: { width: "100%", height: "100%" },
   imageLoading: { alignItems: "center", gap: spacing.md },
-  imageLoadingText: { color: colors.white, fontWeight: "700" }
+  imageLoadingText: { color: colors.white, fontWeight: "700" },
+  imageDownloadFooter: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    backgroundColor: "#171514"
+  },
+  imageDownloadButton: {
+    minHeight: 52,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.primary
+  },
+  imageDownloadButtonDisabled: {
+    opacity: 0.55
+  },
+  imageDownloadButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: "900"
+  }
 });
