@@ -19,6 +19,31 @@ import { useAuth } from '../context/AuthContext'
 import './SupportChat.css'
 
 const MESSAGE_PAGE_SIZE = 50
+const VIETNAM_TIME_ZONE = 'Asia/Ho_Chi_Minh'
+
+function parseUtcDate(value) {
+  if (!value) return null
+  if (value instanceof Date) return value
+
+  // SQL Server trả DateTime không kèm múi giờ. Các mốc chat được lưu bằng UTC,
+  // vì vậy cần gắn "Z" trước khi chuyển sang giờ Việt Nam.
+  const normalized = typeof value === 'string' && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(value)
+    ? `${value}Z`
+    : value
+  return new Date(normalized)
+}
+
+function vietnamDateKey(value) {
+  const date = parseUtcDate(value)
+  if (!date || Number.isNaN(date.getTime())) return ''
+
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: VIETNAM_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date)
+}
 
 function initials(value) {
   const parts = (value || 'AD').trim().split(/\s+/).filter(Boolean)
@@ -28,26 +53,42 @@ function initials(value) {
 
 function formatConversationTime(value) {
   if (!value) return ''
-  const date = new Date(value)
+  const date = parseUtcDate(value)
   const now = new Date()
-  if (date.toDateString() === now.toDateString()) {
-    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  if (vietnamDateKey(date) === vietnamDateKey(now)) {
+    return date.toLocaleTimeString('vi-VN', {
+      timeZone: VIETNAM_TIME_ZONE,
+      hour: '2-digit',
+      minute: '2-digit'
+    })
   }
-  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
+  return date.toLocaleDateString('vi-VN', {
+    timeZone: VIETNAM_TIME_ZONE,
+    day: '2-digit',
+    month: '2-digit'
+  })
 }
 
 function formatMessageTime(value) {
-  return new Date(value).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  return parseUtcDate(value).toLocaleTimeString('vi-VN', {
+    timeZone: VIETNAM_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 function messageDateLabel(value) {
-  const date = new Date(value)
+  const date = parseUtcDate(value)
   const today = new Date()
-  const yesterday = new Date()
-  yesterday.setDate(today.getDate() - 1)
-  if (date.toDateString() === today.toDateString()) return 'Hôm nay'
-  if (date.toDateString() === yesterday.toDateString()) return 'Hôm qua'
-  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000)
+  if (vietnamDateKey(date) === vietnamDateKey(today)) return 'Hôm nay'
+  if (vietnamDateKey(date) === vietnamDateKey(yesterday)) return 'Hôm qua'
+  return date.toLocaleDateString('vi-VN', {
+    timeZone: VIETNAM_TIME_ZONE,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  })
 }
 
 export default function SupportChat() {
