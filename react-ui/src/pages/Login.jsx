@@ -1,7 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login } from '../api'
-import { User, Lock, ArrowRight, AlertCircle } from 'lucide-react'
+import {
+  AlertCircle,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Lock,
+  Mail,
+  ShieldCheck,
+  User,
+} from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
 import { getAdminHomePath } from '../adminPermissions'
@@ -10,6 +20,7 @@ import '../Auth.css'
 export default function Login() {
   const [emailOrUsername, setEmailOrUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const navigate = useNavigate()
@@ -64,75 +75,128 @@ export default function Login() {
   }
 
   return (
-    <div className="auth-page auth-split-container">
-      {/* Left Pane: Form */}
-      <div className="auth-left-pane">
-        <div className="auth-form-wrapper">
-          {/* Brand/logo row */}
-          <div className="auth-brand-logo">
-            <img src="/logo-lph.jpg" alt="LPH Logo" />
-            <h2>Hệ thống quản lý phòng trọ</h2>
+    <div className="auth-page auth-login-page">
+      <div className="auth-login-shell">
+        <section className="auth-showcase" aria-hidden="true">
+          <div className="auth-corner-art auth-corner-top-left">
+            <span className="auth-corner-dots" />
+            <span className="auth-corner-arch" />
+            <span className="auth-corner-accent" />
           </div>
 
-          <h1 className="auth-title">Chào mừng trở lại</h1>
-          <p className="auth-subtitle">Đăng nhập tài khoản của bạn để truy cập hệ thống.</p>
-
-          {error && (
-            <div className="auth-error-alert">
-              <AlertCircle size={16} />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="auth-form">
-            <div className="form-group">
-              <label className="form-label" htmlFor="email-input">Email hoặc Tên đăng nhập</label>
-              <div className="auth-input-wrapper">
-                <User className="auth-input-icon" size={16} />
-                <input
-                  id="email-input"
-                  type="text"
-                  className="auth-input-control"
-                  placeholder="Nhập email hoặc username"
-                  value={emailOrUsername}
-                  onChange={(e) => setEmailOrUsername(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="password-input">Mật khẩu</label>
-              <div className="auth-input-wrapper">
-                <Lock className="auth-input-icon" size={16} />
-                <input
-                  id="password-input"
-                  type="password"
-                  className="auth-input-control"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            <button type="submit" className="auth-submit-btn-pill" disabled={isLoading}>
-              {isLoading ? 'Đang xử lý...' : 'Tiếp tục đăng nhập'}
-              {!isLoading && <ArrowRight size={16} />}
-            </button>
-          </form>
-
-          <div className="auth-terms-text">
-            Bằng cách tiếp tục, bạn đồng ý với <a href="#!">Điều khoản dịch vụ</a> và <a href="#!">Chính sách bảo mật</a> của chúng tôi.
+          <div className="auth-corner-art auth-corner-top-right">
+            <span className="auth-corner-ring auth-corner-ring-large" />
+            <span className="auth-corner-ring auth-corner-ring-small" />
+            <span className="auth-corner-disc" />
           </div>
-        </div>
-      </div>
 
-      <div className="auth-owner-footer">
-        <span>Hệ thống thuộc về: <strong>Lại Trình Phước Hưng</strong></span>
-        <span>Email: <a href="mailto:hungltp206@gmail.com">hungltp206@gmail.com</a></span>
-        <span>SĐT: <a href="tel:0909638206">0909638206</a></span>
+          <div className="auth-corner-art auth-corner-bottom-left">
+            <span className="auth-corner-frame" />
+            <span className="auth-corner-tile" />
+            <span className="auth-corner-pill" />
+          </div>
+
+          <div className="auth-corner-art auth-corner-bottom-right">
+            <span className="auth-corner-panel" />
+            <span className="auth-corner-orbit" />
+            <span className="auth-corner-dots auth-corner-dots-light" />
+          </div>
+        </section>
+
+        <main className="auth-login-main">
+          <div className="auth-login-card">
+            <div className="auth-card-ornament" aria-hidden="true">
+              <span />
+              <i><KeyRound size={20} /></i>
+              <span />
+            </div>
+
+            <div className="auth-login-heading">
+              <h2>Chào mừng trở lại</h2>
+              <p>Đăng nhập để tiếp tục quản lý dãy trọ của bạn.</p>
+            </div>
+
+            {error && (
+              <div className="auth-error-alert" role="alert" aria-live="polite">
+                <AlertCircle size={18} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="auth-form">
+              <div className="form-group">
+                <label className="form-label" htmlFor="email-input">Email hoặc tên đăng nhập</label>
+                <div className="auth-input-wrapper">
+                  <span className="auth-input-icon-box"><User size={19} /></span>
+                  <input
+                    id="email-input"
+                    type="text"
+                    className="auth-input-control"
+                    placeholder="Nhập email hoặc tên đăng nhập"
+                    value={emailOrUsername}
+                    onChange={(e) => setEmailOrUsername(e.target.value)}
+                    autoComplete="username"
+                    autoFocus
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="password-input">Mật khẩu</label>
+                <div className="auth-input-wrapper">
+                  <span className="auth-input-icon-box"><Lock size={19} /></span>
+                  <input
+                    id="password-input"
+                    type={showPassword ? 'text' : 'password'}
+                    className="auth-input-control auth-password-input"
+                    placeholder="Nhập mật khẩu"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                  <button
+                    className="auth-password-toggle"
+                    type="button"
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" className="auth-submit-btn" disabled={isLoading}>
+                <span>{isLoading ? 'Đang xác thực...' : 'Đăng nhập hệ thống'}</span>
+                {isLoading
+                  ? <span className="auth-spinner" />
+                  : <span className="auth-submit-arrow"><ArrowRight size={18} /></span>}
+              </button>
+            </form>
+
+            <div className="auth-security-note">
+              <ShieldCheck size={17} />
+              <span>Phiên đăng nhập của bạn được bảo mật an toàn.</span>
+            </div>
+
+            <div className="auth-owner-footer">
+              <div className="auth-support-heading">
+                <strong>Liên hệ hỗ trợ/ hợp tác</strong>
+                <span>Chúng tôi luôn sẵn sàng kết nối</span>
+              </div>
+              <div className="auth-support-links">
+                <div className="auth-contact-static">
+                  <Mail size={16} />
+                  <span>hungltp206@gmail.com</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p className="auth-copyright">© 2026 LPH Home · Hệ thống quản lý phòng trọ</p>
+        </main>
       </div>
     </div>
   )

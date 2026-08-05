@@ -1,0 +1,291 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using NhaTro.Data;
+using NhaTro.Dtos.Support;
+using NhaTro.Interfaces.Services;
+using NhaTro.Models;
+
+namespace NhaTro.Controllers
+{
+    [Route("api/support")]
+    [ApiController]
+    [Authorize(Roles = "Admin,SuperAdmin")]
+    public class SupportController : ControllerBase
+    {
+        private readonly NhaTroDbContext _context;
+        private readonly ICurrentUserService _currentUser;
+        private readonly IRealtimeService _realtime;
+
+        public SupportController(
+            NhaTroDbContext context,
+            ICurrentUserService currentUser,
+            IRealtimeService realtime)
+        {
+            _context = context;
+            _currentUser = currentUser;
+            _realtime = realtime;
+        }
+
+        [HttpGet("conversation")]
+        public async Task<ActionResult<SupportConversationDto>> GetMyConversation()
+        {
+            if (!IsAdmin()) return Forbid();
+
+            var conversation = await GetOrCreateAdminConversationAsync(_currentUser.UserId);
+            return Ok(await BuildConversationDtoAsync(conversation, forSuperAdmin: false));
+        }
+
+        [HttpGet("conversations")]
+        public async Task<ActionResult<List<SupportConversationDto>>> GetConversations()
+        {
+            if (!IsSuperAdmin()) return Forbid();
+
+            var rows = await _context.SupportConversations
+                .AsNoTracking()
+                .Select(conversation => new
+                {
+                    Conversation = conversation,
+                    LastMessage = conversation.Messages
+                        .OrderByDescending(message => message.SupportMessageId)
+                        .Select(message => message.Content)
+                        .FirstOrDefault(),
+                    UnreadCount = conversation.Messages.Count(message =>
+                        message.SenderUserId == conversation.AdminUserId && message.ReadAt == null)
+                })
+                .OrderByDescending(x => x.Conversation.LastMessageAt ?? x.Conversation.CreatedAt)
+                .ToListAsync();
+
+            var adminIds = rows.Select(x => x.Conversation.AdminUserId).Distinct().ToList();
+            var admins = await _context.Users
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(user => adminIds.Contains(user.Id))
+                .ToDictionaryAsync(user => user.Id);
+
+            var memberships = await _context.AdminOrganizationMemberships
+                .AsNoTracking()
+                .Include(membership => membership.Organization)
+                .Where(membership => adminIds.Contains(membership.UserId) && membership.IsActive)
+                .ToListAsync();
+
+            return Ok(rows.Select(row =>
+            {
+                admins.TryGetValue(row.Conversation.AdminUserId, out var admin);
+                return new SupportConversationDto
+                {
+                    SupportConversationId = row.Conversation.SupportConversationId,
+                    AdminUserId = row.Conversation.AdminUserId,
+                    AdminName = admin?.DisplayName ?? admin?.Username ?? "Admin",
+                    AdminEmail = admin?.Email ?? string.Empty,
+                    OrganizationNames = memberships
+                        .Where(membership => membership.UserId == row.Conversation.AdminUserId)
+                        .Select(membership => membership.Organization.Name)
+                        .Distinct()
+                        .OrderBy(name => name)
+                        .ToList(),
+                    LastMessage = row.LastMessage,
+                    LastMessageAt = row.Conversation.LastMessageAt,
+                    UnreadCount = row.UnreadCount
+                };
+            }).ToList());
+        }
+
+        [HttpGet("conversations/{conversationId:int}/messages")]
+        public async Task<ActionResult<SupportMessagePageDto>> GetMessages(
+            int conversationId,
+            [FromQuery] int? beforeId = null,
+            [FromQuery] int take = 50)
+        {
+            var conversation = await FindAuthorizedConversationAsync(conversationId);
+            if (conversation == null) return NotFound(new { message = "Không tìm thấy hội thoại hỗ trợ." });
+
+            var currentUserId = _currentUser.UserId;
+            var unreadMessages = await _context.SupportMessages
+                .Where(message => message.SupportConversationId == conversationId &&
+                                  message.SenderUserId != currentUserId &&
+                                  message.ReadAt == null)
+                .ToListAsync();
+
+            if (unreadMessages.Count > 0)
+            {
+                var readAt = DateTime.UtcNow;
+                foreach (var message in unreadMessages) message.ReadAt = readAt;
+                await _context.SaveChangesAsync();
+            }
+
+            take = Math.Clamp(take, 1, 100);
+            var query = _context.SupportMessages
+                .AsNoTracking()
+                .Where(message => message.SupportConversationId == conversationId);
+
+            if (beforeId.HasValue)
+            {
+                query = query.Where(message => message.SupportMessageId < beforeId.Value);
+            }
+
+            var messages = await query
+                .OrderByDescending(message => message.SupportMessageId)
+                .Take(take + 1)
+                .ToListAsync();
+
+            var hasMore = messages.Count > take;
+            messages = messages.Take(take).OrderBy(message => message.SupportMessageId).ToList();
+
+            return Ok(new SupportMessagePageDto
+            {
+                Items = await MapMessagesAsync(messages),
+                HasMore = hasMore
+            });
+        }
+
+        [HttpPost("conversations/{conversationId:int}/messages")]
+        public async Task<ActionResult<SupportMessageDto>> SendMessage(
+            int conversationId,
+            [FromBody] SendSupportMessageDto dto)
+        {
+            if (!ModelState.IsValid) return ValidationProblem(ModelState);
+
+            var conversation = await FindAuthorizedConversationAsync(conversationId);
+            if (conversation == null) return NotFound(new { message = "Không tìm thấy hội thoại hỗ trợ." });
+
+            var content = dto.Content.Trim();
+            if (content.Length == 0)
+            {
+                return BadRequest(new { message = "Nội dung tin nhắn không được để trống." });
+            }
+
+            var now = DateTime.UtcNow;
+            var message = new SupportMessage
+            {
+                SupportConversationId = conversationId,
+                SenderUserId = _currentUser.UserId,
+                Content = content,
+                SentAt = now
+            };
+
+            conversation.LastMessageAt = now;
+            conversation.UpdatedAt = now;
+            _context.SupportMessages.Add(message);
+            await _context.SaveChangesAsync();
+
+            var messageDto = (await MapMessagesAsync(new List<SupportMessage> { message })).Single();
+            var payload = new
+            {
+                conversationId,
+                adminUserId = conversation.AdminUserId,
+                message = messageDto
+            };
+
+            await Task.WhenAll(
+                _realtime.PublishToRoleAsync("SuperAdmin", "support.message.created", payload, "support"),
+                _realtime.PublishToUserAsync(conversation.AdminUserId, "support.message.created", payload, "support"));
+
+            return Ok(messageDto);
+        }
+
+        private async Task<SupportConversation> GetOrCreateAdminConversationAsync(int adminUserId)
+        {
+            var conversation = await _context.SupportConversations
+                .FirstOrDefaultAsync(item => item.AdminUserId == adminUserId);
+
+            if (conversation != null) return conversation;
+
+            conversation = new SupportConversation
+            {
+                AdminUserId = adminUserId,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _context.SupportConversations.Add(conversation);
+            await _context.SaveChangesAsync();
+            return conversation;
+        }
+
+        private async Task<SupportConversation?> FindAuthorizedConversationAsync(int conversationId)
+        {
+            var conversation = await _context.SupportConversations
+                .FirstOrDefaultAsync(item => item.SupportConversationId == conversationId);
+
+            if (conversation == null) return null;
+            if (IsSuperAdmin()) return conversation;
+            return IsAdmin() && conversation.AdminUserId == _currentUser.UserId ? conversation : null;
+        }
+
+        private async Task<SupportConversationDto> BuildConversationDtoAsync(
+            SupportConversation conversation,
+            bool forSuperAdmin)
+        {
+            var admin = await _context.Users
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstAsync(user => user.Id == conversation.AdminUserId);
+
+            var organizations = await _context.AdminOrganizationMemberships
+                .AsNoTracking()
+                .Include(membership => membership.Organization)
+                .Where(membership => membership.UserId == conversation.AdminUserId && membership.IsActive)
+                .Select(membership => membership.Organization.Name)
+                .Distinct()
+                .OrderBy(name => name)
+                .ToListAsync();
+
+            var lastMessage = await _context.SupportMessages
+                .AsNoTracking()
+                .Where(message => message.SupportConversationId == conversation.SupportConversationId)
+                .OrderByDescending(message => message.SupportMessageId)
+                .Select(message => message.Content)
+                .FirstOrDefaultAsync();
+
+            var unreadCount = await _context.SupportMessages
+                .AsNoTracking()
+                .CountAsync(message => message.SupportConversationId == conversation.SupportConversationId &&
+                                       message.ReadAt == null &&
+                                       (forSuperAdmin
+                                           ? message.SenderUserId == conversation.AdminUserId
+                                           : message.SenderUserId != conversation.AdminUserId));
+
+            return new SupportConversationDto
+            {
+                SupportConversationId = conversation.SupportConversationId,
+                AdminUserId = conversation.AdminUserId,
+                AdminName = admin.DisplayName ?? admin.Username,
+                AdminEmail = admin.Email,
+                OrganizationNames = organizations,
+                LastMessage = lastMessage,
+                LastMessageAt = conversation.LastMessageAt,
+                UnreadCount = unreadCount
+            };
+        }
+
+        private async Task<List<SupportMessageDto>> MapMessagesAsync(List<SupportMessage> messages)
+        {
+            var userIds = messages.Select(message => message.SenderUserId).Distinct().ToList();
+            var users = await _context.Users
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(user => userIds.Contains(user.Id))
+                .ToDictionaryAsync(user => user.Id);
+
+            return messages.Select(message =>
+            {
+                users.TryGetValue(message.SenderUserId, out var sender);
+                return new SupportMessageDto
+                {
+                    SupportMessageId = message.SupportMessageId,
+                    SupportConversationId = message.SupportConversationId,
+                    SenderUserId = message.SenderUserId,
+                    SenderName = sender?.DisplayName ?? sender?.Username ?? "Người dùng",
+                    SenderRole = sender?.Role ?? string.Empty,
+                    Content = message.Content,
+                    SentAt = message.SentAt,
+                    ReadAt = message.ReadAt,
+                    IsMine = message.SenderUserId == _currentUser.UserId
+                };
+            }).ToList();
+        }
+
+        private bool IsAdmin() => string.Equals(_currentUser.Role, "Admin", StringComparison.OrdinalIgnoreCase);
+        private bool IsSuperAdmin() => string.Equals(_currentUser.Role, "SuperAdmin", StringComparison.OrdinalIgnoreCase);
+    }
+}

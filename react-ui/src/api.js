@@ -590,6 +590,26 @@ export function layOrganizationsAdmin() {
   return goiApi('/admin/organizations')
 }
 
+// Support chat APIs
+export function layHoiThoaiHoTroCuaToi() {
+  return goiApi('/support/conversation')
+}
+
+export function layDanhSachHoiThoaiHoTro() {
+  return goiApi('/support/conversations')
+}
+
+export function layTinNhanHoTro(conversationId, beforeId = null, take = 50) {
+  return goiApi(`/support/conversations/${conversationId}/messages`, { beforeId, take })
+}
+
+export function guiTinNhanHoTro(conversationId, content) {
+  return goiApi(`/support/conversations/${conversationId}/messages`, {}, {
+    method: 'POST',
+    body: JSON.stringify({ content })
+  })
+}
+
 // Tenant APIs
 export function layHoaDonTenant() {
   return goiApi('/tenant/invoices')

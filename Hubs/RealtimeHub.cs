@@ -13,6 +13,13 @@ namespace NhaTro.Hubs
                 ?? Context.User?.FindFirstValue("role");
             var organizationId = Context.User?.FindFirstValue("organizationId");
             var tenantId = Context.User?.FindFirstValue("tenantId");
+            var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? Context.User?.FindFirstValue("userId");
+
+            if (!string.IsNullOrWhiteSpace(userId))
+            {
+                await Groups.AddToGroupAsync(Context.ConnectionId, $"user:{userId}");
+            }
 
             if (!string.IsNullOrWhiteSpace(role))
             {
