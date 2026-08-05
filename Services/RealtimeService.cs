@@ -85,7 +85,26 @@ namespace NhaTro.Services
 
         public Task PublishToTenantAsync(int tenantId, string eventName, object? data = null, params string[] modules)
         {
-            var payload = new
+            var payload = CreatePayload(eventName, data, modules);
+
+            return _hubContext.Clients.Group($"tenant:{tenantId}").SendAsync("RealtimeEvent", payload);
+        }
+
+        public Task PublishToUserAsync(int userId, string eventName, object? data = null, params string[] modules)
+        {
+            var payload = CreatePayload(eventName, data, modules);
+            return _hubContext.Clients.Group($"user:{userId}").SendAsync("RealtimeEvent", payload);
+        }
+
+        public Task PublishToRoleAsync(string role, string eventName, object? data = null, params string[] modules)
+        {
+            var payload = CreatePayload(eventName, data, modules);
+            return _hubContext.Clients.Group($"role:{role}").SendAsync("RealtimeEvent", payload);
+        }
+
+        private static object CreatePayload(string eventName, object? data, params string[] modules)
+        {
+            return new
             {
                 eventName,
                 modules = modules
@@ -95,8 +114,6 @@ namespace NhaTro.Services
                 data,
                 occurredAt = DateTime.UtcNow
             };
-
-            return _hubContext.Clients.Group($"tenant:{tenantId}").SendAsync("RealtimeEvent", payload);
         }
 
         private void PublishToSseClients(object payload)

@@ -28,6 +28,8 @@ namespace NhaTro.Data
         public DbSet<TenantDeviceToken> TenantDeviceTokens { get; set; }
         public DbSet<AdminOrganizationMembership> AdminOrganizationMemberships { get; set; }
         public DbSet<AdminOrganizationPagePermission> AdminOrganizationPagePermissions { get; set; }
+        public DbSet<SupportConversation> SupportConversations { get; set; }
+        public DbSet<SupportMessage> SupportMessages { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -129,6 +131,54 @@ namespace NhaTro.Data
             ConfigureEmailNotification(modelBuilder);
             ConfigureSystemSetting(modelBuilder);
             ConfigureTenantDeviceToken(modelBuilder);
+            ConfigureSupportChat(modelBuilder);
+        }
+
+        private static void ConfigureSupportChat(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<SupportConversation>(entity =>
+            {
+                entity.ToTable("support_conversations");
+                entity.HasKey(x => x.SupportConversationId);
+                entity.Property(x => x.SupportConversationId).HasColumnName("support_conversation_id");
+                entity.Property(x => x.AdminUserId).HasColumnName("admin_user_id");
+                entity.Property(x => x.CreatedAt).HasColumnName("created_at");
+                entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+                entity.Property(x => x.LastMessageAt).HasColumnName("last_message_at");
+
+                entity.HasOne(x => x.AdminUser)
+                    .WithMany()
+                    .HasForeignKey(x => x.AdminUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(x => x.AdminUserId).IsUnique();
+                entity.HasIndex(x => x.LastMessageAt);
+            });
+
+            modelBuilder.Entity<SupportMessage>(entity =>
+            {
+                entity.ToTable("support_messages");
+                entity.HasKey(x => x.SupportMessageId);
+                entity.Property(x => x.SupportMessageId).HasColumnName("support_message_id");
+                entity.Property(x => x.SupportConversationId).HasColumnName("support_conversation_id");
+                entity.Property(x => x.SenderUserId).HasColumnName("sender_user_id");
+                entity.Property(x => x.Content).HasColumnName("content").HasMaxLength(2000).IsRequired();
+                entity.Property(x => x.SentAt).HasColumnName("sent_at");
+                entity.Property(x => x.ReadAt).HasColumnName("read_at");
+
+                entity.HasOne(x => x.Conversation)
+                    .WithMany(x => x.Messages)
+                    .HasForeignKey(x => x.SupportConversationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(x => x.SenderUser)
+                    .WithMany()
+                    .HasForeignKey(x => x.SenderUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(x => new { x.SupportConversationId, x.SupportMessageId });
+                entity.HasIndex(x => new { x.SupportConversationId, x.ReadAt });
+            });
         }
 
         private void ConfigureTenant(ModelBuilder modelBuilder)

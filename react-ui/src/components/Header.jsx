@@ -214,6 +214,8 @@ export default function Header({ toggleSidebar, theme, toggleTheme }) {
         return 'Quản Lý Tổ Chức'
       case '/admins':
         return 'Quản Lý Tài Khoản Admin'
+      case '/support':
+        return 'Trung Tâm Hỗ Trợ'
       case '/change-password':
         return 'Đổi Mật Khẩu'
       default:

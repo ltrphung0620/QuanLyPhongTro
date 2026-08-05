@@ -18,6 +18,7 @@ import Organizations from './pages/Organizations'
 import Admins from './pages/Admins'
 import TenantInvoices from './pages/TenantInvoices'
 import TenantMeterReadings from './pages/TenantMeterReadings'
+import SupportChat from './pages/SupportChat'
 import { useAuth } from './context/AuthContext'
 import { canAccessAdminPage, getAdminHomePath } from './adminPermissions'
 import OrganizationSelector from './components/OrganizationSelector'
@@ -149,6 +150,7 @@ export default function App() {
           <Routes>
             <Route path="/organizations" element={<Organizations />} />
             <Route path="/admins" element={<Admins />} />
+            <Route path="/support" element={<SupportChat />} />
             <Route path="/change-password" element={<ChangePassword />} />
             <Route path="*" element={<Navigate to="/organizations" replace />} />
           </Routes>
@@ -172,6 +174,7 @@ export default function App() {
             <Route path="/reports" element={<AdminPageRoute permission="reports"><Reports /></AdminPageRoute>} />
             <Route path="/pricing-settings" element={<AdminPageRoute permission="pricing-settings"><PricingSettings /></AdminPageRoute>} />
             <Route path="/assistant" element={<AdminPageRoute permission="assistant"><Assistant /></AdminPageRoute>} />
+            <Route path="/support" element={<SupportChat />} />
             <Route path="/change-password" element={<ChangePassword />} />
             <Route path="*" element={<Navigate to={getAdminHomePath(user)} replace />} />
           </Routes>

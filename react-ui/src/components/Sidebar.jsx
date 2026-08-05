@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Home, Receipt, Users, Zap } from 'lucide-react'
+import { Headphones, Home, Receipt, Users, Zap } from 'lucide-react'
 import './Sidebar.css'
 import { useAuth } from '../context/AuthContext'
 import { getVisibleAdminMenuItems } from '../adminPermissions'
@@ -12,6 +12,7 @@ export default function Sidebar({ isOpen }) {
       return [
       { path: '/organizations', label: 'Quản lý Tổ chức', icon: Home },
       { path: '/admins', label: 'Tài khoản Admin', icon: Users },
+      { path: '/support', label: 'Hỗ trợ', icon: Headphones },
     ]
     }
 
@@ -22,7 +23,10 @@ export default function Sidebar({ isOpen }) {
     ]
     }
 
-    return getVisibleAdminMenuItems(user)
+    return [
+      ...getVisibleAdminMenuItems(user),
+      { path: '/support', label: 'Hỗ trợ', icon: Headphones }
+    ]
   })()
 
   const getRoleLabel = () => {
