@@ -70,7 +70,7 @@
 
 .reports-date-range-inputs {
   display: grid;
-  grid-template-columns: minmax(170px, 1fr) 28px minmax(170px, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   min-width: 0;
@@ -116,6 +116,7 @@
 }
 
 .reports-input,
+.reports-month-input,
 .reports-select {
   width: 100%;
   min-width: 0;
@@ -125,13 +126,20 @@
   min-height: 44px;
 }
 
-.reports-date-range-inputs .reports-input-wrapper {
-  padding: 0 14px;
+.reports-month-input {
+  min-height: 46px;
+  padding: 10px 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
 }
 
-.reports-date-range-inputs input[type="month"] {
-  min-width: 150px;
-  padding-right: 8px;
+.reports-month-input:focus {
+  outline: none;
+}
+
+[data-theme='dark'] .reports-month-input {
+  color-scheme: dark;
 }
 
 .reports-select {
@@ -337,12 +345,11 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
-  .reports-date-arrow {
-    display: none;
+  .reports-date-range-field {
+    grid-column: 1 / -1;
   }
 
   .reports-date-field,
-  .reports-date-range-field,
   .reports-owner-field,
   .reports-search-wrapper {
     grid-column: auto;
@@ -365,6 +372,10 @@
 
   .reports-date-arrow {
     display: none;
+  }
+
+  .reports-date-range-inputs .reports-date-field > .form-label {
+    display: block;
   }
 
   .reports-date-range-field,

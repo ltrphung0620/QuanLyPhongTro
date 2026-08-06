@@ -19,7 +19,7 @@ export const ADMIN_PAGE_PERMISSIONS = [
   { key: 'meter-readings', path: '/meter-readings', label: 'Chỉ Số Điện Nước', icon: Zap },
   { key: 'invoices', path: '/invoices', label: 'Hóa Đơn', icon: Receipt },
   { key: 'payments', path: '/payments', label: 'Thu Chi Tháng', icon: History },
-  { key: 'reports', path: '/reports', label: 'Báo Cáo Sổ Quỹ', icon: FileSpreadsheet },
+  { key: 'reports', path: '/reports', label: 'Khai thuế', icon: FileSpreadsheet },
   { key: 'pricing-settings', path: '/pricing-settings', label: 'Bảng Giá', icon: Settings },
   { key: 'assistant', path: '/assistant', label: 'Trợ Lý AI', icon: Bot }
 ]

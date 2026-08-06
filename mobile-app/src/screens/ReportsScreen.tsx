@@ -24,7 +24,7 @@ export function ReportsScreen() {
   };
 
   return (
-    <Screen title="Báo cáo" subtitle={`Kỳ ${displayMonth(month)}`} refreshing={refreshing} onRefresh={refresh}>
+    <Screen title="Khai thuế" subtitle={`Kỳ ${displayMonth(month)}`} refreshing={refreshing} onRefresh={refresh}>
       <MonthYearPicker value={month} onChange={setMonth} />
       <StatCard label="Doanh thu" value={formatMoney(totalRevenue)} />
       <StatCard label="Chi phí" value={formatMoney(totalExpense)} />
