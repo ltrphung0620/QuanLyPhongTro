@@ -207,7 +207,7 @@ export default function Header({ toggleSidebar, theme, toggleTheme }) {
       case '/payments':
         return 'Thu Chi Tháng'
       case '/reports':
-        return 'Báo Cáo Sổ Quỹ'
+        return 'Khai thuế'
       case '/assistant':
         return 'Trợ Lý AI'
       case '/organizations':

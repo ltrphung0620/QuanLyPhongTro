@@ -105,7 +105,7 @@ export default function Reports() {
           <span className="page-eyebrow">Báo cáo tài chính</span>
           <h1 className="page-title reports-page-title">
             <FileSpreadsheet className="text-accent" size={28} />
-            Nhật Ký Sổ Quỹ Thu Chi
+            Khai thuế
           </h1>
         </div>
 
@@ -125,34 +125,29 @@ export default function Reports() {
             <label className="form-label">Khoảng tháng</label>
             <div className="reports-date-range-inputs">
               <div className="form-group reports-date-field">
-              <label className="form-label">Từ tháng</label>
-              <div className="reports-input-wrapper">
+                <label className="form-label">Từ tháng</label>
                 <input
                   type="month"
-                  className="form-control reports-input"
+                  className="form-control reports-month-input"
                   value={fromMonth}
                   onChange={(e) => setFromMonth(e.target.value)}
                 />
               </div>
-            </div>
 
-            <div className="text-muted reports-date-arrow">
-              <ArrowRight size={18} />
-            </div>
+              <div className="text-muted reports-date-arrow" aria-hidden="true">
+                <ArrowRight size={18} />
+              </div>
 
               <div className="form-group reports-date-field">
-              <label className="form-label">Đến tháng</label>
-              <div className="reports-input-wrapper">
+                <label className="form-label">Đến tháng</label>
                 <input
                   type="month"
-                  className="form-control reports-input"
+                  className="form-control reports-month-input"
                   value={toMonth}
                   onChange={(e) => setToMonth(e.target.value)}
                   min={fromMonth}
                 />
               </div>
-            </div>
-
             </div>
           </div>
 

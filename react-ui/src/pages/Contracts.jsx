@@ -1,21 +1,16 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   FileText, 
   Plus, 
   Trash2, 
   X, 
-  HelpCircle, 
-  Calendar, 
   User, 
   Home, 
-  DollarSign, 
   AlertCircle, 
   CheckCircle2, 
   Loader2,
   ChevronRight,
-  TrendingDown,
-  Info,
-  Clock,
+  Search,
   Edit3
 } from 'lucide-react'
 import { 
@@ -48,6 +43,7 @@ export default function Contracts() {
   
   // Filtering
   const [selectedStatus, setSelectedStatus] = useState('active')
+  const [searchQuery, setSearchQuery] = useState('')
   
   // Create Contract Modal
   const [createModalOpen, setCreateModalOpen] = useState(false)
@@ -448,50 +444,86 @@ export default function Contracts() {
 
   // Filtered contracts
   const filteredContracts = sortByRoomCode(contracts.filter(c => {
-    if (selectedStatus === 'all') return true
-    return (c.status || '').toLowerCase() === selectedStatus.toLowerCase()
+    const matchesStatus = selectedStatus === 'all' || (c.status || '').toLowerCase() === selectedStatus.toLowerCase()
+    const normalizedQuery = searchQuery.trim().toLowerCase()
+    const matchesSearch = !normalizedQuery || [c.roomCode, c.tenantName, c.contractId]
+      .some(value => String(value || '').toLowerCase().includes(normalizedQuery))
+
+    return matchesStatus && matchesSearch
   }))
+
+  const contractCounts = {
+    all: contracts.length,
+    active: contracts.filter(c => (c.status || '').toLowerCase() === 'active').length,
+    ended: contracts.filter(c => (c.status || '').toLowerCase() === 'ended').length,
+    cancelled: contracts.filter(c => (c.status || '').toLowerCase() === 'cancelled').length
+  }
 
   // Get list of rooms that are vacant (plus the room already in editing if necessary, but here we only create new contracts for vacant rooms)
   const vacantRooms = sortByRoomCode(rooms.filter(r => r.status === 'vacant'))
 
   return (
-    <div className="page-body">
-      <div className="contracts-header">
-        <div>
-          <h1>Hợp Đồng Thuê Phòng</h1>
-          <p className="subtitle">Lập mới, chấm dứt, tính tiền quyết toán và lưu trữ lịch sử hợp đồng</p>
+    <div className="page-body contracts-page">
+      <section className="contracts-header">
+        <div className="contracts-heading">
+          <span className="page-eyebrow">Quản lý lưu trú</span>
+          <h1>
+            <FileText size={26} aria-hidden="true" />
+            Hợp đồng thuê phòng
+          </h1>
+          <p className="subtitle">Theo dõi thông tin, chi phí và vòng đời hợp đồng tại một nơi.</p>
         </div>
         
-        <button className="btn btn-primary" onClick={handleOpenCreateModal}>
+        <button className="btn btn-primary contracts-create-button" onClick={handleOpenCreateModal}>
           <Plus size={18} />
           <span>Tạo hợp đồng mới</span>
         </button>
-      </div>
+      </section>
 
       {/* Filter Toolbar */}
-      <div className="contracts-toolbar">
-        <div className="filter-tabs">
+      <section className="contracts-toolbar" aria-label="Bộ lọc hợp đồng">
+        <div className="contracts-filter-tabs" role="group" aria-label="Lọc theo trạng thái">
+          <button
+            className={`contracts-filter-tab ${selectedStatus === 'all' ? 'active' : ''}`}
+            onClick={() => setSelectedStatus('all')}
+          >
+            <span>Tất cả</span>
+            <strong>{contractCounts.all}</strong>
+          </button>
           <button 
-            className={`filter-tab ${selectedStatus === 'active' ? 'active' : ''}`}
+            className={`contracts-filter-tab ${selectedStatus === 'active' ? 'active' : ''}`}
             onClick={() => setSelectedStatus('active')}
           >
-            Đang hoạt động ({contracts.filter(c => (c.status || '').toLowerCase() === 'active').length})
+            <span>Đang hoạt động</span>
+            <strong>{contractCounts.active}</strong>
           </button>
           <button 
-            className={`filter-tab ${selectedStatus === 'ended' ? 'active' : ''}`}
+            className={`contracts-filter-tab ${selectedStatus === 'ended' ? 'active' : ''}`}
             onClick={() => setSelectedStatus('ended')}
           >
-            Đã thanh lý ({contracts.filter(c => (c.status || '').toLowerCase() === 'ended').length})
+            <span>Đã thanh lý</span>
+            <strong>{contractCounts.ended}</strong>
           </button>
           <button 
-            className={`filter-tab ${selectedStatus === 'cancelled' ? 'active' : ''}`}
+            className={`contracts-filter-tab ${selectedStatus === 'cancelled' ? 'active' : ''}`}
             onClick={() => setSelectedStatus('cancelled')}
           >
-            Đã hủy bỏ ({contracts.filter(c => (c.status || '').toLowerCase() === 'cancelled').length})
+            <span>Đã hủy</span>
+            <strong>{contractCounts.cancelled}</strong>
           </button>
         </div>
-      </div>
+
+        <label className="contracts-search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Tìm phòng, khách thuê, mã HĐ..."
+            aria-label="Tìm kiếm hợp đồng"
+          />
+        </label>
+      </section>
 
       {error && (
         <div className="error-alert">
@@ -514,55 +546,62 @@ export default function Contracts() {
               <p>Hệ thống không ghi nhận hợp đồng nào thuộc trạng thái này.</p>
             </div>
           ) : (
-            <div className="table-container">
-              <table className="custom-table">
+            <div className="table-container contracts-table-container">
+              <table className="custom-table contracts-table">
+                <colgroup>
+                  <col className="contracts-col-identity" />
+                  <col className="contracts-col-cost" />
+                  <col className="contracts-col-deposit" />
+                  <col className="contracts-col-term" />
+                  <col className="contracts-col-status" />
+                  <col className="contracts-col-actions" />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Phòng</th>
-                    <th>Khách thuê</th>
-                    <th>Giá thuê thực tế</th>
-                    <th>Tiền nước</th>
+                    <th>Hợp đồng</th>
+                    <th>Chi phí hàng tháng</th>
                     <th>Tiền cọc</th>
                     <th>Thời hạn</th>
                     <th>Trạng thái</th>
-                    <th style={{ textAlign: 'right' }}>Thao tác</th>
+                    <th>Chức năng</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredContracts.map((c) => (
                     <tr key={c.contractId}>
-                      <td>
+                      <td data-label="Hợp đồng">
                         <div className="contract-room-cell">
                           <Home size={15} className="cell-icon-accent" />
-                          <strong>{c.roomCode}</strong>
+                          <strong>Phòng {c.roomCode}</strong>
+                          <span className="contract-id">HĐ #{c.contractId}</span>
                         </div>
-                      </td>
-                      <td>
                         <div className="contract-tenant-cell">
                           <User size={14} className="cell-icon" />
                           <span>{c.tenantName}</span>
                         </div>
+                        <span className="contract-occupants">{c.occupantCount || 1} người ở</span>
                       </td>
-                      <td>
-                        <strong>{dinhDangTien(c.actualRoomPrice)}</strong>
-                      </td>
-                      <td>
-                        <div className="details-cell-mini">
-                          <span>{dinhDangTien(c.customWaterFee ?? (defaultWaterFeePerPerson * c.occupantCount))}</span>
-                          <span className="text-muted">{c.customWaterFee == null ? `${c.occupantCount} người` : 'Mức riêng'}</span>
+                      <td data-label="Chi phí hàng tháng">
+                        <div className="contract-cost-cell">
+                          <strong>{dinhDangTien(c.actualRoomPrice)}<small>/tháng</small></strong>
+                          <span>Nước: {dinhDangTien(c.customWaterFee ?? (defaultWaterFeePerPerson * c.occupantCount))}</span>
+                          <span>Rác: {dinhDangTien(c.trashFee || 0)}</span>
                         </div>
                       </td>
-                      <td>
-                        <div className="details-cell-mini">
-                          <span>{dinhDangTien(c.depositPaidAmount)} / {dinhDangTien(c.depositAmount)}</span>
-                          {c.depositDebtAmount > 0 && <span className="text-danger">Còn nợ: {dinhDangTien(c.depositDebtAmount)}</span>}
+                      <td data-label="Tiền cọc">
+                        <div className="contract-deposit-cell">
+                          <strong>{dinhDangTien(c.depositPaidAmount)}</strong>
+                          <span>Đã nhận / {dinhDangTien(c.depositAmount)}</span>
+                          {c.depositDebtAmount > 0
+                            ? <span className="text-danger">Còn thiếu {dinhDangTien(c.depositDebtAmount)}</span>
+                            : <span className="contract-paid-label">Đã thu đủ</span>}
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Thời hạn">
                         <div className="contract-date-cell">
-                          <span>{c.startDate ? new Date(c.startDate).toLocaleDateString('vi-VN') : ''}</span>
-                          <ChevronRight size={12} className="text-muted" />
-                          <span>
+                          <span className="contract-date-value">{c.startDate ? new Date(c.startDate).toLocaleDateString('vi-VN') : 'Chưa có'}</span>
+                          <ChevronRight size={14} className="text-muted" aria-hidden="true" />
+                          <span className="contract-date-value">
                             {c.actualEndDate 
                               ? new Date(c.actualEndDate).toLocaleDateString('vi-VN') 
                               : c.expectedEndDate 
@@ -571,47 +610,50 @@ export default function Contracts() {
                           </span>
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Trạng thái">
                         <span className={`status-badge ${layBadgeClass(c.status)}`}>
                           {layTrangThaiHopDong(c.status)}
                         </span>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td data-label="Chức năng">
                         <div className="contract-action-buttons">
                           {(c.status || '').toLowerCase() === 'active' && (
                             <>
                               <button 
-                                className="btn btn-success btn-xs"
+                                className="btn btn-success contract-action-button contract-action-button--finish"
                                 onClick={() => handleOpenCheckout(c)}
                                 title="Thanh lý & Chốt điện nước"
                               >
-                                Kết thúc hợp đồng
+                                <CheckCircle2 size={14} />
+                                <span>Kết thúc</span>
                               </button>
                               <button 
-                                className="btn btn-secondary btn-xs"
+                                className="btn btn-secondary contract-action-button"
                                 onClick={() => handleOpenEdit(c)}
                                 title="Sửa thông tin hợp đồng"
-                                style={{ display: 'inline-flex', alignItems: 'center' }}
                               >
-                                <Edit3 size={13} style={{ marginRight: '4px' }} /> Sửa
+                                <Edit3 size={14} />
+                                <span>Sửa</span>
                               </button>
                               <button 
-                                className="btn btn-secondary btn-xs"
+                                className="btn btn-secondary contract-action-button"
                                 onClick={() => handleOpenCancel(c.contractId)}
                                 title="Hủy bỏ hợp đồng lập tức"
                               >
-                                Hủy bỏ
+                                <X size={14} />
+                                <span>Hủy</span>
                               </button>
                             </>
                           )}
                           
                           {(c.status || '').toLowerCase() !== 'active' && (
                             <button 
-                              className="btn btn-danger btn-xs"
+                              className="btn btn-danger contract-action-button contract-action-button--delete"
                               onClick={() => handleDeleteContract(c.contractId)}
                               title="Xóa vĩnh viễn"
                             >
                               <Trash2 size={14} />
+                              <span>Xóa dữ liệu</span>
                             </button>
                           )}
                         </div>

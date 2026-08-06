@@ -11,7 +11,7 @@ const menuItems = [
   { permission: "tenants", route: "Tenants", title: "Khách thuê", subtitle: "Thông tin người thuê", icon: "people-outline" },
   { permission: "contracts", route: "Contracts", title: "Hợp đồng", subtitle: "Theo dõi hợp đồng thuê", icon: "document-text-outline" },
   { permission: "meter-readings", route: "MeterReadings", title: "Chỉ số điện nước", subtitle: "Ghi và xem chỉ số theo tháng", icon: "flash-outline" },
-  { permission: "reports", route: "Reports", title: "Báo cáo sổ quỹ", subtitle: "Doanh thu, chi phí và lợi nhuận", icon: "bar-chart-outline" }
+  { permission: "reports", route: "Reports", title: "Khai thuế", subtitle: "Doanh thu, chi phí và lợi nhuận", icon: "bar-chart-outline" }
 ] as const;
 
 export function SettingsScreen() {

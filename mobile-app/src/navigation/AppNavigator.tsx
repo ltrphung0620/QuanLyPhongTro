@@ -73,7 +73,7 @@ function MoreStackNavigator() {
       <MoreStack.Screen name="Tenants" component={TenantsScreen} options={{ title: "Khách thuê" }} />
       <MoreStack.Screen name="Contracts" component={ContractsScreen} options={{ title: "Hợp đồng" }} />
       <MoreStack.Screen name="MeterReadings" component={MeterReadingsScreen} options={{ title: "Chỉ số" }} />
-      <MoreStack.Screen name="Reports" component={ReportsScreen} options={{ title: "Báo cáo" }} />
+      <MoreStack.Screen name="Reports" component={ReportsScreen} options={{ title: "Khai thuế" }} />
     </MoreStack.Navigator>
   );
 }
