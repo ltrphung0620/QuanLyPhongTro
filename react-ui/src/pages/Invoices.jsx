@@ -81,10 +81,7 @@ export default function Invoices() {
   const [payModalOpen, setPayModalOpen] = useState(false)
   const [payTarget, setPayTarget] = useState(null)
   const [payForm, setPayForm] = useState({
-    amount: '',
-    paymentMethod: 'Chuyển khoản',
-    paymentReference: '',
-    note: ''
+    amount: ''
   })
   const [payError, setPayError] = useState(null)
   const [paySubmitting, setPaySubmitting] = useState(false)
@@ -325,10 +322,7 @@ export default function Invoices() {
   const handleOpenPay = (invoice) => {
     setPayTarget(invoice)
     setPayForm({
-      amount: invoice.totalAmount.toString(),
-      paymentMethod: 'Tiền mặt',
-      paymentReference: '',
-      note: ''
+      amount: invoice.totalAmount.toString()
     })
     setPayError(null)
     setPayModalOpen(true)
@@ -350,9 +344,9 @@ export default function Invoices() {
     try {
       await thanhToanHoaDon(payTarget.invoiceId, {
         amount: payAmount,
-        paymentMethod: payForm.paymentMethod,
-        paymentReference: payForm.paymentReference.trim() || null,
-        note: payForm.note.trim() || null
+        paymentMethod: 'Tiền mặt',
+        paymentReference: null,
+        note: null
       })
       setPayModalOpen(false)
       taiDuLieu()
@@ -888,39 +882,6 @@ export default function Invoices() {
                   <span className="form-help">Mặc định là số tiền hóa đơn cần thu: {dinhDangTien(payTarget.totalAmount)}</span>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Phương thức thanh toán</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    value="Tiền mặt" 
-                    disabled 
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" htmlFor="pay-ref">Mã tham chiếu / Số bút toán (nếu có)</label>
-                  <input 
-                    type="text" 
-                    id="pay-ref" 
-                    className="form-control"
-                    placeholder="Ví dụ: FT200192837..."
-                    value={payForm.paymentReference}
-                    onChange={(e) => setPayForm({...payForm, paymentReference: e.target.value})}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" htmlFor="pay-note">Ghi chú thanh toán</label>
-                  <input 
-                    type="text" 
-                    id="pay-note" 
-                    className="form-control"
-                    placeholder="Ví dụ: Đã trả đủ"
-                    value={payForm.note}
-                    onChange={(e) => setPayForm({...payForm, note: e.target.value})}
-                  />
-                </div>
               </div>
 
               <div className="modal-footer">

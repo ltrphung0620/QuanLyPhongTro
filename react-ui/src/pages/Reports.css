@@ -51,7 +51,7 @@
 .reports-controls-row {
   display: grid;
   grid-template-columns: minmax(360px, 1.15fr) minmax(220px, 0.75fr) minmax(360px, 1fr);
-  align-items: end;
+  align-items: start;
   gap: 18px 28px;
   min-width: 0;
 }
@@ -66,6 +66,12 @@
 .reports-search-wrapper {
   margin: 0;
   min-width: 0;
+}
+
+.reports-controls-row > .reports-date-range-field,
+.reports-controls-row > .reports-owner-field,
+.reports-controls-row > .reports-search-wrapper {
+  margin-bottom: 0;
 }
 
 .reports-date-range-inputs {
