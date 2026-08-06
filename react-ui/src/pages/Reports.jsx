@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   AlertCircle,
   ArrowRight,
@@ -166,11 +166,11 @@ export default function Reports() {
 
           <div className="reports-search-wrapper">
             <label className="form-label">Tìm kiếm nhanh</label>
-            <div className="reports-input-wrapper">
+            <div className="reports-search-control">
               <Search size={16} className="text-muted" />
               <input
                 type="text"
-                className="form-control reports-input"
+                className="reports-search-input"
                 placeholder="Tìm phòng, phương thức, nội dung..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
