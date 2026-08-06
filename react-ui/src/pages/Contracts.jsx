@@ -573,7 +573,6 @@ export default function Contracts() {
                         <div className="contract-room-cell">
                           <Home size={15} className="cell-icon-accent" />
                           <strong>Phòng {c.roomCode}</strong>
-                          <span className="contract-id">HĐ #{c.contractId}</span>
                         </div>
                         <div className="contract-tenant-cell">
                           <User size={14} className="cell-icon" />
