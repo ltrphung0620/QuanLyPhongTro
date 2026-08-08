@@ -94,6 +94,7 @@ export type Invoice = {
   status: "paid" | "unpaid" | string;
   paymentCode?: string | null;
   paidAt?: string | null;
+  paidAmount?: number | null;
   extraFeeNote?: string | null;
   note?: string | null;
   previousReading?: number | null;

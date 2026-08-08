@@ -17,6 +17,20 @@ function invoiceTitle(invoice: Invoice) {
   return `${invoice.roomCode || `Phòng #${invoice.roomId}`} • ${invoice.tenantName || "Chưa rõ khách"}`;
 }
 
+function getPaymentSummary(invoice: Invoice | null | undefined, amount: number | null | undefined) {
+  const total = Math.max(0, Number(invoice?.totalAmount) || 0);
+  const paid = Math.min(Math.max(0, Number(amount) || 0), total);
+  return { total, paid, remaining: Math.max(0, total - paid) };
+}
+
+function getNextBillingMonth(billingMonth?: string | null) {
+  const match = String(billingMonth || "").match(/^(\d{4})-(\d{2})/);
+  if (!match) return "tiếp theo";
+
+  const nextMonth = new Date(Number(match[1]), Number(match[2]), 1);
+  return nextMonth.toLocaleDateString("vi-VN", { month: "2-digit", year: "numeric" });
+}
+
 function InvoiceAction({ label, icon, danger, onPress }: { label: string; icon: keyof typeof Ionicons.glyphMap; danger?: boolean; onPress: () => void }) {
   return (
     <Pressable style={({ pressed }) => [styles.actionButton, danger && styles.actionButtonDanger, pressed && { opacity: 0.65 }]} onPress={onPress}>
@@ -44,7 +58,17 @@ export function InvoicesScreen() {
   const markPaid = useMutation({
     mutationFn: ({ id, amount }: { id: number; amount: number }) =>
       api.markInvoicePaid(id, { amount, paymentMethod: "Tiền mặt", paymentReference: null, note: null }),
-    onSuccess: async () => {
+    onSuccess: async (_, variables) => {
+      const invoice = invoices.data?.find((item) => item.invoiceId === variables.id);
+      if (invoice) {
+        const summary = getPaymentSummary(invoice, variables.amount);
+        Alert.alert(
+          summary.remaining > 0 ? "Đã ghi nhận thu một phần" : "Đã thu đủ",
+          summary.remaining > 0
+            ? `Đã thu ${formatMoney(summary.paid)} / ${formatMoney(summary.total)}.\nThiếu ${formatMoney(summary.remaining)} được cộng dồn vào tháng ${getNextBillingMonth(invoice.billingMonth)}.`
+            : `Đã thu ${formatMoney(summary.paid)} / ${formatMoney(summary.total)}.`
+        );
+      }
       setPayTarget(null);
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
     },
@@ -216,9 +240,21 @@ export function InvoicesScreen() {
                   {invoice.consumedUnits ?? 0} kWh • {invoice.paymentCode || "Chưa có mã"}
                 </Text>
               </View>
-              <Text style={[styles.status, invoice.status === "paid" ? styles.paid : styles.unpaid]}>
-                {invoice.status === "paid" ? "Đã thu" : "Chưa thu"}
-              </Text>
+              {(() => {
+                const summary = getPaymentSummary(invoice, invoice.paidAmount ?? invoice.totalAmount);
+                const isPartialPayment = invoice.status === "paid" && summary.paid > 0 && summary.remaining > 0;
+
+                return (
+                  <View style={styles.paymentStatusBlock}>
+                    <Text style={[styles.status, invoice.status === "paid" ? styles.paid : styles.unpaid]}>
+                      {isPartialPayment ? `Đã thu ${formatMoney(summary.paid)} / ${formatMoney(summary.total)}` : invoice.status === "paid" ? "Đã thu" : "Chưa thu"}
+                    </Text>
+                    {isPartialPayment ? (
+                      <Text style={styles.shortfallText}>Thiếu {formatMoney(summary.remaining)} được cộng dồn vào tháng {getNextBillingMonth(invoice.billingMonth)}</Text>
+                    ) : null}
+                  </View>
+                );
+              })()}
             </View>
             <View style={styles.moneyRows}>
               <Text>Tiền phòng: {formatMoney(invoice.roomFee)}</Text>
@@ -268,6 +304,21 @@ export function InvoicesScreen() {
                 editable={!markPaid.isPending}
               />
               <Text style={styles.formHelp}>Mặc định là số tiền hóa đơn cần thu: {formatMoney(payTarget?.totalAmount)}</Text>
+              {(() => {
+                const summary = getPaymentSummary(payTarget, Number(payAmount.replace(/[^0-9.-]/g, "")));
+                if (summary.paid <= 0) return null;
+
+                return (
+                  <View style={styles.paymentPreview}>
+                    <Text style={styles.paymentPreviewTitle}>Đã thu {formatMoney(summary.paid)} / {formatMoney(summary.total)}</Text>
+                    <Text style={summary.remaining > 0 ? styles.shortfallText : styles.paymentPreviewHelp}>
+                      {summary.remaining > 0
+                        ? `Thiếu ${formatMoney(summary.remaining)} được cộng dồn vào tháng ${getNextBillingMonth(payTarget?.billingMonth)}.`
+                        : "Hóa đơn sẽ được thu đủ."}
+                    </Text>
+                  </View>
+                );
+              })()}
             </ScrollView>
             <View style={[styles.modalFooter, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
               <View style={styles.footerButton}><PrimaryButton title="Hủy" variant="secondary" disabled={markPaid.isPending} onPress={() => setPayTarget(null)} /></View>
@@ -384,6 +435,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     overflow: "hidden"
   },
+  paymentStatusBlock: {
+    alignItems: "flex-end",
+    gap: 5,
+    maxWidth: "52%"
+  },
   paid: {
     color: colors.accent,
     backgroundColor: "#eef8f4"
@@ -391,6 +447,13 @@ const styles = StyleSheet.create({
   unpaid: {
     color: colors.warning,
     backgroundColor: "#fff4e7"
+  },
+  shortfallText: {
+    color: colors.danger,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 17,
+    textAlign: "right"
   },
   moneyRows: {
     gap: 5,
@@ -438,6 +501,9 @@ const styles = StyleSheet.create({
   errorBox: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderWidth: 1, borderColor: "#eed2ce", borderRadius: 10, backgroundColor: "#fff5f4", padding: spacing.md },
   errorText: { flex: 1, color: colors.danger, fontWeight: "700" },
   formHelp: { color: colors.textMuted, fontSize: 12, marginTop: -spacing.sm },
+  paymentPreview: { gap: 4, padding: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surfaceMuted },
+  paymentPreviewTitle: { color: colors.text, fontWeight: "900" },
+  paymentPreviewHelp: { color: colors.textMuted, fontSize: 12, fontWeight: "700" },
   modalFooter: { flexDirection: "row", gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   footerButton: { flex: 1 },
   imagePreview: { flex: 1, backgroundColor: "#171514" },
