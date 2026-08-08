@@ -35,6 +35,20 @@ import { useNotification } from '../context/NotificationContext'
 import { getCurrentMonthValue } from '../utils/month'
 import { sortByRoomCode } from '../utils/roomSort'
 
+const getPaymentSummary = (invoice, amount) => {
+  const total = Math.max(0, Number(invoice?.totalAmount) || 0)
+  const paid = Math.min(Math.max(0, Number(amount) || 0), total)
+  return { total, paid, remaining: Math.max(0, total - paid) }
+}
+
+const getNextBillingMonth = (billingMonth) => {
+  const match = String(billingMonth || '').match(/^(\d{4})-(\d{2})/)
+  if (!match) return 'tiếp theo'
+
+  const nextMonth = new Date(Number(match[1]), Number(match[2]), 1)
+  return nextMonth.toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' })
+}
+
 export default function Invoices() {
   const { toast, confirm } = useNotification()
   const [thang, setThang] = useState(getCurrentMonthValue)
@@ -349,6 +363,12 @@ export default function Invoices() {
         note: null
       })
       setPayModalOpen(false)
+      const summary = getPaymentSummary(payTarget, payAmount)
+      toast.success(
+        summary.remaining > 0
+          ? `Đã thu ${dinhDangTien(summary.paid)}/${dinhDangTien(summary.total)}. Thiếu ${dinhDangTien(summary.remaining)} được cộng dồn vào tháng ${getNextBillingMonth(payTarget.billingMonth)}.`
+          : 'Đã thu đủ hóa đơn.'
+      )
       taiDuLieu()
     } catch (err) {
       console.error(err)
@@ -608,9 +628,23 @@ export default function Invoices() {
                         <strong>{dinhDangTien(inv.totalAmount)}</strong>
                       </td>
                       <td>
-                        <span className={`status-badge ${layBadgeClass(inv.status)}`}>
-                          {layTenTrangThai(inv.status)}
-                        </span>
+                        {(() => {
+                          const summary = getPaymentSummary(inv, inv.paidAmount ?? inv.totalAmount)
+                          const isPartialPayment = (inv.status || '').toLowerCase() === 'paid' && summary.paid > 0 && summary.remaining > 0
+
+                          return (
+                            <div className="invoice-payment-status">
+                              <span className={`status-badge ${layBadgeClass(inv.status)}`}>
+                                {isPartialPayment ? `Đã thu ${dinhDangTien(summary.paid)}/${dinhDangTien(summary.total)}` : layTenTrangThai(inv.status)}
+                              </span>
+                              {isPartialPayment && (
+                                <span className="invoice-payment-shortfall">
+                                  Thiếu {dinhDangTien(summary.remaining)} được cộng dồn vào tháng {getNextBillingMonth(inv.billingMonth)}
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <div className="invoice-actions-flex" style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center' }}>
@@ -880,6 +914,21 @@ export default function Invoices() {
                     onWheel={(e) => e.target.blur()}
                   />
                   <span className="form-help">Mặc định là số tiền hóa đơn cần thu: {dinhDangTien(payTarget.totalAmount)}</span>
+                  {(() => {
+                    const summary = getPaymentSummary(payTarget, parseFloat(payForm.amount))
+                    if (summary.paid <= 0) return null
+
+                    return (
+                      <div className="payment-collection-preview">
+                        <strong>Đã thu {dinhDangTien(summary.paid)} / {dinhDangTien(summary.total)}</strong>
+                        {summary.remaining > 0 ? (
+                          <span>Thiếu {dinhDangTien(summary.remaining)} được cộng dồn vào tháng {getNextBillingMonth(payTarget.billingMonth)}.</span>
+                        ) : (
+                          <span>Hóa đơn sẽ được thu đủ.</span>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
 
               </div>
