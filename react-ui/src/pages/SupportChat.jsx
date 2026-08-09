@@ -31,6 +31,10 @@ function supportImageUrl(path) {
   return `${apiBase}/${cleanPath}`
 }
 
+function messageImageUrl(message) {
+  return message.imageData || supportImageUrl(message.imagePath)
+}
+
 function parseUtcDate(value) {
   if (!value) return null
   if (value instanceof Date) return value
@@ -406,9 +410,9 @@ export default function SupportChat() {
                         <div className="support-message-block">
                           {!outgoing && <span className="support-sender-name">{message.senderName}</span>}
                           {message.content && <div className="support-bubble">{message.content}</div>}
-                          {message.imagePath && (
-                            <a className="support-message-image" href={supportImageUrl(message.imagePath)} target="_blank" rel="noreferrer">
-                              <img src={supportImageUrl(message.imagePath)} alt="Ảnh đính kèm" />
+                          {(message.imageData || message.imagePath) && (
+                            <a className="support-message-image" href={messageImageUrl(message)} target="_blank" rel="noreferrer">
+                              <img src={messageImageUrl(message)} alt="Ảnh đính kèm" />
                             </a>
                           )}
                           <time>{formatMessageTime(message.sentAt)}</time>

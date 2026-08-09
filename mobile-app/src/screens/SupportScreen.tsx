@@ -111,7 +111,7 @@ export function SupportScreen() {
                 <View style={[styles.message, message.isMine ? styles.messageMine : styles.messageOther]}>
                   {!message.isMine && <Text style={styles.sender}>{message.senderName}</Text>}
                   {!!message.content && <Text style={[styles.messageText, message.isMine && styles.messageMineText]}>{message.content}</Text>}
-                  {message.imagePath && <Image source={{ uri: imageUrl(message.imagePath) }} style={styles.messageImage} resizeMode="cover" />}
+                  {(message.imageData || message.imagePath) && <Image source={{ uri: message.imageData || imageUrl(message.imagePath) }} style={styles.messageImage} resizeMode="cover" />}
                   <Text style={[styles.messageTime, message.isMine && styles.messageMineTime]}>{messageTime(message.sentAt)}</Text>
                 </View>
               </View>

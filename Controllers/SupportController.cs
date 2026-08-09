@@ -16,7 +16,6 @@ namespace NhaTro.Controllers
         private readonly NhaTroDbContext _context;
         private readonly ICurrentUserService _currentUser;
         private readonly IRealtimeService _realtime;
-        private readonly IWebHostEnvironment _environment;
         private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
             ".jpg", ".jpeg", ".png", ".webp"
@@ -26,13 +25,11 @@ namespace NhaTro.Controllers
         public SupportController(
             NhaTroDbContext context,
             ICurrentUserService currentUser,
-            IRealtimeService realtime,
-            IWebHostEnvironment environment)
+            IRealtimeService realtime)
         {
             _context = context;
             _currentUser = currentUser;
             _realtime = realtime;
-            _environment = environment;
         }
 
         [HttpGet("conversation")]
@@ -163,10 +160,10 @@ namespace NhaTro.Controllers
                 return BadRequest(new { message = "Nội dung hoặc ảnh đính kèm không được để trống." });
             }
 
-            string? imagePath;
+            string? imageData;
             try
             {
-                imagePath = await SaveImageAsync(dto.Image);
+                imageData = await EncodeImageAsync(dto.Image);
             }
             catch (ArgumentException ex)
             {
@@ -179,7 +176,7 @@ namespace NhaTro.Controllers
                 SupportConversationId = conversationId,
                 SenderUserId = _currentUser.UserId,
                 Content = content,
-                ImagePath = imagePath,
+                ImageData = imageData,
                 SentAt = now
             };
 
@@ -298,6 +295,7 @@ namespace NhaTro.Controllers
                     SenderRole = sender?.Role ?? string.Empty,
                     Content = message.Content,
                     ImagePath = message.ImagePath,
+                    ImageData = message.ImageData,
                     SentAt = message.SentAt,
                     ReadAt = message.ReadAt,
                     IsMine = message.SenderUserId == _currentUser.UserId
@@ -308,7 +306,7 @@ namespace NhaTro.Controllers
         private bool IsAdmin() => string.Equals(_currentUser.Role, "Admin", StringComparison.OrdinalIgnoreCase);
         private bool IsSuperAdmin() => string.Equals(_currentUser.Role, "SuperAdmin", StringComparison.OrdinalIgnoreCase);
 
-        private async Task<string?> SaveImageAsync(IFormFile? image)
+        private static async Task<string?> EncodeImageAsync(IFormFile? image)
         {
             if (image == null) return null;
             if (image.Length == 0) throw new ArgumentException("Ảnh đính kèm không hợp lệ.");
@@ -321,20 +319,9 @@ namespace NhaTro.Controllers
                 throw new ArgumentException("Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP.");
             }
 
-            var webRootPath = _environment.WebRootPath;
-            if (string.IsNullOrWhiteSpace(webRootPath))
-            {
-                webRootPath = Path.Combine(_environment.ContentRootPath, "wwwroot");
-            }
-
-            var uploadDirectory = Path.Combine(webRootPath, "uploads", "support");
-            Directory.CreateDirectory(uploadDirectory);
-            var fileName = $"{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
-            var filePath = Path.Combine(uploadDirectory, fileName);
-            await using var stream = System.IO.File.Create(filePath);
+            await using var stream = new MemoryStream();
             await image.CopyToAsync(stream);
-
-            return $"uploads/support/{fileName}";
+            return $"data:{image.ContentType};base64,{Convert.ToBase64String(stream.ToArray())}";
         }
     }
 }

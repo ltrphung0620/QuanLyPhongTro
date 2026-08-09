@@ -134,6 +134,7 @@ export type SupportMessage = {
   senderRole: string;
   content: string;
   imagePath?: string | null;
+  imageData?: string | null;
   sentAt: string;
   readAt?: string | null;
   isMine: boolean;
