@@ -27,8 +27,11 @@ function getNextBillingMonth(billingMonth?: string | null) {
   const match = String(billingMonth || "").match(/^(\d{4})-(\d{2})/);
   if (!match) return "tiếp theo";
 
-  const nextMonth = new Date(Number(match[1]), Number(match[2]), 1);
-  return nextMonth.toLocaleDateString("vi-VN", { month: "2-digit", year: "numeric" });
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const nextYear = month === 12 ? year + 1 : year;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  return `${String(nextMonth).padStart(2, "0")}/${nextYear}`;
 }
 
 function InvoiceAction({ label, icon, danger, onPress }: { label: string; icon: keyof typeof Ionicons.glyphMap; danger?: boolean; onPress: () => void }) {
@@ -246,12 +249,9 @@ export function InvoicesScreen() {
 
                 return (
                   <View style={styles.paymentStatusBlock}>
-                    <Text style={[styles.status, invoice.status === "paid" ? styles.paid : styles.unpaid]}>
-                      {isPartialPayment ? `Đã thu ${formatMoney(summary.paid)} / ${formatMoney(summary.total)}` : invoice.status === "paid" ? "Đã thu" : "Chưa thu"}
+                    <Text style={[styles.status, isPartialPayment ? styles.partialPaid : invoice.status === "paid" ? styles.paid : styles.unpaid]}>
+                      {isPartialPayment ? "Đã thu một phần" : invoice.status === "paid" ? "Đã thu" : "Chưa thu"}
                     </Text>
-                    {isPartialPayment ? (
-                      <Text style={styles.shortfallText}>Thiếu {formatMoney(summary.remaining)} được cộng dồn vào tháng {getNextBillingMonth(invoice.billingMonth)}</Text>
-                    ) : null}
                   </View>
                 );
               })()}
@@ -262,7 +262,16 @@ export function InvoicesScreen() {
               <Text>Nước & DV: {formatMoney(invoice.waterFee + invoice.trashFee)}</Text>
               <Text>Công nợ/giảm giá: {formatMoney(invoice.debtAmount + invoice.depositDebtAmount - invoice.discountAmount)}</Text>
             </View>
-            <Text style={styles.invoiceTotal}>{formatMoney(invoice.totalAmount)}</Text>
+            {(() => {
+              const summary = getPaymentSummary(invoice, invoice.paidAmount ?? invoice.totalAmount);
+              const isPartialPayment = invoice.status === "paid" && summary.paid > 0 && summary.remaining > 0;
+
+              return (
+                <Text style={styles.invoiceTotal}>
+                  {isPartialPayment ? `${formatMoney(summary.paid)} / ${formatMoney(summary.total)}` : formatMoney(invoice.totalAmount)}
+                </Text>
+              );
+            })()}
             <View style={styles.actions}>
               {invoice.status === "paid" ? (
                 <InvoiceAction label="Hủy thu" icon="return-up-back-outline" onPress={() => confirmUnpaid(invoice)} />
@@ -311,7 +320,7 @@ export function InvoicesScreen() {
                 return (
                   <View style={styles.paymentPreview}>
                     <Text style={styles.paymentPreviewTitle}>Đã thu {formatMoney(summary.paid)} / {formatMoney(summary.total)}</Text>
-                    <Text style={summary.remaining > 0 ? styles.shortfallText : styles.paymentPreviewHelp}>
+                    <Text style={styles.paymentPreviewHelp}>
                       {summary.remaining > 0
                         ? `Thiếu ${formatMoney(summary.remaining)} được cộng dồn vào tháng ${getNextBillingMonth(payTarget?.billingMonth)}.`
                         : "Hóa đơn sẽ được thu đủ."}
@@ -444,16 +453,13 @@ const styles = StyleSheet.create({
     color: colors.accent,
     backgroundColor: "#eef8f4"
   },
-  unpaid: {
+  partialPaid: {
     color: colors.warning,
     backgroundColor: "#fff4e7"
   },
-  shortfallText: {
-    color: colors.danger,
-    fontSize: 12,
-    fontWeight: "700",
-    lineHeight: 17,
-    textAlign: "right"
+  unpaid: {
+    color: colors.warning,
+    backgroundColor: "#fff4e7"
   },
   moneyRows: {
     gap: 5,

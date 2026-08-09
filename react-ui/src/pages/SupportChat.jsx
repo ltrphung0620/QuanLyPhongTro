@@ -3,11 +3,13 @@ import {
   ArrowLeft,
   Headphones,
   Inbox,
+  ImagePlus,
   LoaderCircle,
   MessageCircle,
   Search,
   Send,
-  ShieldCheck
+  ShieldCheck,
+  X
 } from 'lucide-react'
 import {
   guiTinNhanHoTro,
@@ -20,6 +22,14 @@ import './SupportChat.css'
 
 const MESSAGE_PAGE_SIZE = 50
 const VIETNAM_TIME_ZONE = 'Asia/Ho_Chi_Minh'
+
+function supportImageUrl(path) {
+  if (!path) return ''
+  if (/^https?:\/\//i.test(path)) return path
+  const cleanPath = path.replace(/^\//, '')
+  const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '').replace(/\/api$/, '')
+  return `${apiBase}/${cleanPath}`
+}
 
 function parseUtcDate(value) {
   if (!value) return null
@@ -99,6 +109,7 @@ export default function SupportChat() {
   const [messages, setMessages] = useState([])
   const [hasMore, setHasMore] = useState(false)
   const [draft, setDraft] = useState('')
+  const [selectedImage, setSelectedImage] = useState(null)
   const [search, setSearch] = useState('')
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
@@ -107,6 +118,7 @@ export default function SupportChat() {
   const [error, setError] = useState('')
   const [showMobileChat, setShowMobileChat] = useState(!isSuperAdmin)
   const messagesEndRef = useRef(null)
+  const imageInputRef = useRef(null)
 
   const loadConversations = useCallback(async (keepSelection = true) => {
     if (!isSuperAdmin) return
@@ -235,13 +247,14 @@ export default function SupportChat() {
 
   const sendMessage = async () => {
     const content = draft.trim()
-    if (!content || !selectedConversation || sending) return
+    if ((!content && !selectedImage) || !selectedConversation || sending) return
 
     setSending(true)
     setDraft('')
+    setSelectedImage(null)
     setError('')
     try {
-      const message = await guiTinNhanHoTro(selectedConversation.supportConversationId, content)
+      const message = await guiTinNhanHoTro(selectedConversation.supportConversationId, content, selectedImage)
       setMessages((current) => current.some((item) => item.supportMessageId === message.supportMessageId)
         ? current
         : [...current, message])
@@ -249,6 +262,7 @@ export default function SupportChat() {
       requestAnimationFrame(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }))
     } catch (err) {
       setDraft(content)
+      setSelectedImage(selectedImage)
       setError(err.message || 'Không thể gửi tin nhắn.')
     } finally {
       setSending(false)
@@ -260,6 +274,18 @@ export default function SupportChat() {
       event.preventDefault()
       sendMessage()
     }
+  }
+
+  const selectImage = (event) => {
+    const image = event.target.files?.[0]
+    event.target.value = ''
+    if (!image) return
+    if (!image.type.startsWith('image/') || image.size > 5 * 1024 * 1024) {
+      setError('Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP có dung lượng tối đa 5 MB.')
+      return
+    }
+    setError('')
+    setSelectedImage(image)
   }
 
   const conversationTitle = isSuperAdmin
@@ -379,7 +405,12 @@ export default function SupportChat() {
                         {!outgoing && <span className={`support-message-avatar ${message.senderRole === 'SuperAdmin' ? 'super' : ''}`}>{message.senderRole === 'SuperAdmin' ? <ShieldCheck size={15} /> : initials(message.senderName)}</span>}
                         <div className="support-message-block">
                           {!outgoing && <span className="support-sender-name">{message.senderName}</span>}
-                          <div className="support-bubble">{message.content}</div>
+                          {message.content && <div className="support-bubble">{message.content}</div>}
+                          {message.imagePath && (
+                            <a className="support-message-image" href={supportImageUrl(message.imagePath)} target="_blank" rel="noreferrer">
+                              <img src={supportImageUrl(message.imagePath)} alt="Ảnh đính kèm" />
+                            </a>
+                          )}
                           <time>{formatMessageTime(message.sentAt)}</time>
                         </div>
                       </div>
@@ -391,7 +422,18 @@ export default function SupportChat() {
 
               <footer className="support-composer">
                 {error && <div className="support-error">{error}</div>}
+                {selectedImage && (
+                  <div className="support-image-draft">
+                    <ImagePlus size={15} />
+                    <span>{selectedImage.name}</span>
+                    <button type="button" onClick={() => setSelectedImage(null)} aria-label="Bỏ ảnh đính kèm"><X size={15} /></button>
+                  </div>
+                )}
                 <div className="support-composer-box">
+                  <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={selectImage} hidden />
+                  <button type="button" className="support-attach-button" onClick={() => imageInputRef.current?.click()} disabled={sending} aria-label="Đính kèm ảnh">
+                    <ImagePlus size={19} />
+                  </button>
                   <textarea
                     value={draft}
                     onChange={(event) => setDraft(event.target.value.slice(0, 2000))}
@@ -401,7 +443,7 @@ export default function SupportChat() {
                     rows={1}
                   />
                   {draft.length > 1800 && <span className="support-character-count">{draft.length}/2000</span>}
-                  <button onClick={sendMessage} disabled={!draft.trim() || sending} aria-label="Gửi tin nhắn">
+                  <button className="support-send-button" onClick={sendMessage} disabled={(!draft.trim() && !selectedImage) || sending} aria-label="Gửi tin nhắn">
                     {sending ? <LoaderCircle className="spin" size={19} /> : <Send size={19} />}
                   </button>
                 </div>

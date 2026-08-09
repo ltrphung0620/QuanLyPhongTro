@@ -115,6 +115,35 @@ export type UpdateInvoice = {
   note?: string | null;
 };
 
+export type SupportConversation = {
+  supportConversationId: number;
+  adminUserId: number;
+  adminName: string;
+  adminEmail: string;
+  organizationNames: string[];
+  lastMessage?: string | null;
+  lastMessageAt?: string | null;
+  unreadCount: number;
+};
+
+export type SupportMessage = {
+  supportMessageId: number;
+  supportConversationId: number;
+  senderUserId: number;
+  senderName: string;
+  senderRole: string;
+  content: string;
+  imagePath?: string | null;
+  sentAt: string;
+  readAt?: string | null;
+  isMine: boolean;
+};
+
+export type SupportMessagePage = {
+  items: SupportMessage[];
+  hasMore: boolean;
+};
+
 export type Transaction = {
   transactionId: number;
   transactionDirection: "income" | "expense" | string;

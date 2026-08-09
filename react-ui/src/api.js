@@ -22,6 +22,10 @@ async function goiApi(path, params = {}, options = {}) {
     ...options.headers
   }
 
+  if (options.body instanceof FormData) {
+    delete headers['Content-Type']
+  }
+
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
@@ -603,10 +607,14 @@ export function layTinNhanHoTro(conversationId, beforeId = null, take = 50) {
   return goiApi(`/support/conversations/${conversationId}/messages`, { beforeId, take })
 }
 
-export function guiTinNhanHoTro(conversationId, content) {
+export function guiTinNhanHoTro(conversationId, content, image = null) {
+  const formData = new FormData()
+  formData.append('content', content)
+  if (image) formData.append('image', image)
+
   return goiApi(`/support/conversations/${conversationId}/messages`, {}, {
     method: 'POST',
-    body: JSON.stringify({ content })
+    body: formData
   })
 }
 
