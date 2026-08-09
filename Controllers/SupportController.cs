@@ -16,15 +16,23 @@ namespace NhaTro.Controllers
         private readonly NhaTroDbContext _context;
         private readonly ICurrentUserService _currentUser;
         private readonly IRealtimeService _realtime;
+        private readonly IWebHostEnvironment _environment;
+        private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ".jpg", ".jpeg", ".png", ".webp"
+        };
+        private const long MaxImageSizeBytes = 5 * 1024 * 1024;
 
         public SupportController(
             NhaTroDbContext context,
             ICurrentUserService currentUser,
-            IRealtimeService realtime)
+            IRealtimeService realtime,
+            IWebHostEnvironment environment)
         {
             _context = context;
             _currentUser = currentUser;
             _realtime = realtime;
+            _environment = environment;
         }
 
         [HttpGet("conversation")]
@@ -48,7 +56,7 @@ namespace NhaTro.Controllers
                     Conversation = conversation,
                     LastMessage = conversation.Messages
                         .OrderByDescending(message => message.SupportMessageId)
-                        .Select(message => message.Content)
+                        .Select(message => string.IsNullOrEmpty(message.Content) ? "[Ảnh]" : message.Content)
                         .FirstOrDefault(),
                     UnreadCount = conversation.Messages.Count(message =>
                         message.SenderUserId == conversation.AdminUserId && message.ReadAt == null)
@@ -142,17 +150,27 @@ namespace NhaTro.Controllers
         [HttpPost("conversations/{conversationId:int}/messages")]
         public async Task<ActionResult<SupportMessageDto>> SendMessage(
             int conversationId,
-            [FromBody] SendSupportMessageDto dto)
+            [FromForm] SendSupportMessageDto dto)
         {
             if (!ModelState.IsValid) return ValidationProblem(ModelState);
 
             var conversation = await FindAuthorizedConversationAsync(conversationId);
             if (conversation == null) return NotFound(new { message = "Không tìm thấy hội thoại hỗ trợ." });
 
-            var content = dto.Content.Trim();
-            if (content.Length == 0)
+            var content = dto.Content?.Trim() ?? string.Empty;
+            if (content.Length == 0 && dto.Image == null)
             {
-                return BadRequest(new { message = "Nội dung tin nhắn không được để trống." });
+                return BadRequest(new { message = "Nội dung hoặc ảnh đính kèm không được để trống." });
+            }
+
+            string? imagePath;
+            try
+            {
+                imagePath = await SaveImageAsync(dto.Image);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
 
             var now = DateTime.UtcNow;
@@ -161,6 +179,7 @@ namespace NhaTro.Controllers
                 SupportConversationId = conversationId,
                 SenderUserId = _currentUser.UserId,
                 Content = content,
+                ImagePath = imagePath,
                 SentAt = now
             };
 
@@ -234,7 +253,7 @@ namespace NhaTro.Controllers
                 .AsNoTracking()
                 .Where(message => message.SupportConversationId == conversation.SupportConversationId)
                 .OrderByDescending(message => message.SupportMessageId)
-                .Select(message => message.Content)
+                .Select(message => string.IsNullOrEmpty(message.Content) ? "[Ảnh]" : message.Content)
                 .FirstOrDefaultAsync();
 
             var unreadCount = await _context.SupportMessages
@@ -278,6 +297,7 @@ namespace NhaTro.Controllers
                     SenderName = sender?.DisplayName ?? sender?.Username ?? "Người dùng",
                     SenderRole = sender?.Role ?? string.Empty,
                     Content = message.Content,
+                    ImagePath = message.ImagePath,
                     SentAt = message.SentAt,
                     ReadAt = message.ReadAt,
                     IsMine = message.SenderUserId == _currentUser.UserId
@@ -287,5 +307,34 @@ namespace NhaTro.Controllers
 
         private bool IsAdmin() => string.Equals(_currentUser.Role, "Admin", StringComparison.OrdinalIgnoreCase);
         private bool IsSuperAdmin() => string.Equals(_currentUser.Role, "SuperAdmin", StringComparison.OrdinalIgnoreCase);
+
+        private async Task<string?> SaveImageAsync(IFormFile? image)
+        {
+            if (image == null) return null;
+            if (image.Length == 0) throw new ArgumentException("Ảnh đính kèm không hợp lệ.");
+            if (image.Length > MaxImageSizeBytes) throw new ArgumentException("Ảnh đính kèm tối đa 5 MB.");
+
+            var extension = Path.GetExtension(image.FileName);
+            if (string.IsNullOrWhiteSpace(extension) || !AllowedImageExtensions.Contains(extension) ||
+                !image.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP.");
+            }
+
+            var webRootPath = _environment.WebRootPath;
+            if (string.IsNullOrWhiteSpace(webRootPath))
+            {
+                webRootPath = Path.Combine(_environment.ContentRootPath, "wwwroot");
+            }
+
+            var uploadDirectory = Path.Combine(webRootPath, "uploads", "support");
+            Directory.CreateDirectory(uploadDirectory);
+            var fileName = $"{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
+            var filePath = Path.Combine(uploadDirectory, fileName);
+            await using var stream = System.IO.File.Create(filePath);
+            await image.CopyToAsync(stream);
+
+            return $"uploads/support/{fileName}";
+        }
     }
 }

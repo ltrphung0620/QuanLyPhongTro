@@ -16,6 +16,7 @@ import { MeterReadingsScreen } from "@/screens/MeterReadingsScreen";
 import { ReportsScreen } from "@/screens/ReportsScreen";
 import { RoomsScreen } from "@/screens/RoomsScreen";
 import { SettingsScreen } from "@/screens/SettingsScreen";
+import { SupportScreen } from "@/screens/SupportScreen";
 import { TenantsScreen } from "@/screens/TenantsScreen";
 import { TransactionsScreen } from "@/screens/TransactionsScreen";
 
@@ -37,6 +38,7 @@ export type MoreStackParamList = {
   Contracts: undefined;
   MeterReadings: undefined;
   Reports: undefined;
+  Support: undefined;
 };
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -74,6 +76,7 @@ function MoreStackNavigator() {
       <MoreStack.Screen name="Contracts" component={ContractsScreen} options={{ title: "Hợp đồng" }} />
       <MoreStack.Screen name="MeterReadings" component={MeterReadingsScreen} options={{ title: "Chỉ số" }} />
       <MoreStack.Screen name="Reports" component={ReportsScreen} options={{ title: "Khai thuế" }} />
+      <MoreStack.Screen name="Support" component={SupportScreen} options={{ title: "Hỗ trợ" }} />
     </MoreStack.Navigator>
   );
 }

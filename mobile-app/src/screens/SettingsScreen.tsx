@@ -29,6 +29,11 @@ export function SettingsScreen() {
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
         ))}
+        <Pressable style={({ pressed }) => [styles.item, pressed && { opacity: 0.65 }]} onPress={() => navigation.navigate("Support")}>
+          <View style={styles.icon}><Ionicons name="headset-outline" size={22} color={colors.primary} /></View>
+          <View style={{ flex: 1 }}><Text style={styles.title}>Hỗ trợ</Text><Text style={styles.subtitle}>Trao đổi với bộ phận hỗ trợ</Text></View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </Pressable>
       </View>
     </Screen>
   );

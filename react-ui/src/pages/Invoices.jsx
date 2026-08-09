@@ -45,8 +45,11 @@ const getNextBillingMonth = (billingMonth) => {
   const match = String(billingMonth || '').match(/^(\d{4})-(\d{2})/)
   if (!match) return 'tiếp theo'
 
-  const nextMonth = new Date(Number(match[1]), Number(match[2]), 1)
-  return nextMonth.toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' })
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const nextYear = month === 12 ? year + 1 : year
+  const nextMonth = month === 12 ? 1 : month + 1
+  return `${String(nextMonth).padStart(2, '0')}/${nextYear}`
 }
 
 export default function Invoices() {
@@ -634,7 +637,7 @@ export default function Invoices() {
 
                           return (
                             <div className="invoice-payment-status">
-                              <span className={`status-badge ${layBadgeClass(inv.status)}`}>
+                              <span className={`status-badge ${isPartialPayment ? 'status-badge--partial-payment' : layBadgeClass(inv.status)}`}>
                                 {isPartialPayment ? `Đã thu ${dinhDangTien(summary.paid)}/${dinhDangTien(summary.total)}` : layTenTrangThai(inv.status)}
                               </span>
                               {isPartialPayment && (

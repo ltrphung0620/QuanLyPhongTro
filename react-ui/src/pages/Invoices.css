@@ -252,6 +252,26 @@
   line-height: 1.35;
 }
 
+/* A partial collection is not a fully paid invoice. */
+.status-badge--partial-payment {
+  background: var(--warning-light);
+  color: var(--warning);
+  border-color: rgba(194, 141, 104, 0.15);
+}
+
+.status-badge--partial-payment::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--warning);
+}
+
+[data-theme='dark'] .status-badge--partial-payment {
+  border-color: rgba(217, 160, 121, 0.25);
+}
+
 .payment-collection-preview {
   display: flex;
   flex-direction: column;

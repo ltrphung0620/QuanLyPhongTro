@@ -163,6 +163,7 @@ namespace NhaTro.Data
                 entity.Property(x => x.SupportConversationId).HasColumnName("support_conversation_id");
                 entity.Property(x => x.SenderUserId).HasColumnName("sender_user_id");
                 entity.Property(x => x.Content).HasColumnName("content").HasMaxLength(2000).IsRequired();
+                entity.Property(x => x.ImagePath).HasColumnName("image_path").HasMaxLength(500);
                 entity.Property(x => x.SentAt).HasColumnName("sent_at");
                 entity.Property(x => x.ReadAt).HasColumnName("read_at");
 

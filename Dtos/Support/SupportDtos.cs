@@ -22,6 +22,7 @@ namespace NhaTro.Dtos.Support
         public string SenderName { get; set; } = string.Empty;
         public string SenderRole { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
+        public string? ImagePath { get; set; }
         public DateTime SentAt { get; set; }
         public DateTime? ReadAt { get; set; }
         public bool IsMine { get; set; }
@@ -35,8 +36,8 @@ namespace NhaTro.Dtos.Support
 
     public class SendSupportMessageDto
     {
-        [Required]
         [StringLength(2000)]
         public string Content { get; set; } = string.Empty;
+        public IFormFile? Image { get; set; }
     }
 }

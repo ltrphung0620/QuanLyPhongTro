@@ -8,6 +8,9 @@ import {
   MonthlyProfitLoss,
   MonthlyRevenue,
   Room,
+  SupportConversation,
+  SupportMessage,
+  SupportMessagePage,
   Tenant,
   Transaction,
   TransactionInput,
@@ -57,7 +60,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const activeOrganizationId = await getActiveOrganizationId();
   const headers = new Headers(options.headers);
 
-  if (!headers.has("Content-Type") && options.body) {
+  if (!headers.has("Content-Type") && options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -164,5 +167,20 @@ export const api = {
   },
   monthlyProfitLoss(month: string) {
     return apiRequest<MonthlyProfitLoss>("/Reports/monthly-profit-loss", { query: { month } });
+  },
+  supportConversation() {
+    return apiRequest<SupportConversation>("/support/conversation");
+  },
+  supportConversations() {
+    return apiRequest<SupportConversation[]>("/support/conversations");
+  },
+  supportMessages(conversationId: number) {
+    return apiRequest<SupportMessagePage>(`/support/conversations/${conversationId}/messages`);
+  },
+  sendSupportMessage(conversationId: number, content: string, image?: { uri: string; name: string; type: string } | null) {
+    const formData = new FormData();
+    formData.append("content", content);
+    if (image) formData.append("image", image as unknown as Blob);
+    return apiRequest<SupportMessage>(`/support/conversations/${conversationId}/messages`, { method: "POST", body: formData });
   }
 };
