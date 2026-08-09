@@ -21,6 +21,8 @@ namespace NhaTro.Models
         [MaxLength(500)]
         public string? ImagePath { get; set; }
 
+        public string? ImageData { get; set; }
+
         public DateTime SentAt { get; set; } = DateTime.UtcNow;
         public DateTime? ReadAt { get; set; }
     }

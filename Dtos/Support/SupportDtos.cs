@@ -23,6 +23,7 @@ namespace NhaTro.Dtos.Support
         public string SenderRole { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
         public string? ImagePath { get; set; }
+        public string? ImageData { get; set; }
         public DateTime SentAt { get; set; }
         public DateTime? ReadAt { get; set; }
         public bool IsMine { get; set; }
