@@ -37,7 +37,7 @@ namespace NhaTro.Dtos.Support
     public class SendSupportMessageDto
     {
         [StringLength(2000)]
-        public string Content { get; set; } = string.Empty;
+        public string? Content { get; set; }
         public IFormFile? Image { get; set; }
     }
 }
