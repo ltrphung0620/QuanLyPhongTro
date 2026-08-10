@@ -396,10 +396,12 @@
   overflow: hidden;
   max-width: 280px;
   margin-top: 5px;
+  padding: 0;
   border: 1px solid var(--border-color);
   border-radius: 12px;
   background: var(--bg-card);
   box-shadow: var(--shadow-sm);
+  cursor: zoom-in;
 }
 
 .support-message-image img {
@@ -407,6 +409,25 @@
   width: 100%;
   max-height: 320px;
   object-fit: cover;
+}
+
+.support-image-preview-modal {
+  max-width: min(900px, 95vw);
+}
+
+.support-image-preview-body {
+  display: grid;
+  max-height: calc(100vh - 150px);
+  padding: 16px;
+  place-items: center;
+  background: #181717;
+}
+
+.support-image-preview-body img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 182px);
+  object-fit: contain;
 }
 
 .support-message-block time {

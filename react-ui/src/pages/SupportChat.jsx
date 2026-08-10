@@ -114,6 +114,7 @@ export default function SupportChat() {
   const [hasMore, setHasMore] = useState(false)
   const [draft, setDraft] = useState('')
   const [selectedImage, setSelectedImage] = useState(null)
+  const [previewImageUrl, setPreviewImageUrl] = useState('')
   const [search, setSearch] = useState('')
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
@@ -411,9 +412,14 @@ export default function SupportChat() {
                           {!outgoing && <span className="support-sender-name">{message.senderName}</span>}
                           {message.content && <div className="support-bubble">{message.content}</div>}
                           {(message.imageData || message.imagePath) && (
-                            <a className="support-message-image" href={messageImageUrl(message)} target="_blank" rel="noreferrer">
+                            <button
+                              type="button"
+                              className="support-message-image"
+                              onClick={() => setPreviewImageUrl(messageImageUrl(message))}
+                              aria-label="Xem ảnh đính kèm"
+                            >
                               <img src={messageImageUrl(message)} alt="Ảnh đính kèm" />
-                            </a>
+                            </button>
                           )}
                           <time>{formatMessageTime(message.sentAt)}</time>
                         </div>
@@ -453,6 +459,20 @@ export default function SupportChat() {
                 </div>
                 <span className="support-composer-hint">Enter để gửi · Shift + Enter để xuống dòng</span>
               </footer>
+
+              {previewImageUrl && (
+                <div className="modal-overlay" onClick={() => setPreviewImageUrl('')}>
+                  <div className="modal-content support-image-preview-modal" onClick={(event) => event.stopPropagation()}>
+                    <div className="modal-header">
+                      <span className="modal-title">Ảnh đính kèm</span>
+                      <button className="btn-close-modal" onClick={() => setPreviewImageUrl('')} aria-label="Đóng xem ảnh">×</button>
+                    </div>
+                    <div className="support-image-preview-body">
+                      <img src={previewImageUrl} alt="Ảnh đính kèm phóng to" />
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </section>
